@@ -7,10 +7,10 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-
+      
       scaffoldBackgroundColor: AppColors.backgroundPrimary,
       primaryColor: AppColors.accentYellow,
-
+      
       colorScheme: const ColorScheme.dark(
         primary: AppColors.accentYellow,
         onPrimary: AppColors.backgroundPrimary,
@@ -26,8 +26,8 @@ class AppTheme {
         bodyMedium: GoogleFonts.roboto(color: AppColors.textSecondary),
       ),
 
-      // ✅ التصحيح: إزالة النوع الصريح CardTheme لتجنب مشاكل الإصدارات
-      cardTheme: CardTheme(
+      // ✅ التعديل هنا: استخدام CardThemeData بدلاً من CardTheme
+      cardTheme: CardThemeData(
         color: AppColors.backgroundSecondary,
         elevation: 4,
         shape: RoundedRectangleBorder(
@@ -46,7 +46,7 @@ class AppTheme {
           textStyle: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0),
         ),
       ),
-
+      
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.backgroundSecondary,
