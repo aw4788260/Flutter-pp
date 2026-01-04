@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
+import '../../data/models/course_model.dart';
+import '../widgets/course_card.dart';
+import 'course_details_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -15,23 +18,23 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- 1. Header (Greetings & Profile) ---
+              // --- 1. رأس الصفحة (الترحيب) ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
+                    children: const [
+                      Text(
                         "Welcome back,",
                         style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        "John Doe", // سيتم تغييره ديناميكياً لاحقاً
+                      SizedBox(height: 4),
+                      Text(
+                        "Ahmed Ali", // اسم الطالب
                         style: TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 20,
@@ -40,7 +43,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  // Profile/Notification Icon
+                  // أيقونة الإشعارات
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
@@ -55,7 +58,7 @@ class HomeScreen extends StatelessWidget {
               
               const SizedBox(height: 24),
 
-              // --- 2. Search Bar ---
+              // --- 2. شريط البحث ---
               Container(
                 decoration: BoxDecoration(
                   color: AppColors.backgroundSecondary,
@@ -64,25 +67,28 @@ class HomeScreen extends StatelessWidget {
                 ),
                 child: TextField(
                   style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     hintText: "Search for courses...",
-                    hintStyle: const TextStyle(color: AppColors.textSecondary),
-                    prefixIcon: const Icon(LucideIcons.search, color: AppColors.textSecondary, size: 20),
+                    hintStyle: TextStyle(color: AppColors.textSecondary),
+                    prefixIcon: Icon(LucideIcons.search, color: AppColors.textSecondary, size: 20),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
                 ),
               ),
 
               const SizedBox(height: 32),
 
-              // --- 3. Featured / Banner Section (Optional) ---
+              // --- 3. البانر الإعلاني (Banner) ---
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [AppColors.accentYellow.withOpacity(0.2), AppColors.backgroundSecondary],
+                    colors: [
+                      AppColors.accentYellow.withOpacity(0.2), 
+                      AppColors.backgroundSecondary
+                    ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -119,7 +125,9 @@ class HomeScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     ElevatedButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        // يمكن توجيهه لكورس معين هنا
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.accentYellow,
                         foregroundColor: Colors.black,
@@ -133,7 +141,7 @@ class HomeScreen extends StatelessWidget {
 
               const SizedBox(height: 32),
 
-              // --- 4. Popular Courses Header ---
+              // --- 4. عنوان القائمة ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -157,103 +165,30 @@ class HomeScreen extends StatelessWidget {
               
               const SizedBox(height: 16),
 
-              // --- 5. Course List (Vertical for now) ---
-              // سنستخدم ListView لعرض الكورسات (Mock Data)
+              // --- 5. قائمة الكورسات (Dynamic List) ---
               ListView.builder(
                 shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: 3, // عدد وهمي
+                physics: const NeverScrollableScrollPhysics(), // لأن الصفحة كلها scrollable
+                itemCount: dummyCourses.length,
                 itemBuilder: (context, index) {
-                  return _buildCourseCard();
+                  final course = dummyCourses[index];
+                  return CourseCard(
+                    course: course,
+                    onTap: () {
+                      // ✅ الانتقال لشاشة التفاصيل عند الضغط
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CourseDetailsScreen(),
+                        ),
+                      );
+                    },
+                  );
                 },
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  // مكون بطاقة الكورس (Course Card Widget)
-  Widget _buildCourseCard() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSecondary,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Image Placeholder
-          Container(
-            height: 140,
-            decoration: const BoxDecoration(
-              color: Colors.black26,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            child: const Center(
-              child: Icon(LucideIcons.image, color: Colors.white10, size: 48),
-            ),
-          ),
-          
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(LucideIcons.book, size: 14, color: AppColors.accentYellow),
-                    const SizedBox(width: 6),
-                    Text(
-                      "PHYSICS",
-                      style: TextStyle(
-                        color: AppColors.accentYellow,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  "Advanced Mechanics & Motion",
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  "By Mr. Ahmed Hassan",
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "1200 EGP",
-                      style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.accentYellow,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(LucideIcons.arrowRight, size: 16, color: Colors.black),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
