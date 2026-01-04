@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // مهم لاستدعاء القنوات
+import 'package:flutter/services.dart'; // للقنوات
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'firebase_options.dart';
@@ -11,8 +11,7 @@ void main() async {
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // 1. تفعيل حماية تصوير الشاشة (Android Only)
-    // هذا الكود يستدعي كود Native لمنع التصوير
+    // ✅ 1. تفعيل حماية تصوير الشاشة فوراً عند البدء
     await _enableSecureMode();
 
     await Firebase.initializeApp(
@@ -27,16 +26,16 @@ void main() async {
   });
 }
 
-// دالة تفعيل الحماية
+// دالة تمنع تصوير الشاشة (Android)
 Future<void> _enableSecureMode() async {
   try {
-    // سنستخدم مكتبة flutter_windowmanager إذا كانت مثبتة، 
-    // أو يمكننا الاعتماد على القنوات (MethodChannel) إذا كنت تفضل الكود الـ Native
-    // للأمان القصوى سنفترض وجود flutter_windowmanager في pubspec.yaml
+    // نستخدم القناة المباشرة للأندرويد لفرض FLAG_SECURE
+    // تأكد من إضافة مكتبة flutter_windowmanager في pubspec.yaml:
+    // flutter_windowmanager: ^0.2.0
     const platform = MethodChannel('flutter_windowmanager');
-    await platform.invokeMethod('addFlags', {'flags': 8192}); // FLAG_SECURE = 8192
+    await platform.invokeMethod('addFlags', {'flags': 8192}); // 8192 = FLAG_SECURE
   } catch (e) {
-    print("Failed to enable secure mode: $e");
+    print("Security Mode Error: $e");
   }
 }
 
