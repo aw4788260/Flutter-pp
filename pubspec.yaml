@@ -21,9 +21,13 @@ dependencies:
   # UI Components & Icons matching React design
   google_fonts: ^6.1.0
   flutter_svg: ^2.0.9
-  lucide_icons: ^0.1.0  # مهم جداً لمطابقة أيقونات React
+  # تم تصحيح الإصدار هنا ليطابق الموجود في Pub.dev
+  lucide_icons: ^0.257.0 
   cached_network_image: ^3.3.1
   
+  # Security (مهم جداً لكود الحماية في main.dart)
+  flutter_windowmanager: ^0.2.0
+
   # Networking
   dio: ^5.4.0
   
