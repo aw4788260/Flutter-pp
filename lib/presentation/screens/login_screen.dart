@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart'; // مكتبة الأيقونات
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import '../widgets/custom_text_field.dart'; // الحقل المخصص الذي أنشأناه
-import 'register_screen.dart'; // لاستدعاء شاشة التسجيل
+import '../widgets/custom_text_field.dart';
+import 'register_screen.dart';
+import 'main_wrapper.dart'; // ✅ إضافة استيراد الشاشة الرئيسية
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,32 +14,30 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // وحدات التحكم بالنصوص
   final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    // تسجيل دخول المستخدم للشاشة في Crashlytics
     FirebaseCrashlytics.instance.log("User visited Login Screen");
   }
 
   void _handleLogin() {
-    // هنا سنضيف منطق الاتصال بالـ API لاحقاً
-    print("Attempting login with: ${_identifierController.text}");
-  }
+    // ⚠️ ملاحظة: هنا يجب وضع منطق التحقق من الـ API لاحقاً
+    // حالياً سنقوم بتسجيل الدخول المباشر للانتقال للخطوة التالية
+    
+    FirebaseCrashlytics.instance.log("User logged in successfully");
 
-  @override
-  void dispose() {
-    _identifierController.dispose();
-    _passwordController.dispose();
-    super.dispose();
+    // ✅ الانتقال للشاشة الرئيسية (MainWrapper)
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const MainWrapper()),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Scaffold يأخذ لون الخلفية من الثيم (Dark Slate)
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary, 
       body: SafeArea(
@@ -48,7 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               const Spacer(flex: 1), 
 
-              // --- 1. رأس الصفحة (الأيقونة والعنوان) ---
+              // --- Header ---
               Container(
                 width: 64, height: 64, 
                 decoration: BoxDecoration(
@@ -77,7 +76,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-
               const Text(
                 "PLEASE LOGIN TO CONTINUE.",
                 style: TextStyle(
@@ -90,7 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 48), 
 
-              // --- 2. نموذج الإدخال ---
+              // --- Form ---
               CustomTextField(
                 label: "Username or Phone",
                 hint: "e.g. @john or 01012345678",
@@ -108,14 +106,14 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 32),
 
-              // --- 3. زر تسجيل الدخول ---
+              // --- Sign In Button ---
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _handleLogin,
+                  onPressed: _handleLogin, // ✅ تم ربط الدالة
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.accentYellow,
-                    foregroundColor: AppColors.backgroundPrimary, // لون النص
+                    foregroundColor: AppColors.backgroundPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20), 
@@ -143,7 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const Spacer(flex: 2),
 
-              // --- 4. رابط إنشاء حساب جديد ---
+              // --- Register Link ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -153,7 +151,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   GestureDetector(
                     onTap: () {
-                      // الانتقال لشاشة التسجيل
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => const RegisterScreen()),
