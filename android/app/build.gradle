@@ -1,14 +1,17 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.gms.google-services" //
+    id "com.google.firebase.crashlytics" //
+}
+
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader ->
         localProperties.load(reader)
     }
-}
-
-def flutterRoot = localProperties.getProperty('flutter.sdk')
-if (flutterRoot == null) {
-    throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
 }
 
 def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
@@ -21,21 +24,16 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
-// --- بداية كود التوقيع لـ GitHub Actions ---
+// قراءة ملف التوقيع
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
-// --- نهاية كود التوقيع ---
-
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-apply plugin: 'dev.flutter.flutter-gradle-plugin'
 
 android {
     namespace "com.example.edu_vantage_app"
-    compileSdkVersion 34 // تم تحديثه ليتوافق مع أحدث مكتبات
+    compileSdk 34 //
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -53,15 +51,27 @@ android {
 
     defaultConfig {
         applicationId "com.example.edu_vantage_app"
-        minSdkVersion 23 // تم رفعه قليلاً لدعم المكتبات الحديثة
-        targetSdkVersion 34
+        minSdk 24 // تم رفعه ليتوافق مع المكتبات الحديثة
+        targetSdk 34 //
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+        multiDexEnabled true //
+    }
+
+    // حل مشاكل المكتبات المشتركة
+    packagingOptions {
+        pickFirst 'lib/x86/libc++_shared.so'
+        pickFirst 'lib/x86_64/libc++_shared.so'
+        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
+        pickFirst 'lib/arm64-v8a/libc++_shared.so'
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     signingConfigs {
         release {
-            // قراءة المفاتيح من ملف key.properties الذي ينشئه GitHub Actions
             keyAlias = keystoreProperties['keyAlias']
             keyPassword = keystoreProperties['keyPassword']
             storeFile = keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
@@ -72,17 +82,19 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.release
-            minifyEnabled true // تفعيل التصغير (اختياري)
-            shrinkResources true
+            minifyEnabled true //
+            shrinkResources true //
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
 
-flutter {
-    source '../..'
-}
-
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    // إضافة منصة Firebase والمكتبات الضرورية
+    implementation platform('com.google.firebase:firebase-bom:32.7.0')
+    implementation 'com.google.firebase:firebase-crashlytics'
+    implementation 'com.google.firebase:firebase-analytics'
+    
+    // دعم MultiDex
+    implementation 'androidx.multidex:multidex:2.0.1'
 }
