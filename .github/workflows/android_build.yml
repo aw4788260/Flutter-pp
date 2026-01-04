@@ -1,17 +1,17 @@
 name: Build Android App
 
 on:
-  workflow_dispatch: # يعمل يدوياً فقط بضغط زر Run
+  workflow_dispatch: # يعمل يدوياً فقط
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4 # تم التحديث إلى v4
 
       - name: Set up Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4 # تم التحديث إلى v4
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -32,6 +32,7 @@ jobs:
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storeFile=../../upload-keystore.jks" >> android/key.properties
 
+      # فك تشفير ملف الـ Keystore
       - name: Decode Keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
@@ -39,8 +40,10 @@ jobs:
       - name: Build APK
         run: flutter build apk --release
 
+      # رفع الملف الناتج (تم التحديث إلى v4)
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 1 # اختياري: الاحتفاظ بالملف لمدة يوم واحد لتوفير المساحة
