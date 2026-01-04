@@ -2,11 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'firebase_options.dart'; // سيتم توليده
+import 'firebase_options.dart'; // تأكد من توليد هذا الملف عبر flutterfire configure
 import 'core/theme/app_theme.dart';
+import 'presentation/screens/splash_screen.dart'; // استيراد شاشة البداية
 
 void main() async {
-  // المنطقة الآمنة لالتقاط الأخطاء في كل خطوة
+  // استخدام Zone لالتقاط الأخطاء في أي مكان بالتطبيق
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
@@ -15,12 +16,12 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // تفعيل Crashlytics للأخطاء القاتلة
+    // تسجيل أخطاء Flutter القاتلة في Crashlytics
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
     runApp(const EduVantageApp());
   }, (error, stack) {
-    // إرسال أي خطأ آخر (Async errors) إلى Crashlytics
+    // تسجيل الأخطاء غير المتوقعة (Async errors)
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
   });
 }
@@ -34,15 +35,12 @@ class EduVantageApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'EduVantage',
       
-      // تطبيق الثيم المظلم فقط (كما في التصميم)
+      // إجبار التطبيق على استخدام الثيم المظلم (Dark Slate) فقط
       theme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark, 
-
-      home: const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(), // شاشة تحميل مؤقتة
-        ),
-      ),
+      
+      // نقطة البداية هي شاشة السبلاش
+      home: const SplashScreen(),
     );
   }
 }
