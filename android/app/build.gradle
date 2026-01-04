@@ -1,9 +1,10 @@
 plugins {
     id "com.android.application"
-    id "kotlin-android"
+    // استخدام المعرف الجديد للكوتلن
+    id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
-    id "com.google.gms.google-services" //
-    id "com.google.firebase.crashlytics" //
+    id "com.google.gms.google-services"
+    id "com.google.firebase.crashlytics"
 }
 
 def localProperties = new Properties()
@@ -24,7 +25,7 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
-// قراءة ملف التوقيع
+// إعدادات التوقيع
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
@@ -33,7 +34,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "com.example.edu_vantage_app"
-    compileSdk 34 //
+    compileSdk 34
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -51,23 +52,11 @@ android {
 
     defaultConfig {
         applicationId "com.example.edu_vantage_app"
-        minSdk 24 // تم رفعه ليتوافق مع المكتبات الحديثة
-        targetSdk 34 //
+        minSdk 24
+        targetSdk 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
-        multiDexEnabled true //
-    }
-
-    // حل مشاكل المكتبات المشتركة
-    packagingOptions {
-        pickFirst 'lib/x86/libc++_shared.so'
-        pickFirst 'lib/x86_64/libc++_shared.so'
-        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
-        pickFirst 'lib/arm64-v8a/libc++_shared.so'
-    }
-
-    buildFeatures {
-        buildConfig true
+        multiDexEnabled true
     }
 
     signingConfigs {
@@ -82,19 +71,16 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.release
-            minifyEnabled true //
-            shrinkResources true //
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
 
 dependencies {
-    // إضافة منصة Firebase والمكتبات الضرورية
     implementation platform('com.google.firebase:firebase-bom:32.7.0')
     implementation 'com.google.firebase:firebase-crashlytics'
     implementation 'com.google.firebase:firebase-analytics'
-    
-    // دعم MultiDex
     implementation 'androidx.multidex:multidex:2.0.1'
 }
