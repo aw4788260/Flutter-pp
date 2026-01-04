@@ -1,21 +1,19 @@
 buildscript {
-    ext.kotlin_version = '1.9.0' // تحديث الكوتلن ليتوافق مع AGP 8
+    // تحديث الكوتلن لنسخة أحدث وأكثر استقراراً
+    ext.kotlin_version = '1.9.22'
     repositories {
         google()
         mavenCentral()
     }
 
     dependencies {
-        // استخدام الإصدار 8.0.0 كما في الملف المرفق
-        classpath 'com.android.tools.build:gradle:8.0.0'
-        //
+        // تم التحديث إلى 8.2.0 ليتوافق مع Gradle 8.5
+        classpath 'com.android.tools.build:gradle:8.2.0'
         classpath 'com.google.gms:google-services:4.4.1'
         classpath 'com.google.firebase:firebase-crashlytics-gradle:2.9.9'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
-
-// تم نقل المستودعات إلى settings.gradle كما في الملف المرفق
 
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
