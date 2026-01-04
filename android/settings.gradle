@@ -26,11 +26,14 @@ pluginManagement {
 include ':app'
 
 dependencyResolutionManagement {
-    // ✅ التعديل هنا: السماح للمشروع بإضافة مستودعاته الخاصة
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         google()
         mavenCentral()
         maven { url 'https://jitpack.io' }
+        // ✅ هذا المستودع ضروري لتحميل مكتبات Flutter Engine
+        maven {
+            url "https://storage.googleapis.com/download.flutter.io"
+        }
     }
 }
