@@ -31,7 +31,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url 'https://jitpack.io' }
-        // ✅ هذا المستودع ضروري لتحميل مكتبات Flutter Engine
+        // ✅ هذا هو السطر الحاسم الذي يحل المشكلة
         maven {
             url "https://storage.googleapis.com/download.flutter.io"
         }
