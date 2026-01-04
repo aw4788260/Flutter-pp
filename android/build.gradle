@@ -13,20 +13,7 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-
-rootProject.buildDir = '../build'
-subprojects {
-    project.buildDir = "${rootProject.buildDir}/${project.name}"
-}
-subprojects {
-    project.evaluationDependsOn(':app')
-}
+// ✅ تم حذف قسم allprojects من هنا لحل التضارب مع settings.gradle
 
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
