@@ -1,50 +1,61 @@
 name: Build Android App
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # يسمح بتشغيل البناء يدوياً من واجهة GitHub
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. جلب الكود من المستودع
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 2. إعداد الجافا (الإصدار 17 ليتوافق مع أندرويد الحديث)
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
+      # 3. إعداد فلاتر
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
+      # 4. تنظيف المشروع وجلب المكتبات
       - name: Clean and Get Packages
         run: |
+          rm -rf android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
           flutter clean
           flutter pub get
 
+      # 5. إنشاء ملفات الأسرار (التوقيع وFirebase) مع تنظيف التشفير
       - name: Create Secrets Files
         env:
+          # استدعاء الأسرار من GitHub Secrets
           DATA: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           KEYSTORE_DATA: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          # فك تشفير google-services.json
+          # فك تشفير google-services.json مع تنظيف المسافات
           echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
           
-          # ✅ فك تشفير المفتاح مع تنظيف المسافات (حل مشكلة Tag number over 30 بشكل نهائي)
+          # فك تشفير المفتاح (Keystore) مع تنظيف شامل لحل مشكلة Tag number over 30
           echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
+          
+          # إنشاء ملف خصائص المفتاح لربطه بملف Gradle
+          echo "storePassword=${{ secrets.STORE_PASSWORD }}" > android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=upload-keystore.jks" >> android/key.properties
 
+      # 6. بناء نسخة الـ APK النهائية (Release)
       - name: Build APK
-        env:
-          KEY_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: flutter build apk --release
 
+      # 7. رفع ملف الـ APK الناتج ليكون متاحاً للتحميل
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
