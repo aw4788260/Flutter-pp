@@ -1,14 +1,21 @@
 buildscript {
-    ext.kotlin_version = "1.9.24"
+    // تم إزالة تعريفات AGP و Kotlin من هنا لأنها معرفة الآن في settings.gradle
+    // هذا يمنع خطأ "Double Declaration"
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath "com.android.tools.build:gradle:8.7.3"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        // نُبقي فقط على خدمات جوجل و Crashlytics لأنها غير معرفة كـ Plugins أساسية في الإعدادات
         classpath "com.google.gms:google-services:4.4.1"
         classpath "com.google.firebase:firebase-crashlytics-gradle:2.9.9"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
     }
 }
 
