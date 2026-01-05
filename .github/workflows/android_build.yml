@@ -27,24 +27,19 @@ jobs:
           flutter clean
           flutter pub get
 
-      # ✅ 1. إنشاء ملف خدمات جوجل باستخدام متغيرات البيئة (env) لضمان سلامة النص
-      - name: Create google-services.json
+      - name: Create Secrets Files
         env:
           DATA: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
-        run: |
-          echo $DATA | base64 -d > android/app/google-services.json
-
-      # ✅ 2. إنشاء ملف التوقيع (Keystore) بأسلوبك الجديد (حل مشكلة Tag number over 30)
-      - name: Decode Keystore
-        env:
           KEYSTORE_DATA: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          echo $KEYSTORE_DATA | base64 -d > android/app/upload-keystore.jks
+          # إنشاء ملف خدمات جوجل
+          echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
+          
+          # ✅ حل مشكلة Tag number over 30: تنظيف النص المشفر تماماً قبل فك التشفير
+          echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
 
-      # ✅ 3. بناء التطبيق مع تمرير الأسرار كمتغيرات بيئة مباشرة للمحرك
       - name: Build APK
         env:
-          # تمرير البيانات لكي يقرأها ملف build.gradle.kts
           KEY_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
