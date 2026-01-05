@@ -1,4 +1,3 @@
-// 1. تعريف الإضافات
 plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.android"
@@ -7,7 +6,11 @@ plugins {
     id "com.google.firebase.crashlytics"
 }
 
-// 2. كود جلب الإصدارات من Flutter (مهم جداً لحل الخطأ الحالي)
+// تعريف كتلة Flutter لربط محرك أندرويد بالمسار الصحيح (حل مشكلة Unresolved reference 'io')
+flutter {
+    source '../..'
+}
+
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
@@ -20,7 +23,6 @@ if (flutterVersionCode == null) { flutterVersionCode = "1" }
 def flutterVersionName = localProperties.getProperty("flutter.versionName")
 if (flutterVersionName == null) { flutterVersionName = "1.0" }
 
-// جلب خصائص التوقيع (Signing)
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
