@@ -1,11 +1,13 @@
 plugins {
     id "com.android.application"
-    id "dev.flutter.flutter-gradle-plugin" // يجب أن يكون الثاني مباشرة
+    // ✅ يجب أن يكون إضافة فلاتر هي الثانية مباشرة لربط المكتبات بشكل صحيح
+    id "dev.flutter.flutter-gradle-plugin"
     id "org.jetbrains.kotlin.android"
     id "com.google.gms.google-services"
     id "com.google.firebase.crashlytics"
 }
 
+// ✅ إضافة كتلة flutter لربط محرك أندرويد بالمسار الصحيح (حل جذري لخطأ Unresolved reference 'io')
 flutter {
     source '../..'
 }
@@ -29,6 +31,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
+    // ✅ التأكد من تطابق الـ namespace مع المعرف الخاص بك
     namespace "com.example.edu_vantage_app"
     compileSdk 34
 
