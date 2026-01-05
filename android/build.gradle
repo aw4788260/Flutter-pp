@@ -1,3 +1,5 @@
+// ملف android/build.gradle (Project Level)
+
 allprojects {
     repositories {
         google()
