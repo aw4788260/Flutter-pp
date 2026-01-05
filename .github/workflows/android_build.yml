@@ -27,20 +27,34 @@ jobs:
           flutter clean
           flutter pub get
 
-      # ✅ إصلاح الخطأ: تنظيف النص من أي مسافات أو أسطر قبل فك التشفير
-      - name: Create Secrets Files
+      # ✅ هذه هي الخطوة الجديدة المعدلة: تقوم بفك التشفير ثم اختبار الملف وكلمة السر فوراً
+      - name: Create and Verify Keystore
         env:
-          # استخدام الأسماء الموجودة في صورتك
           DATA: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           KEYSTORE_DATA: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          # نحتاج تمرير كلمة السر والاسم المستعار هنا لأجل أمر keytool
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          # الأمر tr -d '[:space:]' يحذف أي مسافة أو سطر جديد ويسلم الكود نظيفاً لـ base64
+          # 1. فك تشفير الملفات (مع حذف المسافات الزائدة لضمان سلامة الكود)
           echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
           echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
 
+          # 2. طباعة حجم الملف للتأكد من أنه ليس فارغاً
+          echo "=== Checking keystore file size ==="
+          ls -lh android/app/upload-keystore.jks
+
+          # 3. محاولة فتح الملف باستخدام keytool للتأكد من صحة كلمة المرور وسلامة الملف
+          # إذا فشل هذا الأمر، سيتوقف السكربت هنا وسنعرف أن المشكلة في كلمة السر أو التشفير
+          echo "=== Verifying Keystore Integrity & Password ==="
+          keytool -list -v \
+            -keystore android/app/upload-keystore.jks \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS"
+
       - name: Build APK
         env:
-          # تمرير كلمات السر كما هي موجودة في GitHub Secrets
+          # تمرير الأسرار لعملية البناء الفعلية
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
