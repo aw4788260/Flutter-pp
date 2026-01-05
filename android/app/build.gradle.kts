@@ -24,10 +24,10 @@ android {
 
     signingConfigs {
         create("release") {
-            // ✅ القراءة المباشرة من متغيرات البيئة بأسماء مطابقة تماماً للأسرار في الصورة
-            keyAlias = System.getenv("KEY_ALIAS") ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
-            storePassword = System.getenv("STORE_PASSWORD") ?: "" 
+            // ✅ استخدام .trim() لحذف أي مسافات خفية ناتجة عن النسخ واللصق في GitHub
+            keyAlias = System.getenv("KEY_ALIAS")?.trim() ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD")?.trim() ?: ""
+            storePassword = System.getenv("STORE_PASSWORD")?.trim() ?: "" 
             
             storeFile = file("upload-keystore.jks")
         }
@@ -35,7 +35,9 @@ android {
 
     buildTypes {
         release {
+            // ربط إعدادات التوقيع
             signingConfig = signingConfigs.getByName("release")
+            
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
