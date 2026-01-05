@@ -27,28 +27,19 @@ jobs:
           flutter clean
           flutter pub get
 
-      # ✅ فك تشفير الملفات مع تنظيف شامل للفراغات (حل مشكلة Tag number over 30)
       - name: Create Secrets Files
         env:
           DATA: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           KEYSTORE_DATA: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          # فك تشفير google-services.json
+          # فك تشفير الملفات مع تنظيف المسافات
           echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
-          
-          # فك تشفير المفتاح (Keystore) مباشرة داخل مجلد app
           echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
 
-      # ✅ بناء التطبيق مع تمرير المتغيرات مباشرة لـ Gradle
       - name: Build APK
         env:
+          # ✅ إرسال الأسرار كمتغيرات بيئة (أكثر أماناً وتدعم الرموز الخاصة)
           KEY_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: flutter build apk --release
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
