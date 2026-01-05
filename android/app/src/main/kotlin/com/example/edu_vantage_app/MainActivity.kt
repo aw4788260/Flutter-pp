@@ -7,7 +7,7 @@ import io.flutter.embedding.android.FlutterActivity
 class MainActivity: FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // تفعيل وضع الحماية لمنع تصوير الشاشة
+        // إضافة حماية الشاشة (منع التصوير)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 }
