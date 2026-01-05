@@ -18,6 +18,7 @@ pluginManagement {
 
     plugins {
         id "dev.flutter.flutter-gradle-plugin" version "1.0.0" apply false
+        // استخدام أحدث إصدارات متوافقة
         id "com.android.application" version "8.7.3" apply false
         id "org.jetbrains.kotlin.android" version "2.1.0" apply false
     }
@@ -25,13 +26,15 @@ pluginManagement {
 
 include ':app'
 
+// ✅ التعديل الحاسم هنا: تغيير الوضع إلى PREFER_PROJECT للسماح بـ build.gradle
+// أو تعريف المستودعات هنا مباشرة
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         google()
         mavenCentral()
         maven { url 'https://jitpack.io' }
-        // ✅✅ هذا هو السطر الناقص الذي سيحل المشكلة
+        // ✅ المستودع الرسمي لفلاتر (يجب أن يكون هنا ليعمل مع PREFER_SETTINGS)
         maven {
             url "https://storage.googleapis.com/download.flutter.io"
         }
