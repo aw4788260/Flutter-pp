@@ -17,14 +17,16 @@ pluginManagement {
     }
 
     plugins {
-        // التعريفات الأساسية (تم تصحيح Kotlin والاحتفاظ بالباقي)
+        // التعريفات الأساسية
         id "dev.flutter.flutter-gradle-plugin" version "1.0.0" apply false
         id "com.android.application" version "8.7.3" apply false
+        
+        // تم تحديث Kotlin لتجنب التحذيرات المستقبلية (اختياري، لكن مفضل مع AGP 8.7)
         id "org.jetbrains.kotlin.android" version "1.9.24" apply false
         
-        // تمت إضافتها هنا لتجنب خطأ "Plugin not found" التالي
-        id "com.google.gms.google-services" version "4.4.1" apply false
-        id "com.google.firebase.crashlytics" version "2.9.9" apply false
+        // ✅ التحديث الضروري لحل المشكلة الحالية
+        id "com.google.gms.google-services" version "4.4.2" apply false
+        id "com.google.firebase.crashlytics" version "3.0.2" apply false
     }
 }
 
