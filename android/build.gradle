@@ -1,5 +1,5 @@
 buildscript {
-    // ✅ تم التحديث ليتوافق مع الإعدادات الجديدة
+    // ✅ أحدث إصدار كوتلن
     ext.kotlin_version = '2.1.0'
     repositories {
         google()
@@ -7,11 +7,21 @@ buildscript {
     }
 
     dependencies {
-        // ✅ تم التحديث إلى 8.7.3
+        // ✅ أحدث إصدار AGP
         classpath 'com.android.tools.build:gradle:8.7.3'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath 'com.google.gms:google-services:4.4.1'
         classpath 'com.google.firebase:firebase-crashlytics-gradle:2.9.9'
+    }
+}
+
+// ✅ إعادة قسم allprojects لضمان تحميل مكتبات فلاتر بشكل صحيح
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+        maven { url "https://storage.googleapis.com/download.flutter.io" }
     }
 }
 
