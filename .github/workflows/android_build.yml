@@ -1,7 +1,7 @@
 name: Build Android App
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # يسمح بتشغيل البناء يدوياً من واجهة GitHub
 
 jobs:
   build:
@@ -14,18 +14,21 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '17' # استخدام الإصدار 17 ليتوافق مع أحدث متطلبات أندرويد
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      - name: Install Dependencies
-        run: flutter pub get
+      # ✅ خطوة هامة جداً: تنظيف أي ملفات قديمة قد تسبب تعارض في البناء
+      - name: Clean Legacy Android Files
+        run: |
+          rm -rf android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+          flutter clean
+          flutter pub get
 
-      # ✅ هذه هي الخطوة الوحيدة المطلوبة الآن: إنشاء ملفات الأسرار
-      # لأن الملفات الأساسية (build.gradle) موجودة وسليمة في المستودع
+      # ✅ إنشاء ملفات الأسرار المطلوبة للتوقيع وخدمات جوجل
       - name: Create Secrets Files
         run: |
           # 1. إنشاء ملف خدمات جوجل
@@ -40,10 +43,11 @@ jobs:
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storeFile=../upload-keystore.jks" >> android/key.properties
 
-      # ✅ أمر البناء المباشر
+      # ✅ أمر بناء النسخة النهائية (APK)
       - name: Build APK
         run: flutter build apk --release
 
+      # ✅ رفع ملف الـ APK الناتج ليكون متاحاً للتحميل
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
