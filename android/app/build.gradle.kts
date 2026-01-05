@@ -1,6 +1,3 @@
-import java.util.Properties
-import java.io.FileInputStream
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -11,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.example.edu_vantage_app"
-    compileSdk = 36 // ✅ تم التحديث للإصدار 36 المطلوب في السجلات
+    compileSdk = 36 // ✅ محدث لـ 36
 
     defaultConfig {
         applicationId = "com.example.edu_vantage_app"
         minSdk = 24
-        targetSdk = 36 // ✅ تم التحديث للإصدار 36
+        targetSdk = 36 // ✅ محدث لـ 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
@@ -24,7 +21,7 @@ android {
 
     signingConfigs {
         create("release") {
-            // ✅ القراءة المباشرة من متغيرات البيئة التي يرسلها الـ Workflow
+            // ✅ القراءة المباشرة من متغيرات البيئة لضمان سلامة الرموز مثل #
             keyAlias = System.getenv("KEY_ALIAS") ?: ""
             keyPassword = System.getenv("KEY_PASSWORD") ?: ""
             storePassword = System.getenv("KEY_STORE_PASSWORD") ?: ""
