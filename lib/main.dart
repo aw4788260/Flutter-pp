@@ -2,38 +2,38 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart'; // ✅ استخدام النسخة الحديثة لحل مشكلة البناء
-import 'firebase_options.dart';
+import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
+// import 'firebase_options.dart'; // ❌ لم نعد بحاجة لهذا الملف لأنه يحتوي بيانات وهمية
 import 'core/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
 
 void main() async {
-  // استخدام runZonedGuarded لالتقاط كافة الأخطاء وإرسالها لـ Crashlytics
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // ✅ تفعيل حماية تصوير الشاشة فوراً عند تشغيل التطبيق لتجنب أي ثغرات
+    // تفعيل الحماية
     await _enableSecureMode();
 
-    // تهيئة Firebase بناءً على الإعدادات التي تم إنشاؤها
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    // ✅ التعديل هنا:
+    // نتحقق أولاً إذا كان التطبيق مهيأً مسبقاً (لتجنب Duplicate App)
+    if (Firebase.apps.isEmpty) {
+      // نستدعي الدالة بدون "options".
+      // هذا سيجبر فلاتر على قراءة البيانات الحقيقية من ملف google-services.json
+      // بدلاً من قراءة البيانات الوهمية من ملف Dart.
+      await Firebase.initializeApp();
+    }
 
     // تسجيل أخطاء فلاتر في Crashlytics
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
     runApp(const EduVantageApp());
   }, (error, stack) {
-    // تسجيل الأخطاء الخارجة عن نطاق فلاتر
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
   });
 }
 
-/// دالة تمنع تصوير الشاشة أو تسجيل الفيديو (Android فقط) باستخدام الإصدار Plus
 Future<void> _enableSecureMode() async {
   try {
-    // تفعيل خاصية FLAG_SECURE لمنع لقطات الشاشة وتسجيل الشاشة
     await FlutterWindowManagerPlus.addFlags(FlutterWindowManagerPlus.FLAG_SECURE);
   } catch (e) {
     debugPrint("Security Mode Error: $e");
@@ -48,9 +48,9 @@ class EduVantageApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'EduVantage',
-      theme: AppTheme.darkTheme, // تطبيق الثيم الداكن المخصص
+      theme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
-      home: const SplashScreen(), // شاشة البداية (Splash)
+      home: const SplashScreen(),
     );
   }
 }
