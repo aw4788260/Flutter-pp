@@ -26,7 +26,9 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "com.example.edu_vantage_app"
-    compileSdk 34
+    
+    // يفضل إبقاء compileSdk عالياً لبناء المكتبات الحديثة بنجاح
+    compileSdk 34 
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -34,14 +36,23 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
-    kotlinOptions { jvmTarget = "1.8" }
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
 
-    sourceSets { main.java.srcDirs += "src/main/kotlin" }
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+    }
 
     defaultConfig {
         applicationId "com.example.edu_vantage_app"
+        
+        // ✅ التعديل المطلوب: الحد الأدنى هو أندرويد 8.0 (API 26)
         minSdk 24
-        targetSdk 34
+        
+        // يُنصح بإبقاء Target 34 لمتطلبات متجر جوجل، لكن التطبيق سيعمل على أندرويد 8
+        targetSdk 34 
+        
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
