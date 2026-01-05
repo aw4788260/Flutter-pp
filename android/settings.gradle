@@ -18,7 +18,6 @@ pluginManagement {
 
     plugins {
         id "dev.flutter.flutter-gradle-plugin" version "1.0.0" apply false
-        // استخدام أحدث إصدارات متوافقة
         id "com.android.application" version "8.7.3" apply false
         id "org.jetbrains.kotlin.android" version "2.1.0" apply false
     }
@@ -26,4 +25,15 @@ pluginManagement {
 
 include ':app'
 
-// ✅ تم حذف dependencyResolutionManagement بالكامل من هنا لتجنب المشاكل
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+        // ✅✅ هذا هو السطر الناقص الذي سيحل المشكلة
+        maven {
+            url "https://storage.googleapis.com/download.flutter.io"
+        }
+    }
+}
