@@ -1,4 +1,3 @@
-
 name: Build Android App
 
 on:
@@ -22,30 +21,49 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Install Dependencies
-        run: flutter pub get
+      # ✅ الخطوة السحرية: إصلاح ملفات البناء تلقائياً
+      # هذا الأمر يعيد بناء ملفات Gradle الناقصة ويربطها بـ Flutter بشكل صحيح
+      - name: Repair Flutter Project
+        run: |
+          flutter pub get
+          flutter create . --platforms=android --org=com.example
 
-      # 1. إنشاء ملف google-services.json
+      # 1. فك تشفير google-services.json
       - name: Create google-services.json
         run: |
           echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > android/app/google-services.json
 
-      # 2. إنشاء ملف key.properties
+      # 2. فك تشفير Keystore
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
+
+      # 3. إنشاء ملف key.properties
       - name: Create key.properties
         run: |
           echo "storePassword=${{ secrets.STORE_PASSWORD }}" > android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
-          # لاحظ المسار هنا: يشير إلى المجلد الأب (android/) حيث سنضع الملف
           echo "storeFile=../upload-keystore.jks" >> android/key.properties
 
-      # 3. فك تشفير Keystore (الخطوة الناقصة)
-      - name: Decode Keystore
+      # 4. استعادة كود منع التصوير (لأن flutter create قد يمسحه)
+      - name: Restore Secure Flag Code
         run: |
-          # يتم وضع الملف في مجلد android مباشرة
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
+          # نستخدم أمر بسيط لإعادة كتابة ملف MainActivity وتضمين كود الحماية
+          echo 'package com.example.edu_vantage_app
 
-      # 4. بناء التطبيق
+          import android.os.Bundle
+          import android.view.WindowManager
+          import io.flutter.embedding.android.FlutterActivity
+
+          class MainActivity: FlutterActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+              }
+          }' > android/app/src/main/kotlin/com/example/edu_vantage_app/MainActivity.kt
+
+      # 5. بناء التطبيق
       - name: Build APK
         run: flutter build apk --release
 
