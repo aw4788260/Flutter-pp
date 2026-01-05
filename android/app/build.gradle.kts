@@ -11,14 +11,12 @@ plugins {
 
 android {
     namespace = "com.example.edu_vantage_app"
-    // ✅ تحديث للإصدار 36 لحل تحذيرات path_provider و sqflite
-    compileSdk = 36 
+    compileSdk = 36 // ✅ تم الرفع لـ 36 لحل تحذيرات المكتبات الحديثة
 
     defaultConfig {
         applicationId = "com.example.edu_vantage_app"
         minSdk = 24
-        // ✅ تحديث للإصدار 36
-        targetSdk = 36 
+        targetSdk = 36 // ✅ تم الرفع لـ 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
@@ -26,7 +24,7 @@ android {
 
     signingConfigs {
         create("release") {
-            // القراءة من متغيرات البيئة التي نرسلها عبر GitHub Actions
+            // ✅ القراءة من متغيرات البيئة التي يرسلها GitHub Action
             keyAlias = System.getenv("KEY_ALIAS") ?: ""
             keyPassword = System.getenv("KEY_PASSWORD") ?: ""
             storePassword = System.getenv("KEY_STORE_PASSWORD") ?: ""
@@ -36,7 +34,6 @@ android {
 
     buildTypes {
         release {
-            // ✅ تفعيل التوقيع لنسخة الـ Release
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
