@@ -5,44 +5,35 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    // ✅ تأكد من إضافة إضافات Firebase هنا
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
 }
 
-val keystoreProperties = Properties()
-val keystorePropertiesFile = rootProject.file("key.properties")
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
-
 android {
     namespace = "com.example.edu_vantage_app"
-    // ✅ رفع الإصدار لـ 36 لحل تحذيرات path_provider و sqflite
-    compileSdk = 36 
+    compileSdk = 36 // ✅ تم التحديث للإصدار 36 المطلوب في السجلات
 
     defaultConfig {
         applicationId = "com.example.edu_vantage_app"
         minSdk = 24
-        targetSdk = 36 
+        targetSdk = 36 // ✅ تم التحديث للإصدار 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
     }
 
-    // ✅ إعداد التوقيع للنسخة النهائية
     signingConfigs {
         create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String?
-            keyPassword = keystoreProperties["keyPassword"] as String?
-            storeFile = keystoreProperties["storeFile"]?.let { file(it as String) }
-            storePassword = keystoreProperties["storePassword"] as String?
+            // ✅ القراءة المباشرة من متغيرات البيئة التي يرسلها الـ Workflow
+            keyAlias = System.getenv("KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            storePassword = System.getenv("KEY_STORE_PASSWORD") ?: ""
+            storeFile = file("upload-keystore.jks")
         }
     }
 
     buildTypes {
         release {
-            // ✅ ربط التوقيع بنسخة الـ Release
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
