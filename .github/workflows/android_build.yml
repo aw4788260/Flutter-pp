@@ -1,3 +1,4 @@
+
 name: Build Android App
 
 on:
@@ -24,7 +25,7 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # 1. إنشاء ملف google-services.json من السر المشفر
+      # 1. إنشاء ملف google-services.json
       - name: Create google-services.json
         run: |
           echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > android/app/google-services.json
@@ -35,11 +36,13 @@ jobs:
           echo "storePassword=${{ secrets.STORE_PASSWORD }}" > android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
-          echo "storeFile=../../upload-keystore.jks" >> android/key.properties
+          # لاحظ المسار هنا: يشير إلى المجلد الأب (android/) حيث سنضع الملف
+          echo "storeFile=../upload-keystore.jks" >> android/key.properties
 
-      # 3. فك تشفير Keystore
+      # 3. فك تشفير Keystore (الخطوة الناقصة)
       - name: Decode Keystore
         run: |
+          # يتم وضع الملف في مجلد android مباشرة
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
 
       # 4. بناء التطبيق
