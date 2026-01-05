@@ -1,19 +1,19 @@
 buildscript {
-    ext.kotlin_version = '1.9.22'
+    // ✅ تم التحديث ليتوافق مع الإعدادات الجديدة
+    ext.kotlin_version = '2.1.0'
     repositories {
         google()
         mavenCentral()
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.0'
+        // ✅ تم التحديث إلى 8.7.3
+        classpath 'com.android.tools.build:gradle:8.7.3'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath 'com.google.gms:google-services:4.4.1'
         classpath 'com.google.firebase:firebase-crashlytics-gradle:2.9.9'
     }
 }
-
-// ✅ تم حذف قسم allprojects من هنا لحل التضارب مع settings.gradle
 
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
