@@ -18,24 +18,12 @@ pluginManagement {
 
     plugins {
         id "dev.flutter.flutter-gradle-plugin" version "1.0.0" apply false
-        // ✅ تحديث AGP إلى 8.7.3 (أحدث نسخة مستقرة)
+        // استخدام أحدث إصدارات متوافقة
         id "com.android.application" version "8.7.3" apply false
-        // ✅ تحديث Kotlin إلى 2.1.0 (كما طلب التحذير)
         id "org.jetbrains.kotlin.android" version "2.1.0" apply false
     }
 }
 
 include ':app'
 
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-    repositories {
-        google()
-        mavenCentral()
-        maven { url 'https://jitpack.io' }
-        // ✅ هذا المستودع ضروري جداً لكي يجد التطبيق ملفات Flutter Engine
-        maven {
-            url "https://storage.googleapis.com/download.flutter.io"
-        }
-    }
-}
+// ✅ تم حذف dependencyResolutionManagement بالكامل من هنا لتجنب المشاكل
