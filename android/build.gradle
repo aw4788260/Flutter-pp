@@ -1,22 +1,18 @@
-buildscript {
-    // تم إزالة تعريفات AGP و Kotlin من هنا لأنها معرفة الآن في settings.gradle
-    // هذا يمنع خطأ "Double Declaration"
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        // نُبقي فقط على خدمات جوجل و Crashlytics لأنها غير معرفة كـ Plugins أساسية في الإعدادات
-        classpath "com.google.gms:google-services:4.4.1"
-        classpath "com.google.firebase:firebase-crashlytics-gradle:2.9.9"
-    }
-}
+// ملف android/build.gradle (المستوى الرئيسي)
 
 allprojects {
     repositories {
         google()
         mavenCentral()
     }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
 }
 
 tasks.register("clean", Delete) {
