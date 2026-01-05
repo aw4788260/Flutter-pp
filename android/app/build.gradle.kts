@@ -1,6 +1,3 @@
-import java.util.Properties
-import java.io.FileInputStream
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -11,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.example.edu_vantage_app"
-    compileSdk = 36 
+    compileSdk = 36 // ✅ محدث لـ 36
 
     defaultConfig {
         applicationId = "com.example.edu_vantage_app"
         minSdk = 24
-        targetSdk = 36 
+        targetSdk = 36 // ✅ محدث لـ 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
@@ -24,20 +21,17 @@ android {
 
     signingConfigs {
         create("release") {
-            // ✅ استخدام .trim() لحذف أي مسافات خفية ناتجة عن النسخ واللصق في GitHub
-            keyAlias = System.getenv("KEY_ALIAS")?.trim() ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD")?.trim() ?: ""
-            storePassword = System.getenv("STORE_PASSWORD")?.trim() ?: "" 
-            
+            // ✅ القراءة المباشرة من متغيرات البيئة لضمان سلامة الرموز مثل #
+            keyAlias = System.getenv("KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            storePassword = System.getenv("STORE_PASSWORD") ?: ""
             storeFile = file("upload-keystore.jks")
         }
     }
 
     buildTypes {
         release {
-            // ربط إعدادات التوقيع
             signingConfig = signingConfigs.getByName("release")
-            
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
