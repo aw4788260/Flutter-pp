@@ -21,35 +21,180 @@ jobs:
         with:
           channel: 'stable'
 
-      # ✅ الخطوة السحرية: إصلاح ملفات البناء تلقائياً
-      # هذا الأمر يعيد بناء ملفات Gradle الناقصة ويربطها بـ Flutter بشكل صحيح
+      # ✅ 1. الإصلاح الشامل: إعادة بناء المشروع
       - name: Repair Flutter Project
         run: |
           flutter pub get
           flutter create . --platforms=android --org=com.example
 
-      # 1. فك تشفير google-services.json
-      - name: Create google-services.json
+      # ✅ 2. حذف ملفات Kotlin DSL الجديدة (لأننا سنستخدم Groovy الأسهل)
+      - name: Remove KTS files
+        run: |
+          rm -f android/build.gradle.kts
+          rm -f android/settings.gradle.kts
+          rm -f android/app/build.gradle.kts
+
+      # ✅ 3. إنشاء ملف settings.gradle الصحيح (مع المستودعات)
+      - name: Create settings.gradle
+        run: |
+          echo 'pluginManagement {
+              def flutterSdkPath = {
+                  def properties = new Properties()
+                  file("local.properties").withInputStream { properties.load(it) }
+                  def flutterSdkPath = properties.getProperty("flutter.sdk")
+                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+                  return flutterSdkPath
+              }
+              settings.ext.flutterSdkPath = flutterSdkPath()
+
+              includeBuild("${settings.ext.flutterSdkPath}/packages/flutter_tools/gradle")
+
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+
+              plugins {
+                  id "dev.flutter.flutter-gradle-plugin" version "1.0.0" apply false
+                  id "com.android.application" version "8.7.3" apply false
+                  id "org.jetbrains.kotlin.android" version "2.1.0" apply false
+              }
+          }
+
+          include ":app"
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+              repositories {
+                  google()
+                  mavenCentral()
+                  maven { url "https://jitpack.io" }
+                  maven { url "https://storage.googleapis.com/download.flutter.io" }
+              }
+          }' > android/settings.gradle
+
+      # ✅ 4. إنشاء ملف build.gradle للمشروع
+      - name: Create project build.gradle
+        run: |
+          echo 'buildscript {
+              ext.kotlin_version = "2.1.0"
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath "com.android.tools.build:gradle:8.7.3"
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+                  classpath "com.google.gms:google-services:4.4.1"
+                  classpath "com.google.firebase:firebase-crashlytics-gradle:2.9.9"
+              }
+          }
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }' > android/build.gradle
+
+      # ✅ 5. إنشاء ملف app/build.gradle (مع التوقيع وFirebase)
+      - name: Create app build.gradle
+        run: |
+          echo 'plugins {
+              id "com.android.application"
+              id "org.jetbrains.kotlin.android"
+              id "dev.flutter.flutter-gradle-plugin"
+              id "com.google.gms.google-services"
+              id "com.google.firebase.crashlytics"
+          }
+
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file("local.properties")
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader("UTF-8") { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterVersionCode = localProperties.getProperty("flutter.versionCode")
+          if (flutterVersionCode == null) {
+              flutterVersionCode = "1"
+          }
+
+          def flutterVersionName = localProperties.getProperty("flutter.versionName")
+          if (flutterVersionName == null) {
+              flutterVersionName = "1.0"
+          }
+
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file("key.properties")
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
+
+          android {
+              namespace "com.example.edu_vantage_app"
+              compileSdk 34
+              ndkVersion flutter.ndkVersion
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = "1.8"
+              }
+
+              sourceSets {
+                  main.java.srcDirs += "src/main/kotlin"
+              }
+
+              defaultConfig {
+                  applicationId "com.example.edu_vantage_app"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode flutterVersionCode.toInteger()
+                  versionName flutterVersionName
+              }
+
+              signingConfigs {
+                  release {
+                      keyAlias = keystoreProperties["keyAlias"]
+                      keyPassword = keystoreProperties["keyPassword"]
+                      storeFile = keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null
+                      storePassword = keystoreProperties["storePassword"]
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled true
+                      shrinkResources true 
+                      proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+                  }
+              }
+          }
+
+          dependencies {
+              implementation platform("com.google.firebase:firebase-bom:32.7.0")
+              implementation "com.google.firebase:firebase-crashlytics"
+              implementation "com.google.firebase:firebase-analytics"
+          }' > android/app/build.gradle
+
+      # ✅ 6. فك تشفير الملفات الحساسة
+      - name: Create Secrets Files
         run: |
           echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > android/app/google-services.json
-
-      # 2. فك تشفير Keystore
-      - name: Decode Keystore
-        run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
-
-      # 3. إنشاء ملف key.properties
-      - name: Create key.properties
-        run: |
+          
           echo "storePassword=${{ secrets.STORE_PASSWORD }}" > android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storeFile=../upload-keystore.jks" >> android/key.properties
 
-      # 4. استعادة كود منع التصوير (لأن flutter create قد يمسحه)
+      # ✅ 7. استعادة كود منع التصوير (لضمان وجوده بعد إعادة البناء)
       - name: Restore Secure Flag Code
         run: |
-          # نستخدم أمر بسيط لإعادة كتابة ملف MainActivity وتضمين كود الحماية
+          mkdir -p android/app/src/main/kotlin/com/example/edu_vantage_app
           echo 'package com.example.edu_vantage_app
 
           import android.os.Bundle
@@ -63,7 +208,7 @@ jobs:
               }
           }' > android/app/src/main/kotlin/com/example/edu_vantage_app/MainActivity.kt
 
-      # 5. بناء التطبيق
+      # ✅ 8. البناء النهائي
       - name: Build APK
         run: flutter build apk --release
 
