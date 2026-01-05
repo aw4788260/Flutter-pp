@@ -1,41 +1,42 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // للقنوات
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart'; // ✅ استخدام النسخة الحديثة لحل مشكلة البناء
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
 
 void main() async {
+  // استخدام runZonedGuarded لالتقاط كافة الأخطاء وإرسالها لـ Crashlytics
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // ✅ 1. تفعيل حماية تصوير الشاشة فوراً عند البدء
+    // ✅ تفعيل حماية تصوير الشاشة فوراً عند تشغيل التطبيق لتجنب أي ثغرات
     await _enableSecureMode();
 
+    // تهيئة Firebase بناءً على الإعدادات التي تم إنشاؤها
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
+    // تسجيل أخطاء فلاتر في Crashlytics
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
     runApp(const EduVantageApp());
   }, (error, stack) {
+    // تسجيل الأخطاء الخارجة عن نطاق فلاتر
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
   });
 }
 
-// دالة تمنع تصوير الشاشة (Android)
+/// دالة تمنع تصوير الشاشة أو تسجيل الفيديو (Android فقط) باستخدام الإصدار Plus
 Future<void> _enableSecureMode() async {
   try {
-    // نستخدم القناة المباشرة للأندرويد لفرض FLAG_SECURE
-    // تأكد من إضافة مكتبة flutter_windowmanager في pubspec.yaml:
-    // flutter_windowmanager: ^0.2.0
-    const platform = MethodChannel('flutter_windowmanager');
-    await platform.invokeMethod('addFlags', {'flags': 8192}); // 8192 = FLAG_SECURE
+    // تفعيل خاصية FLAG_SECURE لمنع لقطات الشاشة وتسجيل الشاشة
+    await FlutterWindowManagerPlus.addFlags(FlutterWindowManagerPlus.FLAG_SECURE);
   } catch (e) {
-    print("Security Mode Error: $e");
+    debugPrint("Security Mode Error: $e");
   }
 }
 
@@ -47,9 +48,9 @@ class EduVantageApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'EduVantage',
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.darkTheme, // تطبيق الثيم الداكن المخصص
       themeMode: ThemeMode.dark,
-      home: const SplashScreen(),
+      home: const SplashScreen(), // شاشة البداية (Splash)
     );
   }
 }
