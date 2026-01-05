@@ -21,137 +21,26 @@ jobs:
         with:
           channel: 'stable'
 
-      # 1. تنظيف وإنشاء مشروع أندرويد جديد وتلقائي
-      - name: Reset Android Project
-        run: |
-          rm -rf android
-          flutter create . --platforms=android --org=com.example
+      - name: Install Dependencies
+        run: flutter pub get
 
-      # 2. إنشاء ملفات الأسرار (التوقيع وخدمات جوجل)
+      # ✅ هذه هي الخطوة الوحيدة المطلوبة الآن: إنشاء ملفات الأسرار
+      # لأن الملفات الأساسية (build.gradle) موجودة وسليمة في المستودع
       - name: Create Secrets Files
         run: |
+          # 1. إنشاء ملف خدمات جوجل
           echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > android/app/google-services.json
+          
+          # 2. إنشاء ملف المفتاح (Keystore)
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
           
+          # 3. إنشاء ملف خصائص المفتاح (Key Properties)
           echo "storePassword=${{ secrets.STORE_PASSWORD }}" > android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storeFile=../upload-keystore.jks" >> android/key.properties
 
-      # 3. استبدال ملف بناء التطبيق بملف "كلاسيكي" مضمون
-      # نقوم بحذف النسخة الحديثة (KTS) ونضع نسخة Groovy تدعم التوقيع
-      - name: Inject Signing Config
-        run: |
-          rm -f android/app/build.gradle
-          rm -f android/app/build.gradle.kts
-          
-          echo 'def localProperties = new Properties()
-          def localPropertiesFile = rootProject.file("local.properties")
-          if (localPropertiesFile.exists()) {
-              localPropertiesFile.withReader("UTF-8") { reader ->
-                  localProperties.load(reader)
-              }
-          }
-
-          def flutterRoot = localProperties.getProperty("flutter.sdk")
-          if (flutterRoot == null) {
-              throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
-          }
-
-          def flutterVersionCode = localProperties.getProperty("flutter.versionCode")
-          if (flutterVersionCode == null) {
-              flutterVersionCode = "1"
-          }
-
-          def flutterVersionName = localProperties.getProperty("flutter.versionName")
-          if (flutterVersionName == null) {
-              flutterVersionName = "1.0"
-          }
-
-          def keystoreProperties = new Properties()
-          def keystorePropertiesFile = rootProject.file("key.properties")
-          if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-          }
-
-          apply plugin: "com.android.application"
-          apply plugin: "kotlin-android"
-          // هذه هي الطريقة الكلاسيكية المضمونة لربط فلاتر
-          apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
-          apply plugin: "com.google.gms.google-services"
-          apply plugin: "com.google.firebase.crashlytics"
-
-          android {
-              namespace "com.example.edu_vantage_app"
-              compileSdkVersion 34
-              ndkVersion flutter.ndkVersion
-
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_1_8
-                  targetCompatibility JavaVersion.VERSION_1_8
-              }
-
-              kotlinOptions {
-                  jvmTarget = "1.8"
-              }
-
-              sourceSets {
-                  main.java.srcDirs += "src/main/kotlin"
-              }
-
-              defaultConfig {
-                  applicationId "com.example.edu_vantage_app"
-                  minSdkVersion 24
-                  targetSdkVersion 34
-                  versionCode flutterVersionCode.toInteger()
-                  versionName flutterVersionName
-                  multiDexEnabled true
-              }
-
-              signingConfigs {
-                  release {
-                      keyAlias = keystoreProperties["keyAlias"]
-                      keyPassword = keystoreProperties["keyPassword"]
-                      storeFile = keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null
-                      storePassword = keystoreProperties["storePassword"]
-                  }
-              }
-
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                      minifyEnabled true
-                      shrinkResources true
-                      proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
-                  }
-              }
-          }
-
-          dependencies {
-              implementation platform("com.google.firebase:firebase-bom:32.7.0")
-              implementation "com.google.firebase:firebase-crashlytics"
-              implementation "com.google.firebase:firebase-analytics"
-              implementation "androidx.multidex:multidex:2.0.1"
-          }' > android/app/build.gradle
-
-      # 4. استعادة كود MainActivity (لأن الإنشاء الجديد قد يحذفه)
-      - name: Restore MainActivity
-        run: |
-          mkdir -p android/app/src/main/kotlin/com/example/edu_vantage_app
-          echo 'package com.example.edu_vantage_app
-
-          import android.os.Bundle
-          import android.view.WindowManager
-          import io.flutter.embedding.android.FlutterActivity
-
-          class MainActivity: FlutterActivity() {
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
-              }
-          }' > android/app/src/main/kotlin/com/example/edu_vantage_app/MainActivity.kt
-
-      # 5. البناء النهائي
+      # ✅ أمر البناء المباشر
       - name: Build APK
         run: flutter build apk --release
 
