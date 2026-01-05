@@ -21,20 +21,29 @@ jobs:
         with:
           channel: 'stable'
 
-      # ✅ 1. الإصلاح الشامل: إعادة بناء المشروع
+      # 1. إصلاح هيكل المشروع
       - name: Repair Flutter Project
         run: |
           flutter pub get
           flutter create . --platforms=android --org=com.example
 
-      # ✅ 2. حذف ملفات Kotlin DSL الجديدة (لأننا سنستخدم Groovy الأسهل)
+      # 2. حذف ملفات Kotlin DSL الجديدة (لأننا سنستخدم Groovy)
       - name: Remove KTS files
         run: |
           rm -f android/build.gradle.kts
           rm -f android/settings.gradle.kts
           rm -f android/app/build.gradle.kts
 
-      # ✅ 3. إنشاء ملف settings.gradle الصحيح (مع المستودعات)
+      # 3. تحديث Gradle Wrapper لأحدث نسخة مستقرة (8.11.1)
+      - name: Force Update Gradle Wrapper
+        run: |
+          echo 'distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-all.zip' > android/gradle/wrapper/gradle-wrapper.properties
+
+      # 4. ✅ إنشاء settings.gradle (بدون قيود على المستودعات)
       - name: Create settings.gradle
         run: |
           echo 'pluginManagement {
@@ -61,20 +70,11 @@ jobs:
                   id "org.jetbrains.kotlin.android" version "2.1.0" apply false
               }
           }
-
           include ":app"
+          // تم حذف dependencyResolutionManagement للسماح للمشروع بإدارة المستودعات بحرية
+          ' > android/settings.gradle
 
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-              repositories {
-                  google()
-                  mavenCentral()
-                  maven { url "https://jitpack.io" }
-                  maven { url "https://storage.googleapis.com/download.flutter.io" }
-              }
-          }' > android/settings.gradle
-
-      # ✅ 4. إنشاء ملف build.gradle للمشروع
+      # 5. ✅ إنشاء build.gradle (يحتوي على كل المستودعات اللازمة)
       - name: Create project build.gradle
         run: |
           echo 'buildscript {
@@ -90,11 +90,22 @@ jobs:
                   classpath "com.google.firebase:firebase-crashlytics-gradle:2.9.9"
               }
           }
+          
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+                  maven { url "https://jitpack.io" }
+                  // ✅ المستودع الأساسي لمكتبات فلاتر
+                  maven { url "https://storage.googleapis.com/download.flutter.io" }
+              }
+          }
+
           tasks.register("clean", Delete) {
               delete rootProject.buildDir
           }' > android/build.gradle
 
-      # ✅ 5. إنشاء ملف app/build.gradle (مع التوقيع وFirebase)
+      # 6. إنشاء app/build.gradle (الإعدادات والتوقيع)
       - name: Create app build.gradle
         run: |
           echo 'plugins {
@@ -153,6 +164,7 @@ jobs:
                   targetSdk 34
                   versionCode flutterVersionCode.toInteger()
                   versionName flutterVersionName
+                  multiDexEnabled true
               }
 
               signingConfigs {
@@ -178,9 +190,10 @@ jobs:
               implementation platform("com.google.firebase:firebase-bom:32.7.0")
               implementation "com.google.firebase:firebase-crashlytics"
               implementation "com.google.firebase:firebase-analytics"
+              implementation "androidx.multidex:multidex:2.0.1"
           }' > android/app/build.gradle
 
-      # ✅ 6. فك تشفير الملفات الحساسة
+      # 7. فك تشفير الملفات السرية
       - name: Create Secrets Files
         run: |
           echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > android/app/google-services.json
@@ -191,8 +204,8 @@ jobs:
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storeFile=../upload-keystore.jks" >> android/key.properties
 
-      # ✅ 7. استعادة كود منع التصوير (لضمان وجوده بعد إعادة البناء)
-      - name: Restore Secure Flag Code
+      # 8. استعادة كود MainActivity (مع التأكد من المسار)
+      - name: Restore MainActivity
         run: |
           mkdir -p android/app/src/main/kotlin/com/example/edu_vantage_app
           echo 'package com.example.edu_vantage_app
@@ -208,7 +221,7 @@ jobs:
               }
           }' > android/app/src/main/kotlin/com/example/edu_vantage_app/MainActivity.kt
 
-      # ✅ 8. البناء النهائي
+      # 9. البناء النهائي
       - name: Build APK
         run: flutter build apk --release
 
