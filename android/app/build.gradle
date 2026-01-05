@@ -1,6 +1,7 @@
 plugins {
     id "com.android.application"
-    id "kotlin-android"
+    // ✅ التصحيح هنا: استخدام الاسم الكامل بدلاً من kotlin-android
+    id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
     id "com.google.gms.google-services"
     id "com.google.firebase.crashlytics"
@@ -26,9 +27,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "com.example.edu_vantage_app"
-    
-    // يفضل إبقاء compileSdk عالياً لبناء المكتبات الحديثة بنجاح
-    compileSdk 34 
+    compileSdk 34
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -46,13 +45,8 @@ android {
 
     defaultConfig {
         applicationId "com.example.edu_vantage_app"
-        
-        // ✅ التعديل المطلوب: الحد الأدنى هو أندرويد 8.0 (API 26)
         minSdk 24
-        
-        // يُنصح بإبقاء Target 34 لمتطلبات متجر جوجل، لكن التطبيق سيعمل على أندرويد 8
-        targetSdk 34 
-        
+        targetSdk 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
