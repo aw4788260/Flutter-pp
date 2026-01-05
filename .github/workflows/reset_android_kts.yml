@@ -1,0 +1,48 @@
+name: Reset Android to Kotlin DSL (.kts)
+
+on:
+  workflow_dispatch: # تشغيل يدوي من صفحة Actions
+
+jobs:
+  reset-to-kts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # للسماح للـ Action بتعديل المستودع
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable' # سيعتمد نوع الملفات على إصدار فلاتر المستقر (عادة 3.22+ يستخدم .kts)
+
+      # 1. حذف المجلد القديم بالكامل
+      - name: Delete current Android folder
+        run: rm -rf android/
+
+      # 2. إعادة إنشاء المجلد مع إجبار استخدام Kotlin DSL إذا كان متاحاً
+      # ملاحظة: إصدارات فلاتر الحديثة تنشئ .kts تلقائياً عند تشغيل هذا الأمر
+      - name: Regenerate Android folder
+        run: flutter create --platforms android .
+
+      # 3. دفع التغييرات للمستودع
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add android/
+          
+          # التحقق من وجود ملفات .kts للتأكد
+          echo "Files generated:"
+          ls -R android/ | grep .kts || echo "Warning: .kts files not found, check Flutter version"
+
+          if git diff-index --quiet HEAD --; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: migrate android folder to Kotlin DSL (.kts)"
+            git push
+          fi
