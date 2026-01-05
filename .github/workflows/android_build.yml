@@ -32,16 +32,16 @@ jobs:
           DATA: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           KEYSTORE_DATA: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          # فك تشفير الملفات مع تنظيف شامل للفراغات لضمان سلامة الملف الثنائي
+          # فك تشفير الملفات مع تنظيف شامل للفراغات
           echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
           echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
 
       - name: Build APK
         env:
-          # ✅ تم توحيد الأسماء لتطابق "صورة الأسرار" التي أرسلتها حرفياً
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          # ✅ استخدام الاقتباسات لضمان عدم هروب الرموز الخاصة مثل #
+          STORE_PASSWORD: "${{ secrets.STORE_PASSWORD }}"
+          KEY_PASSWORD: "${{ secrets.KEY_PASSWORD }}"
+          KEY_ALIAS: "${{ secrets.KEY_ALIAS }}"
         run: flutter build apk --release
 
       - name: Upload APK
