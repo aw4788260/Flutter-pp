@@ -18,10 +18,9 @@ pluginManagement {
 
     plugins {
         id "dev.flutter.flutter-gradle-plugin" version "1.0.0" apply false
-        // ✅ تم التحديث إلى 8.7.3 (إصدار مستقر جداً)
-        id "com.android.application" version "8.7.3" apply false
-        // ✅ تم التحديث إلى 2.1.0 (كما طلب التحذير)
-        id "org.jetbrains.kotlin.android" version "2.1.0" apply false
+        // استخدام أحدث إصدارات متوافقة
+        id "com.android.application" version "8.2.0" apply false
+        id "org.jetbrains.kotlin.android" version "1.9.22" apply false
     }
 }
 
@@ -33,6 +32,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url 'https://jitpack.io' }
+        // ✅ إضافة مستودع فلاتر الرسمي عبر جوجل (الحل الجذري)
         maven {
             url "https://storage.googleapis.com/download.flutter.io"
         }
