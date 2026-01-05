@@ -1,10 +1,10 @@
-name: Generate Clean Groovy Android Project
+name: Generate Groovy Project (Gradle 8.14)
 
 on:
-  workflow_dispatch: # تشغيل يدوي لمرة واحدة
+  workflow_dispatch:
 
 permissions:
-  contents: write # للسماح بتعديل ملفات المستودع
+  contents: write
 
 jobs:
   generate-groovy:
@@ -20,27 +20,35 @@ jobs:
         with:
           channel: 'stable'
 
-      # 1. تنظيف القديم تماماً
+      # 1. تنظيف القديم
       - name: Delete existing Android folder
         run: rm -rf android
 
-      # 2. إنشاء الهيكل الأساسي (سينشئ ملفات .kts إجبارياً)
+      # 2. إنشاء المشروع (ينشئ Kotlin DSL افتراضياً)
       - name: Generate Base Project
         run: |
           flutter pub get
           flutter create . --platforms=android --org=com.example
 
-      # 3. عملية التحويل السحرية (حذف kts وإنشاء gradle)
-      - name: Convert to Groovy (.gradle)
+      # 3. حذف ملفات Kotlin DSL
+      - name: Remove Kotlin Build Files
         run: |
-          # حذف ملفات Kotlin DSL
           rm -f android/build.gradle.kts
           rm -f android/settings.gradle.kts
           rm -f android/app/build.gradle.kts
 
-          # ---------------------------------------------------------
-          # إنشاء settings.gradle (مع المستودعات الصحيحة)
-          # ---------------------------------------------------------
+      # 4. ✅ إجبار استخدام Gradle 8.14 (حسب طلبك)
+      - name: Set Gradle Wrapper to 8.14
+        run: |
+          echo 'distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14-all.zip' > android/gradle/wrapper/gradle-wrapper.properties
+
+      # 5. إنشاء settings.gradle (Groovy)
+      - name: Generate settings.gradle
+        run: |
           echo 'pluginManagement {
               def flutterSdkPath = {
                   def properties = new Properties()
@@ -66,11 +74,20 @@ jobs:
               }
           }
 
-          include ":app"' > android/settings.gradle
+          include ":app"
 
-          # ---------------------------------------------------------
-          # إنشاء build.gradle الرئيسي (مع allprojects لحل مشاكل المكتبات)
-          # ---------------------------------------------------------
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+              repositories {
+                  google()
+                  mavenCentral()
+                  maven { url "https://storage.googleapis.com/download.flutter.io" }
+              }
+          }' > android/settings.gradle
+
+      # 6. إنشاء build.gradle للمشروع (Groovy)
+      - name: Generate project build.gradle
+        run: |
           echo 'buildscript {
               ext.kotlin_version = "1.9.24"
               repositories {
@@ -85,22 +102,13 @@ jobs:
               }
           }
 
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-                  maven { url "https://jitpack.io" }
-                  maven { url "https://storage.googleapis.com/download.flutter.io" }
-              }
-          }
-
           tasks.register("clean", Delete) {
               delete rootProject.buildDir
           }' > android/build.gradle
 
-          # ---------------------------------------------------------
-          # إنشاء app/build.gradle (مع التوقيع و Firebase)
-          # ---------------------------------------------------------
+      # 7. إنشاء app/build.gradle (Groovy + توقيع)
+      - name: Generate app build.gradle
+        run: |
           echo 'plugins {
               id "com.android.application"
               id "kotlin-android"
@@ -176,8 +184,8 @@ jobs:
               implementation "androidx.multidex:multidex:2.0.1"
           }' > android/app/build.gradle
 
-      # 4. استعادة كود الحماية (MainActivity)
-      - name: Restore MainActivity (Secure Flag)
+      # 8. استعادة MainActivity (حماية)
+      - name: Restore MainActivity
         run: |
           mkdir -p android/app/src/main/kotlin/com/example/edu_vantage_app
           echo 'package com.example.edu_vantage_app
@@ -193,11 +201,11 @@ jobs:
               }
           }' > android/app/src/main/kotlin/com/example/edu_vantage_app/MainActivity.kt
 
-      # 5. رفع التغييرات الجذرية للمستودع
-      - name: Commit and Push
+      # 9. رفع التغييرات
+      - name: Commit & Push Changes
         run: |
           git config --global user.name "GitHub Action Bot"
           git config --global user.email "actions@github.com"
           git add android/
-          git commit -m "🔥 Fix: Full Android Project Regeneration (Groovy Format)"
+          git commit -m "🔥 Fix: Force Gradle 8.14 and convert to Groovy"
           git push
