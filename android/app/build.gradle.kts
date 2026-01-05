@@ -5,12 +5,12 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    // ✅ تطبيق الإضافات
+    // ✅ تطبيق الإضافات (ترتيب هام)
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
 }
 
-// ✅ منطق جلب بيانات التوقيع ونسخة التطبيق (صيغة .kts)
+// ✅ منطق جلب بيانات التوقيع من ملف key.properties
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
@@ -18,7 +18,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.example.edu_vantage_app" // تأكد من مطابقة الـ namespace
+    namespace = "com.example.edu_vantage_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -33,14 +33,14 @@ android {
 
     defaultConfig {
         applicationId = "com.example.edu_vantage_app"
-        minSdk = flutter.minSdkVersion
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        multiDexEnabled = true
+        multiDexEnabled = true // ✅ مهم لـ Firebase
     }
 
-    // ✅ إعادة إعدادات التوقيع (Signing Config)
+    // ✅ إعدادات التوقيع (Signing Config) بالصيغة الجديدة
     signingConfigs {
         create("release") {
             keyAlias = keystoreProperties["keyAlias"] as String?
