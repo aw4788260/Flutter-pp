@@ -1,5 +1,7 @@
 allprojects {
     repositories {
+        // ✅ التغيير هنا أيضاً: تغيير الترتيب
+        gradlePluginPortal()
         google()
         mavenCentral()
     }
