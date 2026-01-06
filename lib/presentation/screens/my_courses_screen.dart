@@ -13,23 +13,18 @@ class MyCoursesScreen extends StatefulWidget {
 }
 
 class _MyCoursesScreenState extends State<MyCoursesScreen> {
-  // View State: 'library' or 'market'
   String _view = 'library'; 
   String _searchTerm = '';
 
   @override
   Widget build(BuildContext context) {
-    // Market View Logic
     if (_view == 'market') {
       return _buildMarketView();
     }
-    // Library View Logic
     return _buildLibraryView();
   }
 
-  // --- 1. Library View (Default) ---
   Widget _buildLibraryView() {
-    // Filter enrolled courses (Simulated: taking first 2 courses as "my courses")
     final myCourses = mockCourses.take(2).toList();
 
     return Scaffold(
@@ -37,7 +32,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
@@ -62,7 +56,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             "LIBRARY",
                             style: TextStyle(
                               color: AppColors.textPrimary,
-                              fontSize: 24, // text-2xl
+                              fontSize: 24,
                               fontWeight: FontWeight.bold,
                               letterSpacing: -0.5,
                               height: 1.0,
@@ -75,14 +69,13 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               color: AppColors.textSecondary,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              letterSpacing: 2.0, // tracking-widest
+                              letterSpacing: 2.0,
                             ),
                           ),
                         ],
                       ),
                     ],
                   ),
-                  // Toggle Button -> Go to Market
                   GestureDetector(
                     onTap: () => setState(() => _view = 'market'),
                     child: Container(
@@ -99,8 +92,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                 ],
               ),
             ),
-
-            // Content
             Expanded(
               child: myCourses.isEmpty
                   ? Center(
@@ -135,25 +126,23 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
                               color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(24), // rounded-m3-xl
+                              borderRadius: BorderRadius.circular(24),
                               border: Border.all(color: Colors.white.withOpacity(0.05)),
                               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
                             ),
                             child: Row(
                               children: [
-                                // Icon
                                 Container(
                                   width: 48, height: 48,
                                   decoration: BoxDecoration(
                                     color: AppColors.backgroundPrimary,
                                     borderRadius: BorderRadius.circular(12),
-                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, inset: true)], // shadow-inner approx
+                                    // ✅ Fixed: Removed inset: true
+                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                   ),
                                   child: const Icon(LucideIcons.playCircle, color: AppColors.accentOrange, size: 24),
                                 ),
                                 const SizedBox(width: 16),
-                                
-                                // Text
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,8 +171,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                     ],
                                   ),
                                 ),
-                                
-                                // Chevron
                                 Icon(LucideIcons.chevronRight, color: AppColors.textSecondary.withOpacity(0.6), size: 20),
                               ],
                             ),
@@ -198,9 +185,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 2. Market View ---
   Widget _buildMarketView() {
-    // Filter available courses
     final availableCourses = mockCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
       course.id.toLowerCase().contains(_searchTerm.toLowerCase())
@@ -211,7 +196,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
@@ -242,8 +226,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                 ],
               ),
             ),
-
-            // Search Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Container(
@@ -273,8 +255,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
-            // Grid Content
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -282,7 +262,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                   crossAxisCount: 2,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: 1.0, // Square aspect ratio
+                  childAspectRatio: 1.0,
                 ),
                 itemCount: availableCourses.length,
                 itemBuilder: (context, index) {
@@ -303,14 +283,13 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSecondary,
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.white.withOpacity(0.2)), // hover effect simulated
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
                         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4)],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Icons Row
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -318,8 +297,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               Icon(LucideIcons.shoppingCart, size: 14, color: AppColors.textSecondary.withOpacity(0.4)),
                             ],
                           ),
-                          
-                          // Title
                           Text(
                             course.title.toUpperCase(),
                             maxLines: 3,
@@ -332,8 +309,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               letterSpacing: -0.5,
                             ),
                           ),
-
-                          // Footer: Teacher & Price
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
