@@ -1,17 +1,6 @@
 import 'models/course_model.dart';
-import 'models/chapter_model.dart';
 
-// --- Models Definition (Simplified version of types.ts) ---
-
-class User {
-  final String id;
-  final String name;
-  final String username;
-  final List<String> enrolledCourses;
-
-  User({required this.id, required this.name, required this.username, required this.enrolledCourses});
-}
-
+// --- Teachers ---
 class Teacher {
   final String id;
   final String name;
@@ -21,42 +10,6 @@ class Teacher {
 
   Teacher({required this.id, required this.name, required this.specialty, required this.avatar, required this.bio});
 }
-
-class ExamModel {
-  final String id;
-  final String title;
-  final int durationMinutes;
-  final List<Question> questions;
-
-  ExamModel({required this.id, required this.title, required this.durationMinutes, required this.questions});
-}
-
-class Question {
-  final String id;
-  final String text;
-  final List<String> options;
-  final int correctIndex;
-  final String? imageUrl;
-
-  Question({required this.id, required this.text, required this.options, required this.correctIndex, this.imageUrl});
-}
-
-// --- MOCK DATA ---
-
-final ExamModel mockExam = ExamModel(
-  id: 'e1',
-  title: 'Material 3 Foundations Exam',
-  durationMinutes: 15,
-  questions: [
-    Question(
-      id: 'q1',
-      text: 'What is the primary feature of Material You?',
-      options: ['Strict color palettes', 'Dynamic color extraction', 'No shadows', '3D elements'],
-      correctIndex: 1,
-      imageUrl: 'https://picsum.photos/seed/m3_1/600/300',
-    )
-  ],
-);
 
 final List<Teacher> mockTeachers = [
   Teacher(
@@ -75,8 +28,23 @@ final List<Teacher> mockTeachers = [
   ),
 ];
 
-// Note: CourseModel needs to be updated in the next step to match this structure completely,
-// but for now we map the data to match what Home Screen expects.
+// --- Exams ---
+final ExamModel mockExam = ExamModel(
+  id: 'e1',
+  title: 'Material 3 Foundations Exam',
+  durationMinutes: 15,
+  questions: [
+    Question(
+      id: 'q1',
+      text: 'What is the primary feature of Material You?',
+      options: ['Strict color palettes', 'Dynamic color extraction', 'No shadows', '3D elements'],
+      correctIndex: 1,
+      imageUrl: 'https://picsum.photos/seed/m3_1/600/300',
+    )
+  ],
+);
+
+// --- Courses ---
 final List<CourseModel> mockCourses = [
   CourseModel(
     id: 'c1',
@@ -87,9 +55,37 @@ final List<CourseModel> mockCourses = [
     description: 'Master the latest design language by Google. Learn dynamic coloring and adaptive layouts.',
     fullPrice: 500,
     category: 'Design',
-    // We will add subjects/chapters properly when updating CourseModel file
-    imagePath: "assets/images/course1.png", // Placeholder
-    subject: "Design", price: "500", instructor: "Dr. Alex Rivera" // Backward compatibility
+    exams: [mockExam],
+    subjects: [
+      Subject(
+        id: 's1',
+        title: 'Design Foundations',
+        price: 200,
+        chapters: [
+          Chapter(
+            id: 'ch1',
+            title: 'Dynamic Coloring',
+            lessons: [
+              Lesson(id: 'l1', title: 'Extraction Logic', type: LessonType.video, duration: '12:45', url: 'https://www.w3schools.com/html/mov_bbb.mp4'),
+            ],
+          ),
+        ],
+      ),
+      Subject(
+        id: 's2',
+        title: 'Layout Systems',
+        price: 350,
+        chapters: [
+          Chapter(
+            id: 'ch2',
+            title: 'Grid vs Flex',
+            lessons: [
+              Lesson(id: 'l2', title: 'Responsive Grids', type: LessonType.video, duration: '15:20', url: 'https://www.w3schools.com/html/mov_bbb.mp4'),
+            ],
+          ),
+        ],
+      ),
+    ],
   ),
   CourseModel(
     id: 'c2',
@@ -100,7 +96,13 @@ final List<CourseModel> mockCourses = [
     description: 'Deep dive into patterns, performance, and state management.',
     fullPrice: 800,
     category: 'Development',
-    imagePath: "assets/images/course2.png", // Placeholder
-    subject: "Development", price: "800", instructor: "Eng. Sarah Jenkins" // Backward compatibility
+    subjects: [
+      Subject(
+        id: 's3',
+        title: 'React Core Internals',
+        price: 450,
+        chapters: [],
+      ),
+    ],
   ),
 ];
