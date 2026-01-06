@@ -1,6 +1,21 @@
 import 'models/course_model.dart';
 
-// --- Teachers ---
+// --- 1. User Model (Required for Edit Profile) ---
+class User {
+  final String id;
+  final String name;
+  final String username;
+  final List<String> enrolledCourses;
+
+  User({
+    required this.id, 
+    required this.name, 
+    required this.username, 
+    required this.enrolledCourses
+  });
+}
+
+// --- 2. Teacher Model ---
 class Teacher {
   final String id;
   final String name;
@@ -8,9 +23,16 @@ class Teacher {
   final String avatar;
   final String bio;
 
-  Teacher({required this.id, required this.name, required this.specialty, required this.avatar, required this.bio});
+  Teacher({
+    required this.id, 
+    required this.name, 
+    required this.specialty, 
+    required this.avatar, 
+    required this.bio
+  });
 }
 
+// --- 3. Mock Teachers ---
 final List<Teacher> mockTeachers = [
   Teacher(
     id: 't1',
@@ -28,7 +50,7 @@ final List<Teacher> mockTeachers = [
   ),
 ];
 
-// --- Exams ---
+// --- 4. Mock Exams ---
 final ExamModel mockExam = ExamModel(
   id: 'e1',
   title: 'Material 3 Foundations Exam',
@@ -44,7 +66,7 @@ final ExamModel mockExam = ExamModel(
   ],
 );
 
-// --- Courses ---
+// --- 5. Mock Courses ---
 final List<CourseModel> mockCourses = [
   CourseModel(
     id: 'c1',
