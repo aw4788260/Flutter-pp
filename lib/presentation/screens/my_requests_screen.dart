@@ -83,7 +83,6 @@ class MyRequestsScreen extends StatelessWidget {
   }
 
   Widget _buildOrderCard(OrderRequest order) {
-    // Style logic
     Color statusColor;
     IconData statusIcon;
     String statusText;
@@ -100,7 +99,7 @@ class MyRequestsScreen extends StatelessWidget {
         statusText = "Accepted";
         break;
       case OrderStatus.denied:
-        statusColor = AppColors.accentOrange; // or Error color
+        statusColor = AppColors.accentOrange;
         statusIcon = LucideIcons.xCircle;
         statusText = "Denied";
         break;
@@ -111,7 +110,7 @@ class MyRequestsScreen extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.backgroundSecondary,
-        borderRadius: BorderRadius.circular(20), // rounded-m3-xl
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
       ),
@@ -135,7 +134,8 @@ class MyRequestsScreen extends StatelessWidget {
                   color: AppColors.backgroundPrimary,
                   borderRadius: BorderRadius.circular(50),
                   border: Border.all(color: Colors.white.withOpacity(0.05)),
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, inset: true)],
+                  // ✅ Fix: Removed inset: true
+                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)],
                 ),
                 child: Row(
                   children: [
@@ -174,7 +174,8 @@ class MyRequestsScreen extends StatelessWidget {
                 color: AppColors.backgroundPrimary,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white.withOpacity(0.05)),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, inset: true)],
+                // ✅ Fix: Removed inset: true
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)],
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
