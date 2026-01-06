@@ -24,7 +24,7 @@ class ProfileScreen extends StatelessWidget {
               const Text(
                 "MY PROFILE",
                 style: TextStyle(
-                  fontSize: 24, // text-3xl
+                  fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
                   letterSpacing: -0.5,
@@ -61,7 +61,7 @@ class ProfileScreen extends StatelessWidget {
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.accentYellow.withOpacity(0.5), width: 2),
                         image: const DecorationImage(
-                          image: NetworkImage("https://i.pravatar.cc/150?u=a"), // Mock Avatar
+                          image: NetworkImage("https://i.pravatar.cc/150?u=a"),
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -100,7 +100,7 @@ class ProfileScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // Edit Icon (Quick Access)
+                    // Edit Icon
                     GestureDetector(
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())),
                       child: Container(
@@ -159,7 +159,7 @@ class ProfileScreen extends StatelessWidget {
                       icon: LucideIcons.clipboardList,
                       title: "My Requests",
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen())),
-                      badge: "3", // Mock badge
+                      badge: "3",
                     ),
                   ],
                 ),
@@ -199,17 +199,16 @@ class ProfileScreen extends StatelessWidget {
                       context,
                       icon: LucideIcons.share2,
                       title: "Share App",
-                      onTap: () { /* Share Logic */ },
+                      onTap: () {},
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
-              // Logout Button
+              // Logout
               GestureDetector(
                 onTap: () {
-                  // Clear session and navigate to Login
                   Navigator.pushAndRemoveUntil(
                     context, 
                     MaterialPageRoute(builder: (_) => const LoginScreen()), 
@@ -241,7 +240,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 100), // Bottom padding
+              const SizedBox(height: 100),
             ],
           ),
         ),
@@ -263,7 +262,8 @@ class ProfileScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.backgroundPrimary,
                   borderRadius: BorderRadius.circular(8),
-                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, inset: true)],
+                  // ✅ Fix: Removed inset: true
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                 ),
                 child: Icon(icon, size: 18, color: AppColors.accentYellow),
               ),
