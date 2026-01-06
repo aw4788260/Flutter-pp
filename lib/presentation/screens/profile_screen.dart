@@ -20,6 +20,7 @@ class ProfileScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Header Title
               const Text(
                 "MY PROFILE",
                 style: TextStyle(
@@ -52,7 +53,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    // ✅ Avatar: First Letter Only
+                    // Avatar: First Letter Only
                     Container(
                       width: 64, height: 64,
                       decoration: BoxDecoration(
@@ -123,12 +124,17 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
-              // Account Settings
+              // Account Settings Section
               const Padding(
                 padding: EdgeInsets.only(left: 8, bottom: 12),
                 child: Text(
                   "ACCOUNT SETTINGS",
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textSecondary,
+                    letterSpacing: 2.0,
+                  ),
                 ),
               ),
               Container(
@@ -140,22 +146,43 @@ class ProfileScreen extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen()))),
+                    _buildMenuItem(
+                      context,
+                      icon: LucideIcons.user,
+                      title: "Edit Profile",
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())),
+                    ),
                     const Divider(height: 1, color: Colors.white10),
-                    _buildMenuItem(context, icon: LucideIcons.lock, title: "Change Password", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
+                    _buildMenuItem(
+                      context,
+                      icon: LucideIcons.lock,
+                      title: "Change Password",
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen())),
+                    ),
                     const Divider(height: 1, color: Colors.white10),
-                    _buildMenuItem(context, icon: LucideIcons.clipboardList, title: "My Requests", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen())), badge: "3"),
+                    _buildMenuItem(
+                      context,
+                      icon: LucideIcons.clipboardList,
+                      title: "My Requests",
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen())),
+                      badge: "3",
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
-              // General
+              // General Section
               const Padding(
                 padding: EdgeInsets.only(left: 8, bottom: 12),
                 child: Text(
                   "GENERAL",
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textSecondary,
+                    letterSpacing: 2.0,
+                  ),
                 ),
               ),
               Container(
@@ -167,18 +194,26 @@ class ProfileScreen extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    _buildMenuItem(context, icon: LucideIcons.info, title: "App Information", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevInfoScreen()))),
-                    const Divider(height: 1, color: Colors.white10),
-                    _buildMenuItem(context, icon: LucideIcons.share2, title: "Share App", onTap: () {}),
+                    _buildMenuItem(
+                      context,
+                      icon: LucideIcons.info,
+                      title: "App Information",
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevInfoScreen())),
+                    ),
+                    // ❌ تم حذف زر المشاركة من هنا
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
-              // Logout
+              // Logout Button
               GestureDetector(
                 onTap: () {
-                  Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
+                  Navigator.pushAndRemoveUntil(
+                    context, 
+                    MaterialPageRoute(builder: (_) => const LoginScreen()), 
+                    (r) => false
+                  );
                 },
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -192,7 +227,15 @@ class ProfileScreen extends StatelessWidget {
                     children: const [
                       Icon(LucideIcons.logOut, color: AppColors.error, size: 18),
                       SizedBox(width: 12),
-                      Text("LOGOUT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.error, letterSpacing: 1.5)),
+                      Text(
+                        "LOGOUT",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.error,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -225,14 +268,27 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
               ),
               if (badge != null)
                 Container(
                   margin: const EdgeInsets.only(right: 12),
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: AppColors.accentOrange, borderRadius: BorderRadius.circular(50)),
-                  child: Text(badge, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentOrange,
+                    borderRadius: BorderRadius.circular(50),
+                  ),
+                  child: Text(
+                    badge,
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
                 ),
               const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
             ],
