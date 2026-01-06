@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../data/mock_data.dart'; // User model
+import '../../data/mock_data.dart'; // ✅ تم إضافة هذا الاستيراد لحل المشكلة
 
 class EditProfileScreen extends StatefulWidget {
   final User? user;
@@ -20,7 +20,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize with user data or defaults
     _nameController = TextEditingController(text: widget.user?.name ?? "Ahmed Walid");
     _phoneController = TextEditingController(text: "01012345678");
     _usernameController = TextEditingController(text: widget.user?.username ?? "@aw478260");
@@ -41,7 +40,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
@@ -63,7 +61,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const Text(
                     "EDIT PROFILE",
                     style: TextStyle(
-                      fontSize: 20, // text-xl
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary,
                       letterSpacing: -0.5,
@@ -72,8 +70,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ],
               ),
             ),
-
-            // Form Content
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -89,8 +85,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ),
             ),
-
-            // Footer Button
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: SizedBox(
@@ -98,7 +92,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
-                    // Add save logic here
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.accentYellow,
