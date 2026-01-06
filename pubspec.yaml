@@ -39,6 +39,18 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  # 👇 1. إضافة مكتبة توليد الأيقونات
+  flutter_launcher_icons: ^0.13.1
+
+# 👇 2. إعدادات الأيقونة (تستخدم الصورة المرفوعة assets/images/app_icon.png)
+flutter_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/images/app_icon.png"
+  min_sdk_android: 21
 
 flutter:
   uses-material-design: true
+  # 👇 3. تعريف مسار الصور (ليتمكن التطبيق من قراءتها داخلياً أيضاً)
+  assets:
+    - assets/images/
