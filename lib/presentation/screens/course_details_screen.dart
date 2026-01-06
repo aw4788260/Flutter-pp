@@ -1,101 +1,338 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import 'course_materials_screen.dart'; // الانتقال للصفحة التالية في القائمة
+import '../../data/models/course_model.dart';
+import 'course_materials_screen.dart';
+import 'checkout_screen.dart'; // سننشئها لاحقاً
 
-class CourseDetailsScreen extends StatelessWidget {
-  const CourseDetailsScreen({super.key});
+class CourseDetailsScreen extends StatefulWidget {
+  final CourseModel? course; // Optional for safety, but typically required
+
+  const CourseDetailsScreen({super.key, this.course});
+
+  @override
+  State<CourseDetailsScreen> createState() => _CourseDetailsScreenState();
+}
+
+class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
+  // Mock data fallback if course is null (for direct testing)
+  late CourseModel course;
+  
+  List<String> selectedSubjectIds = [];
+  bool isFullCourse = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // In a real app, you'd handle null course better. Here we assume it's passed or use mock.
+    // For now we assume mockCourses[0] if null.
+    import('../../data/mock_data.dart').then((m) {
+        // This is pseudo-code for import, in Flutter just use the imported list
+    });
+    // Fallback logic handled in build for simplicity or require it in constructor
+  }
+
+  void _toggleSubject(String id) {
+    setState(() {
+      isFullCourse = false;
+      if (selectedSubjectIds.contains(id)) {
+        selectedSubjectIds.remove(id);
+      } else {
+        selectedSubjectIds.add(id);
+      }
+    });
+  }
+
+  void _toggleFullCourse() {
+    setState(() {
+      isFullCourse = !isFullCourse;
+      selectedSubjectIds.clear();
+    });
+  }
+
+  void _handleEnroll() {
+    // Navigate to Checkout or Materials (Mocking enroll success)
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => CourseMaterialsScreen(course: course)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Use passed course or fallback to first mock course
+    // Note: You must import mockCourses
+    final mockCoursesList =  [/* Imported from mock_data.dart */]; 
+    // Since we can't easily dynamic import in snippet, please ensure mock_data is imported.
+    // Assuming passed course is not null for this snippet:
+    if (widget.course == null) {
+       // Just a fallback for safety
+       return const Scaffold(body: Center(child: Text("Course not found")));
+    }
+    course = widget.course!;
+
+    final double currentPrice = isFullCourse 
+        ? course.fullPrice 
+        : course.subjects
+            .where((s) => selectedSubjectIds.contains(s.id))
+            .fold(0, (sum, s) => sum + s.price);
+
+    final bool hasSelection = isFullCourse || selectedSubjectIds.isNotEmpty;
+
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: Stack(
         children: [
           CustomScrollView(
             slivers: [
-              SliverAppBar(
-                expandedHeight: 250.0,
-                pinned: true,
-                backgroundColor: AppColors.backgroundPrimary,
-                leading: IconButton(
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle),
-                    child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 20),
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Container(color: AppColors.backgroundSecondary),
-                      const Center(child: Icon(LucideIcons.image, size: 64, color: Colors.white24)),
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, AppColors.backgroundPrimary],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.all(24.0),
+                  padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: AppColors.accentYellow.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.accentYellow.withOpacity(0.2)),
+                      // Back Button
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(bottom: 32),
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSecondary,
+                            borderRadius: BorderRadius.circular(50),
+                            border: Border.all(color: Colors.white.withOpacity(0.1)),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                          ),
+                          child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                         ),
-                        child: const Text("PHYSICS", style: TextStyle(color: AppColors.accentYellow, fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
-                      const SizedBox(height: 16),
                       
-                      // Title
-                      const Text(
-                        "Advanced Mechanics & Motion",
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Instructor
+                      // Badges
                       Row(
                         children: [
-                          const CircleAvatar(radius: 20, backgroundColor: AppColors.backgroundSecondary, child: Icon(LucideIcons.user, size: 20)),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text("Mr. Ahmed Hassan", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
-                              Text("Senior Physics Teacher", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                            ],
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.backgroundSecondary,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withOpacity(0.05)),
+                            ),
+                            child: Text(
+                              course.category.toUpperCase(),
+                              style: const TextStyle(
+                                color: AppColors.accentYellow, 
+                                fontSize: 9, 
+                                fontWeight: FontWeight.w900, 
+                                letterSpacing: 1.5
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              "ID: #${course.id.toUpperCase()}",
+                              style: const TextStyle(
+                                color: AppColors.textSecondary, 
+                                fontSize: 9, 
+                                fontWeight: FontWeight.w900, 
+                                letterSpacing: 1.5
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
-                      const Divider(color: Colors.white10),
+                      const SizedBox(height: 16),
+
+                      // Title & Description
+                      Text(
+                        course.title.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 30, // text-3xl
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                          letterSpacing: -1.0,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        course.description,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textSecondary,
+                          height: 1.6,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                       const SizedBox(height: 24),
 
-                      // Description
-                      const Text("ABOUT THIS COURSE", style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                      const SizedBox(height: 12),
-                      const Text(
-                        "This course covers the complete Physics curriculum. Include Newton's laws, Energy, and more. Perfect for final revision.",
-                        style: TextStyle(color: AppColors.textPrimary, height: 1.6),
+                      // Accredited Badge
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.accentYellow.withOpacity(0.2)),
+                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(LucideIcons.shieldCheck, color: AppColors.accentYellow, size: 20),
+                            SizedBox(width: 12),
+                            Text(
+                              "ACCREDITED COURSE ACCESS",
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 100), // مسافة للزر
+                      
+                      const SizedBox(height: 32),
+                      
+                      // Package Builder Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: const [
+                          Text("PACKAGE BUILDER", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                          Icon(LucideIcons.box, color: AppColors.accentYellow, size: 20),
+                        ],
+                      ),
+                      const Divider(color: Colors.white10, height: 32),
+
+                      // Full Course Option
+                      GestureDetector(
+                        onTap: _toggleFullCourse,
+                        child: Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: isFullCourse ? AppColors.backgroundSecondary : AppColors.backgroundSecondary,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isFullCourse ? AppColors.accentYellow : Colors.white.withOpacity(0.05),
+                              width: 1,
+                            ),
+                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.backgroundPrimary,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(LucideIcons.shoppingBag, color: AppColors.textSecondary, size: 24),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text("FULL COURSE PASS", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                                      const SizedBox(height: 4),
+                                      Text("Access all subjects & exams", 
+                                        style: TextStyle(
+                                          fontSize: 10, 
+                                          fontWeight: FontWeight.bold, 
+                                          color: isFullCourse ? AppColors.accentYellow : AppColors.textSecondary.withOpacity(0.7)
+                                        )
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text("\$${course.fullPrice}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                                  if (isFullCourse) ...[
+                                    const SizedBox(height: 8),
+                                    const Icon(LucideIcons.checkCircle2, color: AppColors.accentYellow, size: 18),
+                                  ]
+                                ],
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Separator
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Row(
+                          children: [
+                            const Expanded(child: Divider(color: Colors.white10)),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16),
+                              child: Text("INDIVIDUAL SELECTION", style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                            ),
+                            const Expanded(child: Divider(color: Colors.white10)),
+                          ],
+                        ),
+                      ),
+
+                      // Subjects List
+                      ...course.subjects.map((subject) {
+                        final isSelected = selectedSubjectIds.contains(subject.id);
+                        return GestureDetector(
+                          onTap: () => _toggleSubject(subject.id),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: AppColors.backgroundSecondary,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected ? AppColors.accentYellow.withOpacity(0.4) : Colors.white.withOpacity(0.05)
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 32, height: 32,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.backgroundPrimary,
+                                        borderRadius: BorderRadius.circular(8),
+                                        boxShadow: [
+                                          if (isSelected) BoxShadow(color: AppColors.accentYellow.withOpacity(0.2), blurRadius: 4)
+                                        ]
+                                      ),
+                                      child: Icon(LucideIcons.bookOpen, size: 14, color: isSelected ? AppColors.accentYellow : AppColors.textSecondary.withOpacity(0.6)),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(subject.title.toUpperCase(), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: isSelected ? AppColors.textPrimary : AppColors.textSecondary)),
+                                        const SizedBox(height: 2),
+                                        Text("${subject.chapters.length} Modules", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.6), letterSpacing: 1.5)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                Text("\$${subject.price}", style: TextStyle(fontWeight: FontWeight.w900, color: isSelected ? AppColors.textPrimary : AppColors.textSecondary.withOpacity(0.7))),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                      
+                      const SizedBox(height: 120), // Padding for bottom bar
                     ],
                   ),
                 ),
@@ -103,47 +340,74 @@ class CourseDetailsScreen extends StatelessWidget {
             ],
           ),
 
-          // Footer Action Button
-          Positioned(
-            bottom: 0, left: 0, right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundPrimary,
-                border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
-              ),
-              child: Row(
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text("Total Price", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                      Text("1,200 EGP", style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(width: 24),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        // هنا ننتقل لصفحة المواد (وكأن الطالب اشترك)
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const CourseMaterialsScreen()),
-                        );
-                      },
+          // Floating Bottom Bar
+          if (hasSelection)
+            Positioned(
+              bottom: 40, left: 24, right: 24,
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundPrimary.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.accentYellow.withOpacity(0.1)),
+                  boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 20, offset: Offset(0, 10))],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            const Icon(LucideIcons.shoppingBag, color: AppColors.accentYellow, size: 24),
+                            Positioned(
+                              top: -6, right: -6,
+                              child: Container(
+                                width: 16, height: 16,
+                                decoration: BoxDecoration(
+                                  color: AppColors.accentOrange,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppColors.backgroundPrimary, width: 2),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    "${isFullCourse ? 1 : selectedSubjectIds.length}",
+                                    style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                            )
+                          ],
+                        ),
+                        const SizedBox(width: 16),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("SUBTOTAL", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                            Text("\$$currentPrice", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textPrimary, height: 1.0)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    ElevatedButton(
+                      onPressed: _handleEnroll,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.accentYellow,
-                        foregroundColor: AppColors.backgroundPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
-                      child: const Text("ENROLL NOW", style: TextStyle(fontWeight: FontWeight.bold)),
+                      child: Row(
+                        children: const [
+                          Text("CONFIRM", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                          SizedBox(width: 8),
+                          Icon(LucideIcons.chevronRight, size: 18),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
