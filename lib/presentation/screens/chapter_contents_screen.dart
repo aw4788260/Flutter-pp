@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/models/course_model.dart';
-import 'video_preview_screen.dart';
+import 'video_player_screen.dart'; // ✅ تأكد من الاستيراد
 
 class ChapterContentsScreen extends StatefulWidget {
   final Chapter chapter;
@@ -36,7 +36,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: Row(
                       children: [
                         GestureDetector(
-                          onTap: () => Navigator.pop(context),
+                          onTap: () => Navigator.pop(context), // ✅ استخدام pop للرجوع
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -126,7 +126,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           decoration: BoxDecoration(
             color: isActive ? AppColors.backgroundPrimary : Colors.transparent,
             borderRadius: BorderRadius.circular(50),
-            // ✅ Fix: Removed inset: true
             boxShadow: isActive ? [const BoxShadow(color: Colors.black12, blurRadius: 4)] : [],
           ),
           child: Text(
@@ -174,7 +173,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundPrimary,
                         borderRadius: BorderRadius.circular(12),
-                        // ✅ Fix: Removed inset: true
                         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                       ),
                       child: const Icon(LucideIcons.play, color: AppColors.accentOrange, size: 18),
@@ -212,13 +210,15 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                 ),
               ),
               const Divider(height: 1, color: Colors.white10),
+              // Actions
               Row(
                 children: [
                   Expanded(
                     child: _buildActionButton(
                       "Watch Now", 
                       AppColors.accentYellow, 
-                      () => Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPreviewScreen(lesson: video))),
+                      // ✅ فتح الفيديو مباشرة
+                      () => Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerScreen(lesson: video))),
                     ),
                   ),
                   Container(width: 1, height: 48, color: Colors.white10),
@@ -226,7 +226,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: _buildActionButton(
                       "Download", 
                       AppColors.textSecondary, 
-                      () {},
+                      () { /* Mock Download */ },
                     ),
                   ),
                 ],
@@ -266,7 +266,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundPrimary,
                         borderRadius: BorderRadius.circular(12),
-                        // ✅ Fix: Removed inset: true
                         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                       ),
                       child: const Icon(LucideIcons.fileText, color: AppColors.accentYellow, size: 18),
