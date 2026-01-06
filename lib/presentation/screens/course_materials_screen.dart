@@ -1,91 +1,206 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../data/models/chapter_model.dart'; // نفس النموذج السابق
-import 'chapter_contents_screen.dart'; // الصفحة التالية في القائمة
+import '../../data/models/course_model.dart';
+import '../../data/mock_data.dart';
+import 'subject_materials_screen.dart';
+import 'my_courses_screen.dart';
 
 class CourseMaterialsScreen extends StatelessWidget {
-  const CourseMaterialsScreen({super.key});
+  final CourseModel? course; // Optional for safety
+
+  const CourseMaterialsScreen({super.key, this.course});
 
   @override
   Widget build(BuildContext context) {
+    // Fallback if accessed without course (e.g. direct nav)
+    final safeCourse = course ?? mockCourses[0]; 
+    final teacher = mockTeachers.firstWhere((t) => t.id == safeCourse.teacherId);
+
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
-      appBar: AppBar(
-        backgroundColor: AppColors.backgroundPrimary,
-        elevation: 0,
-        title: const Text("Course Materials", style: TextStyle(color: AppColors.textPrimary)),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: dummyChapters.length,
-        itemBuilder: (context, index) {
-          final chapter = dummyChapters[index];
-          return GestureDetector(
-            onTap: () {
-              // ✅ الانتقال لصفحة محتوى الفصل (ChapterContents)
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChapterContentsScreen(chapter: chapter),
-                ),
-              );
-            },
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundSecondary,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.05)),
-              ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(24.0),
               child: Row(
                 children: [
-                  // رقم الفصل
-                  Container(
-                    width: 40, height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.accentYellow.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      "${index + 1}",
-                      style: const TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold, fontSize: 16),
+                  GestureDetector(
+                    onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MyCoursesScreen())),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundSecondary,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                      ),
+                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  
-                  // التفاصيل
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          chapter.title,
-                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                          safeCourse.title.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                            overflow: TextOverflow.ellipsis,
+                            letterSpacing: -0.5,
+                          ),
+                          maxLines: 1,
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          chapter.subtitle,
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        const Text(
+                          "CHOOSE SUBJECT",
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.accentYellow,
+                            letterSpacing: 2.0,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  
-                  // سهم الانتقال
-                  const Icon(LucideIcons.chevronRight, color: AppColors.textSecondary),
                 ],
               ),
             ),
-          );
-        },
+
+            // Content
+            Expanded(
+              child: safeCourse.subjects.isEmpty 
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(LucideIcons.layers, size: 40, color: AppColors.textSecondary.withOpacity(0.5)),
+                      const SizedBox(height: 16),
+                      Text(
+                        "NO SUBJECTS",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textSecondary.withOpacity(0.5),
+                          letterSpacing: 2.0,
+                        ),
+                      )
+                    ],
+                  ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 1.0,
+                  ),
+                  itemCount: safeCourse.subjects.length,
+                  itemBuilder: (context, index) {
+                    final subject = safeCourse.subjects[index];
+                    return GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => SubjectMaterialsScreen(course: safeCourse, subject: subject)),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.white.withOpacity(0.1)),
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8)],
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header Icon
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Container(
+                                  width: 8, height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.accentOrange,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [BoxShadow(color: AppColors.accentOrange, blurRadius: 4)],
+                                  ),
+                                ),
+                                const Icon(LucideIcons.playCircle, size: 20, color: AppColors.accentOrange),
+                              ],
+                            ),
+
+                            // Title
+                            Text(
+                              subject.title.toUpperCase(),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                                height: 1.1,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+
+                            // Footer
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        teacher.name.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textSecondary.withOpacity(0.7),
+                                          letterSpacing: 1.5,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        height: 2, width: 24,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accentOrange.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(1),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  width: 24, height: 24,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.backgroundPrimary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(LucideIcons.chevronRight, size: 14, color: AppColors.accentOrange),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ),
+          ],
+        ),
       ),
     );
   }
