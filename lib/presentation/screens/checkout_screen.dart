@@ -5,7 +5,7 @@ import '../../core/constants/app_colors.dart';
 import 'home_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
-  final double amount; // You can pass cart items here
+  final double amount;
 
   const CheckoutScreen({super.key, this.amount = 1200});
 
@@ -14,14 +14,12 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  // Simulate image upload
   bool hasImage = false;
   bool isSuccess = false;
   final TextEditingController _noteController = TextEditingController();
 
   void _handleSubmit() {
     setState(() => isSuccess = true);
-    // Simulate delay then go home
     Timer(const Duration(seconds: 3), () {
       Navigator.pushAndRemoveUntil(
         context,
@@ -89,7 +87,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSecondary,
                         border: const Border(bottom: BorderSide(color: Colors.white10)),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, inset: true)],
+                        // ✅ Fix: Removed inset: true
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                       ),
                       child: Column(
                         children: [
@@ -144,7 +143,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                           decoration: BoxDecoration(
                                             color: AppColors.backgroundPrimary,
                                             borderRadius: BorderRadius.circular(12),
-                                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, inset: true)],
+                                            // ✅ Fix: Removed inset: true
+                                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                                           ),
                                           child: const Icon(LucideIcons.smartphone, color: AppColors.accentYellow, size: 24),
                                         ),
@@ -227,7 +227,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 decoration: BoxDecoration(
                                   color: AppColors.backgroundSecondary.withOpacity(0.5),
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: AppColors.accentYellow.withOpacity(0.3), style: BorderStyle.solid), // Dashed difficult in standard, solid ok
+                                  border: Border.all(color: AppColors.accentYellow.withOpacity(0.3), style: BorderStyle.solid),
                                 ),
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -248,7 +248,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               color: AppColors.backgroundSecondary,
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, inset: true)],
+                              // ✅ Fix: Removed inset: true
+                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)],
                             ),
                             child: TextField(
                               controller: _noteController,
@@ -283,7 +284,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 100), // Space for fab
+                          const SizedBox(height: 100),
                         ],
                       ),
                     ),
@@ -380,7 +381,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Container(
-                        width: 100, // Simulated progress
+                        width: 100,
                         decoration: BoxDecoration(
                           color: AppColors.accentYellow,
                           borderRadius: BorderRadius.circular(2),
