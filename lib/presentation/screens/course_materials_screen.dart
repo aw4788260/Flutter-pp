@@ -4,16 +4,14 @@ import '../../core/constants/app_colors.dart';
 import '../../data/models/course_model.dart';
 import '../../data/mock_data.dart';
 import 'subject_materials_screen.dart';
-import 'my_courses_screen.dart';
 
 class CourseMaterialsScreen extends StatelessWidget {
-  final CourseModel? course; // Optional for safety
+  final CourseModel? course;
 
   const CourseMaterialsScreen({super.key, this.course});
 
   @override
   Widget build(BuildContext context) {
-    // Fallback if accessed without course (e.g. direct nav)
     final safeCourse = course ?? mockCourses[0]; 
     final teacher = mockTeachers.firstWhere((t) => t.id == safeCourse.teacherId);
 
@@ -28,7 +26,7 @@ class CourseMaterialsScreen extends StatelessWidget {
               child: Row(
                 children: [
                   GestureDetector(
-                    onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MyCoursesScreen())),
+                    onTap: () => Navigator.pop(context), // ✅ استخدام pop هنا
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -122,7 +120,6 @@ class CourseMaterialsScreen extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Header Icon
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -138,7 +135,6 @@ class CourseMaterialsScreen extends StatelessWidget {
                               ],
                             ),
 
-                            // Title
                             Text(
                               subject.title.toUpperCase(),
                               maxLines: 3,
@@ -152,7 +148,6 @@ class CourseMaterialsScreen extends StatelessWidget {
                               ),
                             ),
 
-                            // Footer
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
