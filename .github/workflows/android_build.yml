@@ -27,6 +27,9 @@ jobs:
           flutter clean
           flutter pub get
 
+      - name: Generate App Icons
+        run: flutter pub run flutter_launcher_icons
+        
       # ✅ هذه هي الخطوة الجديدة المعدلة: تقوم بفك التشفير ثم اختبار الملف وكلمة السر فوراً
       - name: Create and Verify Keystore
         env:
