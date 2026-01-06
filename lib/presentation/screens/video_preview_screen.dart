@@ -36,7 +36,6 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
       setState(() {
         if (progress >= 100) {
           timer.cancel();
-          // Reset after delay
           Future.delayed(const Duration(seconds: 1), () {
             if (mounted) setState(() => isDownloading = false);
           });
@@ -76,7 +75,7 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
               Text(
                 widget.lesson.title.toUpperCase(),
                 style: const TextStyle(
-                  fontSize: 28, // text-3xl
+                  fontSize: 28,
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
                   letterSpacing: -0.5,
@@ -112,7 +111,7 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: AppColors.accentYellow,
-                    borderRadius: BorderRadius.circular(24), // m3-xl
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
                         color: AppColors.accentYellow.withOpacity(0.2),
@@ -193,7 +192,8 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
                                 decoration: BoxDecoration(
                                   color: AppColors.backgroundPrimary,
                                   shape: BoxShape.circle,
-                                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, inset: true)],
+                                  // ✅ Fix: Removed inset: true
+                                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                 ),
                                 child: isDownloading 
                                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow))
@@ -264,7 +264,8 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
                           decoration: BoxDecoration(
                             color: AppColors.backgroundPrimary,
                             borderRadius: BorderRadius.circular(12),
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, inset: true)],
+                            // ✅ Fix: Removed inset: true
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                           ),
                           child: const Icon(LucideIcons.fileText, color: AppColors.accentYellow, size: 20),
                         ),
