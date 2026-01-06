@@ -45,7 +45,7 @@ dev_dependencies:
 # 👇 2. إعدادات الأيقونة (تستخدم الصورة المرفوعة assets/images/app_icon.png)
 flutter_icons:
   android: "ic_launcher"
-  ios: true
+  ios: false
   image_path: "assets/images/app_icon.png"
   min_sdk_android: 21
 
