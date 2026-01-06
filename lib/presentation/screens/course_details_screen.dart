@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/models/course_model.dart';
-import 'course_materials_screen.dart';
-import 'checkout_screen.dart'; // سننشئها لاحقاً
+import '../../data/mock_data.dart'; // Import to access mockCourses if needed fallback
+import 'checkout_screen.dart'; // ✅ تم الربط
 
 class CourseDetailsScreen extends StatefulWidget {
-  final CourseModel? course; // Optional for safety, but typically required
+  final CourseModel? course;
 
   const CourseDetailsScreen({super.key, this.course});
 
@@ -15,7 +15,6 @@ class CourseDetailsScreen extends StatefulWidget {
 }
 
 class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
-  // Mock data fallback if course is null (for direct testing)
   late CourseModel course;
   
   List<String> selectedSubjectIds = [];
@@ -24,12 +23,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    // In a real app, you'd handle null course better. Here we assume it's passed or use mock.
-    // For now we assume mockCourses[0] if null.
-    import('../../data/mock_data.dart').then((m) {
-        // This is pseudo-code for import, in Flutter just use the imported list
-    });
-    // Fallback logic handled in build for simplicity or require it in constructor
+    // Fallback logic if course is passed as null (for testing)
+    course = widget.course ?? mockCourses[0]; 
   }
 
   void _toggleSubject(String id) {
@@ -50,27 +45,25 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     });
   }
 
+  // ✅ دالة الانتقال للدفع المعدلة
   void _handleEnroll() {
-    // Navigate to Checkout or Materials (Mocking enroll success)
+    // Calculate final price based on selection
+    final double finalPrice = isFullCourse 
+        ? course.fullPrice 
+        : course.subjects
+            .where((s) => selectedSubjectIds.contains(s.id))
+            .fold(0, (sum, s) => sum + s.price);
+
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => CourseMaterialsScreen(course: course)),
+      MaterialPageRoute(
+        builder: (_) => CheckoutScreen(amount: finalPrice),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Use passed course or fallback to first mock course
-    // Note: You must import mockCourses
-    final mockCoursesList =  [/* Imported from mock_data.dart */]; 
-    // Since we can't easily dynamic import in snippet, please ensure mock_data is imported.
-    // Assuming passed course is not null for this snippet:
-    if (widget.course == null) {
-       // Just a fallback for safety
-       return const Scaffold(body: Center(child: Text("Course not found")));
-    }
-    course = widget.course!;
-
     final double currentPrice = isFullCourse 
         ? course.fullPrice 
         : course.subjects
@@ -214,7 +207,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
-                            color: isFullCourse ? AppColors.backgroundSecondary : AppColors.backgroundSecondary,
+                            color: AppColors.backgroundSecondary,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: isFullCourse ? AppColors.accentYellow : Colors.white.withOpacity(0.05),
@@ -391,7 +384,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       ],
                     ),
                     ElevatedButton(
-                      onPressed: _handleEnroll,
+                      onPressed: _handleEnroll, // ✅ تم استدعاء الدالة المحدثة
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
