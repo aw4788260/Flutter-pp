@@ -3,7 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/models/course_model.dart';
 import 'chapter_contents_screen.dart';
-import 'exam_view_screen.dart'; // ✅ تم الربط
+import 'exam_view_screen.dart';
 
 class SubjectMaterialsScreen extends StatefulWidget {
   final CourseModel course;
@@ -16,11 +16,10 @@ class SubjectMaterialsScreen extends StatefulWidget {
 }
 
 class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
-  String activeTab = 'chapters'; // 'chapters' | 'exams'
+  String activeTab = 'chapters';
 
   @override
   Widget build(BuildContext context) {
-    // عرض جميع امتحانات الكورس (لأغراض المحاكاة)
     final exams = widget.course.exams;
 
     return Scaffold(
@@ -90,7 +89,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                       color: AppColors.backgroundSecondary,
                       borderRadius: BorderRadius.circular(50),
                       border: Border.all(color: Colors.white.withOpacity(0.05)),
-                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, inset: true)],
+                      // ✅ Fix: Removed inset: true
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                     ),
                     child: Row(
                       children: [
@@ -134,7 +134,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                                     color: AppColors.backgroundPrimary,
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(color: Colors.white.withOpacity(0.1)),
-                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, inset: true)],
+                                    // ✅ Fix: Removed inset: true
+                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                                   ),
                                   child: Center(
                                     child: Text(
@@ -189,13 +190,12 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                         );
                       },
                     )
-                  : ListView.builder( // Exams List
+                  : ListView.builder( 
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       itemCount: exams.length,
                       itemBuilder: (context, index) {
                         final exam = exams[index];
                         return GestureDetector(
-                          // ✅ الانتقال لشاشة الامتحان
                           onTap: () {
                              Navigator.push(
                                context, 
@@ -273,6 +273,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
           decoration: BoxDecoration(
             color: isActive ? AppColors.backgroundPrimary : Colors.transparent,
             borderRadius: BorderRadius.circular(50),
+            // ✅ Fix: Removed inset: true
             boxShadow: isActive ? [const BoxShadow(color: Colors.black12, blurRadius: 4)] : [],
           ),
           child: Text(
