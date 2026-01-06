@@ -4,7 +4,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/mock_data.dart';
 import 'course_details_screen.dart';
-// import 'my_requests_screen.dart'; // سننشئها لاحقاً
+import 'my_requests_screen.dart'; // ✅ تم الربط
+import 'teacher_profile_screen.dart'; // ✅ تم الربط
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -68,11 +69,11 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // --- Header & Search (Sticky Effect via Container) ---
+            // --- Header & Search ---
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: AppColors.backgroundPrimary.withOpacity(0.8), // backdrop-blur equivalent
+                color: AppColors.backgroundPrimary.withOpacity(0.8),
                 border: const Border(bottom: BorderSide(color: Colors.white10)),
               ),
               child: Column(
@@ -95,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            "AHMED WALID", // Mock User
+                            "AHMED WALID",
                             style: TextStyle(
                               color: AppColors.textPrimary,
                               fontSize: 20,
@@ -105,33 +106,41 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      // My Requests Button
-                      Stack(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(50),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                            ),
-                            child: const Icon(LucideIcons.clipboardList, color: AppColors.accentYellow, size: 22),
-                          ),
-                          Positioned(
-                            top: 10,
-                            right: 10,
-                            child: Container(
-                              width: 10,
-                              height: 10,
+                      // My Requests Button ✅
+                      GestureDetector(
+                        onTap: () {
+                           Navigator.push(
+                            context, 
+                            MaterialPageRoute(builder: (_) => const MyRequestsScreen())
+                          );
+                        },
+                        child: Stack(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.accentOrange,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.backgroundSecondary, width: 2),
+                                color: AppColors.backgroundSecondary,
+                                borderRadius: BorderRadius.circular(50),
+                                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                              ),
+                              child: const Icon(LucideIcons.clipboardList, color: AppColors.accentYellow, size: 22),
+                            ),
+                            Positioned(
+                              top: 10,
+                              right: 10,
+                              child: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: AppColors.accentOrange,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppColors.backgroundSecondary, width: 2),
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -141,7 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Container(
                     decoration: BoxDecoration(
                       color: AppColors.backgroundSecondary,
-                      borderRadius: BorderRadius.circular(16), // m3-xl
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: Colors.white.withOpacity(0.05)),
                     ),
                     child: TextField(
@@ -174,10 +183,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     // Encouragement Slider
                     SizedBox(
-                      height: 96, // h-24
+                      height: 96,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.grey[300], // bg-gray-300 from React code
+                          color: Colors.grey[300],
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Stack(
@@ -277,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
                              Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const CourseDetailsScreen(),
+                                builder: (context) => CourseDetailsScreen(course: course),
                               ),
                             );
                           },
@@ -337,21 +346,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 const SizedBox(height: 8),
 
-                                // Teacher info
-                                Row(
-                                  children: [
-                                    const Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      teacher.name.toUpperCase(),
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 1.5,
+                                // Teacher info - Clickable ✅
+                                GestureDetector(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => TeacherProfileScreen(teacher: teacher)),
+                                    );
+                                  },
+                                  child: Row(
+                                    children: [
+                                      const Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        teacher.name.toUpperCase(),
+                                        style: const TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 1.5,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
