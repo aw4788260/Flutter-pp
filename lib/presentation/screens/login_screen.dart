@@ -15,8 +15,6 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
-
-  // Focus Nodes for styling changes
   final FocusNode _userFocus = FocusNode();
   final FocusNode _passFocus = FocusNode();
 
@@ -24,7 +22,6 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     FirebaseCrashlytics.instance.log("Entered Login Screen");
-    // Rebuild on focus change to update icon colors
     _userFocus.addListener(() => setState(() {}));
     _passFocus.addListener(() => setState(() {}));
   }
@@ -39,7 +36,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _handleLogin() {
-    // محاكاة تسجيل الدخول
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => const MainWrapper()),
@@ -56,16 +52,16 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 64), // mt-16 approx
+              const SizedBox(height: 64),
 
               // --- Header Section ---
               Center(
                 child: Container(
-                  width: 64, height: 64, // w-16 h-16
+                  width: 100, height: 100, // حجم مناسب للوجو
                   margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSecondary,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: Colors.white.withOpacity(0.05)),
                     boxShadow: [
                       BoxShadow(
@@ -75,14 +71,21 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-                  child: const Icon(LucideIcons.shield, color: AppColors.accentYellow, size: 32),
+                  // ✅ اللوجو المفرغ هنا
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
               ),
               const Center(
                 child: Text(
                   "LOGIN",
                   style: TextStyle(
-                    fontSize: 30, // text-3xl
+                    fontSize: 30,
                     fontWeight: FontWeight.bold,
                     color: AppColors.textPrimary,
                     letterSpacing: -0.5,
@@ -104,8 +107,6 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 48),
 
               // --- Form Section ---
-              
-              // 1. Username Input
               _buildInputLabel("Username or Phone"),
               const SizedBox(height: 8),
               _buildTextField(
@@ -116,7 +117,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 24),
 
-              // 2. Password Input
               _buildInputLabel("Password"),
               const SizedBox(height: 8),
               _buildTextField(
@@ -128,7 +128,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 32),
 
-              // --- Sign In Button ---
               ElevatedButton(
                 onPressed: _handleLogin,
                 style: ElevatedButton.styleFrom(
@@ -136,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   foregroundColor: AppColors.backgroundPrimary,
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24), // rounded-m3-xl (custom larger radius)
+                    borderRadius: BorderRadius.circular(24),
                   ),
                   elevation: 10,
                   shadowColor: AppColors.accentYellow.withOpacity(0.2),
@@ -160,7 +159,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 48),
 
-              // --- Footer ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -195,7 +193,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Helper for Label Styles
   Widget _buildInputLabel(String label) {
     return Padding(
       padding: const EdgeInsets.only(left: 4),
@@ -211,7 +208,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Helper for TextField Styles matching React
   Widget _buildTextField({
     required TextEditingController controller,
     required FocusNode focusNode,
@@ -219,12 +215,10 @@ class _LoginScreenState extends State<LoginScreen> {
     required IconData icon,
     bool isPassword = false,
   }) {
-    final isActive = controller.text.isNotEmpty || focusNode.hasFocus;
-
     return Container(
       decoration: BoxDecoration(
         color: AppColors.backgroundSecondary,
-        borderRadius: BorderRadius.circular(16), // rounded-m3-lg
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: focusNode.hasFocus 
               ? AppColors.accentYellow.withOpacity(0.5) 
@@ -247,7 +241,7 @@ class _LoginScreenState extends State<LoginScreen> {
           prefixIcon: Icon(
             icon,
             size: 18,
-            color: isActive ? AppColors.accentYellow : AppColors.textSecondary,
+            color: (controller.text.isNotEmpty || focusNode.hasFocus) ? AppColors.accentYellow : AppColors.textSecondary,
           ),
         ),
       ),
