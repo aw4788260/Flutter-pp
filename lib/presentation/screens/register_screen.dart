@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import '../widgets/custom_text_field.dart';
+import 'main_wrapper.dart';
+import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -12,53 +13,93 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  // Controllers
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _usernameController = TextEditingController(); // ✅ تمت الإضافة
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+
+  // Focus Nodes for styling
+  final _nameFocus = FocusNode();
+  final _phoneFocus = FocusNode();
+  final _userFocus = FocusNode();
+  final _passFocus = FocusNode();
+  final _confirmPassFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
     FirebaseCrashlytics.instance.log("Entered Register Screen");
+    // Rebuild on focus change
+    for (var node in [_nameFocus, _phoneFocus, _userFocus, _passFocus, _confirmPassFocus]) {
+      node.addListener(() => setState(() {}));
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _nameFocus.dispose();
+    _phoneFocus.dispose();
+    _userFocus.dispose();
+    _passFocus.dispose();
+    _confirmPassFocus.dispose();
+    super.dispose();
   }
 
   void _handleRegister() {
-    // سيتم ربط الـ API لاحقاً
-    print("Register: ${_nameController.text}");
+    // محاكاة إنشاء الحساب والانتقال للرئيسية
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const MainWrapper()),
+      (route) => false,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, color: AppColors.textSecondary),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 16),
+          padding: const EdgeInsets.all(32.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: 16),
+              
+              // Back Button
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundSecondary,
+                  borderRadius: BorderRadius.circular(50),
+                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                ),
+                child: IconButton(
+                  icon: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+
               // Header
               const Text(
                 "CREATE ACCOUNT",
                 style: TextStyle(
-                  fontSize: 28, // text-3xl
+                  fontSize: 24, // text-2xl
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
                   letterSpacing: -0.5,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               const Text(
-                "JOIN OUR COMMUNITY OF LEARNERS.",
+                "FILL IN THE DETAILS TO JOIN US.",
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
@@ -66,40 +107,65 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   letterSpacing: 2.0,
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 32),
 
-              // Form
-              CustomTextField(
-                label: "Full Name",
-                hint: "John Doe",
-                icon: LucideIcons.user,
+              // --- Form Fields ---
+
+              // 1. Full Name
+              _buildInputLabel("Full Name"),
+              const SizedBox(height: 4),
+              _buildTextField(
                 controller: _nameController,
+                focusNode: _nameFocus,
+                hint: "Your full name",
+                icon: LucideIcons.user,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
-              CustomTextField(
-                label: "Phone Number",
-                hint: "01xxxxxxxxx",
-                icon: LucideIcons.phone,
+              // 2. Phone Number
+              _buildInputLabel("Phone Number"),
+              const SizedBox(height: 4),
+              _buildTextField(
                 controller: _phoneController,
+                focusNode: _phoneFocus,
+                hint: "+1 234 567 890",
+                icon: LucideIcons.phone,
+                inputType: TextInputType.phone,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
-              CustomTextField(
-                label: "Password",
-                hint: "••••••••",
+              // 3. Username (NEW ✅)
+              _buildInputLabel("Username"),
+              const SizedBox(height: 4),
+              _buildTextField(
+                controller: _usernameController,
+                focusNode: _userFocus,
+                hint: "@username",
+                icon: LucideIcons.user,
+              ),
+              const SizedBox(height: 16),
+
+              // 4. Password
+              _buildInputLabel("Password"),
+              const SizedBox(height: 4),
+              _buildTextField(
+                controller: _passwordController,
+                focusNode: _passFocus,
+                hint: "Create password",
                 icon: LucideIcons.lock,
                 isPassword: true,
-                controller: _passwordController,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
-              CustomTextField(
-                label: "Confirm Password",
-                hint: "••••••••",
-                icon: LucideIcons.checkCircle, // LucideShieldCheck equivalent
-                isPassword: true,
+              // 5. Confirm Password
+              _buildInputLabel("Confirm Password"),
+              const SizedBox(height: 4),
+              _buildTextField(
                 controller: _confirmPasswordController,
+                focusNode: _confirmPassFocus,
+                hint: "Confirm password",
+                icon: LucideIcons.lock, // LucideLock match
+                isPassword: true,
               ),
               const SizedBox(height: 32),
 
@@ -113,7 +179,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     foregroundColor: AppColors.backgroundPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(24), // rounded-m3-xl
                     ),
                     elevation: 10,
                     shadowColor: AppColors.accentYellow.withOpacity(0.2),
@@ -135,33 +201,100 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
               ),
-              
-              const SizedBox(height: 24),
-              
-              // Login Link
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    "Already have an account? ",
-                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                  ),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Text(
-                      "SIGN IN",
-                      style: TextStyle(
-                        color: AppColors.accentYellow,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        decoration: TextDecoration.underline,
-                        decorationColor: AppColors.accentYellow,
+
+              const SizedBox(height: 32),
+
+              // Footer
+              Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      "Already have an account? ",
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                         Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (context) => const LoginScreen()),
+                        );
+                      },
+                      child: const Text(
+                        "SIGN IN",
+                        style: TextStyle(
+                          color: AppColors.accentYellow,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppColors.accentYellow,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(height: 24),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        label.toUpperCase(),
+        style: const TextStyle(
+          color: AppColors.accentYellow,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required String hint,
+    required IconData icon,
+    bool isPassword = false,
+    TextInputType inputType = TextInputType.text,
+  }) {
+    final isActive = controller.text.isNotEmpty || focusNode.hasFocus;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: focusNode.hasFocus 
+              ? AppColors.accentYellow.withOpacity(0.5) 
+              : Colors.white.withOpacity(0.05),
+        ),
+      ),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        obscureText: isPassword,
+        keyboardType: inputType,
+        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+        cursorColor: AppColors.accentYellow,
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.5)),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          prefixIcon: Icon(
+            icon,
+            size: 18,
+            color: isActive ? AppColors.accentYellow : AppColors.textSecondary,
           ),
         ),
       ),
