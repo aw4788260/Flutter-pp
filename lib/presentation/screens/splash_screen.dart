@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import 'login_screen.dart';
@@ -60,15 +59,16 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
-      body: SizedBox( // ✅ التعديل: إضافة SizedBox ليملأ العرض
+      body: SizedBox(
         width: double.infinity,
         child: Stack(
           alignment: Alignment.center,
           children: [
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center, // ✅ التأكيد على التمركز
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // ✅ اللوجو المتحرك
                 AnimatedBuilder(
                   animation: _bounceAnimation,
                   builder: (context, child) {
@@ -78,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     );
                   },
                   child: Container(
-                    padding: const EdgeInsets.all(32),
+                    padding: const EdgeInsets.all(24), // تعديل المسافة لتناسب اللوجو
                     margin: const EdgeInsets.only(bottom: 32),
                     decoration: BoxDecoration(
                       color: AppColors.backgroundSecondary,
@@ -92,10 +92,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      LucideIcons.graduationCap,
-                      size: 80,
-                      color: AppColors.accentYellow,
+                    // عرض اللوجو المفرغ
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      width: 100,
+                      height: 100,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
