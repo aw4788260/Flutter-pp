@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/models/course_model.dart';
-import 'video_preview_screen.dart'; // سننشئها تالياً
+import 'video_preview_screen.dart';
 
 class ChapterContentsScreen extends StatefulWidget {
   final Chapter chapter;
@@ -14,12 +14,10 @@ class ChapterContentsScreen extends StatefulWidget {
 }
 
 class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
-  String activeTab = 'videos'; // 'videos' | 'pdfs'
+  String activeTab = 'videos';
 
   @override
   Widget build(BuildContext context) {
-    // Filter lessons based on active tab
-    // Note: Mock data currently has type 'video', we can assume 'file' is for PDFs
     final videos = widget.chapter.lessons.where((l) => l.type == LessonType.video).toList();
     final pdfs = widget.chapter.lessons.where((l) => l.type == LessonType.file).toList();
 
@@ -28,7 +26,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header (Sticky effect)
+            // Header
             Container(
               color: AppColors.backgroundPrimary.withOpacity(0.95),
               child: Column(
@@ -128,6 +126,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           decoration: BoxDecoration(
             color: isActive ? AppColors.backgroundPrimary : Colors.transparent,
             borderRadius: BorderRadius.circular(50),
+            // ✅ Fix: Removed inset: true
             boxShadow: isActive ? [const BoxShadow(color: Colors.black12, blurRadius: 4)] : [],
           ),
           child: Text(
@@ -175,7 +174,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundPrimary,
                         borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, inset: true)],
+                        // ✅ Fix: Removed inset: true
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                       ),
                       child: const Icon(LucideIcons.play, color: AppColors.accentOrange, size: 18),
                     ),
@@ -212,7 +212,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                 ),
               ),
               const Divider(height: 1, color: Colors.white10),
-              // Actions
               Row(
                 children: [
                   Expanded(
@@ -227,7 +226,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: _buildActionButton(
                       "Download", 
                       AppColors.textSecondary, 
-                      () { /* Mock Download */ },
+                      () {},
                     ),
                   ),
                 ],
@@ -267,7 +266,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundPrimary,
                         borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, inset: true)],
+                        // ✅ Fix: Removed inset: true
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                       ),
                       child: const Icon(LucideIcons.fileText, color: AppColors.accentYellow, size: 18),
                     ),
