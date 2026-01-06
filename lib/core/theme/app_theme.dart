@@ -10,7 +10,6 @@ class AppTheme {
       scaffoldBackgroundColor: AppColors.backgroundPrimary,
       primaryColor: AppColors.accentYellow,
       
-      // تعريف الألوان الأساسية
       colorScheme: const ColorScheme.dark(
         primary: AppColors.accentYellow,
         onPrimary: AppColors.backgroundPrimary,
@@ -20,11 +19,10 @@ class AppTheme {
         error: AppColors.error,
       ),
 
-      // النصوص (مطابقة لخطوط Roboto/Google Sans)
       textTheme: TextTheme(
         displayLarge: GoogleFonts.roboto(
           color: AppColors.textPrimary, 
-          fontWeight: FontWeight.w900, // Black
+          fontWeight: FontWeight.w900,
           letterSpacing: -1.0,
         ),
         headlineLarge: GoogleFonts.roboto(
@@ -44,24 +42,14 @@ class AppTheme {
           color: AppColors.textSecondary,
           fontSize: 14,
         ),
-        labelLarge: GoogleFonts.roboto( // للأزرار
+        labelLarge: GoogleFonts.roboto(
           fontWeight: FontWeight.bold,
           letterSpacing: 1.0,
         ),
       ),
 
-      // إعدادات الكروت (Cards) - rounded-m3-xl
-      cardTheme: CardTheme(
-        color: AppColors.backgroundSecondary,
-        elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20), // m3-xl approx
-          side: BorderSide(color: Colors.white.withOpacity(0.05), width: 1),
-        ),
-        shadowColor: Colors.black.withOpacity(0.3),
-      ),
-
-      // إعدادات الأزرار (Elevated Button)
+      // ✅ تم حذف CardTheme لتجنب تعارض الأنواع، سيتم الاعتماد على التنسيق المباشر في الـ Widgets
+      
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.accentYellow,
@@ -69,19 +57,18 @@ class AppTheme {
           elevation: 4,
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16), // m3-lg
+            borderRadius: BorderRadius.circular(16),
           ),
           textStyle: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0),
         ),
       ),
 
-      // حقول الإدخال (Inputs)
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.backgroundSecondary,
         contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16), // m3-lg
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: Colors.white.withOpacity(0.05)),
         ),
         enabledBorder: OutlineInputBorder(
@@ -90,7 +77,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.accentYellow, width: 1), // focus:border-accent-yellow/50
+          borderSide: const BorderSide(color: AppColors.accentYellow, width: 1),
         ),
         hintStyle: const TextStyle(color: AppColors.textSecondary),
       ),
