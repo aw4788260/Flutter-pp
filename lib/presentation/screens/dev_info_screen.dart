@@ -68,7 +68,8 @@ class DevInfoScreen extends StatelessWidget {
                               color: AppColors.backgroundPrimary,
                               borderRadius: BorderRadius.circular(24),
                               border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, inset: true)],
+                              // ✅ Fix: Removed inset: true
+                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                             ),
                             child: const Icon(LucideIcons.info, size: 40, color: AppColors.accentYellow),
                           ),
@@ -191,7 +192,8 @@ class DevInfoScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.backgroundPrimary,
                   borderRadius: BorderRadius.circular(8),
-                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, inset: true)],
+                  // ✅ Fix: Removed inset: true
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                 ),
                 child: Icon(icon, color: AppColors.accentYellow, size: 18),
               ),
