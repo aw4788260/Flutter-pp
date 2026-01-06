@@ -3,7 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/models/course_model.dart';
 import 'chapter_contents_screen.dart';
-import 'exam_view_screen.dart'; // سننشئها لاحقاً
+import 'exam_view_screen.dart'; // ✅ تم الربط
 
 class SubjectMaterialsScreen extends StatefulWidget {
   final CourseModel course;
@@ -20,8 +20,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Filter exams for this subject (assuming exam has subjectId, or show all if general)
-    // For now showing all exams in course for simplicity matching mock logic
+    // عرض جميع امتحانات الكورس (لأغراض المحاكاة)
     final exams = widget.course.exams;
 
     return Scaffold(
@@ -196,9 +195,12 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                       itemBuilder: (context, index) {
                         final exam = exams[index];
                         return GestureDetector(
+                          // ✅ الانتقال لشاشة الامتحان
                           onTap: () {
-                             // Navigate to Exam View (Placeholder for now)
-                             // Navigator.push(context, MaterialPageRoute(builder: (_) => ExamViewScreen(exam: exam)));
+                             Navigator.push(
+                               context, 
+                               MaterialPageRoute(builder: (_) => ExamViewScreen(exam: exam)),
+                             );
                           },
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 12),
