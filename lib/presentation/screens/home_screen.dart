@@ -4,8 +4,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/mock_data.dart';
 import 'course_details_screen.dart';
-import 'my_requests_screen.dart';
-import 'teacher_profile_screen.dart';
+import 'my_requests_screen.dart'; // ✅ تم الربط
+import 'teacher_profile_screen.dart'; // ✅ تم الربط
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     // Slider Timer (8 seconds)
     _timer = Timer.periodic(const Duration(seconds: 8), (Timer timer) {
-      if (_currentSlide < _encouragements.length) { 
+      if (_currentSlide < _encouragements.length - 1) {
         _currentSlide++;
       } else {
         _currentSlide = 0;
@@ -106,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      // My Requests Button
+                      // My Requests Button ✅
                       GestureDetector(
                         onTap: () {
                            Navigator.push(
@@ -185,43 +185,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(
                       height: 96,
                       child: Container(
-                        // ✅ إضافة clipBehavior لضمان قص الصورة الزائدة عن الحواف الدائرية
-                        clipBehavior: Clip.antiAlias, 
                         decoration: BoxDecoration(
                           color: Colors.grey[300],
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Stack(
                           children: [
-                            // إخفاء علامة الاقتباس إذا كانت الشريحة هي اللوجو (index 0)
-                            if (_currentSlide != 0) 
-                              Positioned(
-                                top: 12, left: 16,
-                                child: Icon(LucideIcons.quote, color: AppColors.backgroundSecondary.withOpacity(0.2), size: 32),
-                              ),
-                            
+                            Positioned(
+                              top: 12, left: 16,
+                              child: Icon(LucideIcons.quote, color: AppColors.backgroundSecondary.withOpacity(0.2), size: 32),
+                            ),
                             PageView.builder(
                               controller: _pageController,
-                              itemCount: _encouragements.length + 1,
+                              itemCount: _encouragements.length,
                               onPageChanged: (idx) => setState(() => _currentSlide = idx),
                               itemBuilder: (context, index) {
-                                // ✅ تعديل: عرض اللوجو بعرض كامل
-                                if (index == 0) {
-                                  return SizedBox(
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    child: Image.asset(
-                                      'assets/images/logo.png',
-                                      fit: BoxFit.cover, // يملأ المساحة بالكامل
-                                    ),
-                                  );
-                                }
-                                
                                 return Center(
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 32),
                                     child: Text(
-                                      _encouragements[index - 1].toUpperCase(),
+                                      _encouragements[index].toUpperCase(),
                                       textAlign: TextAlign.center,
                                       style: const TextStyle(
                                         color: AppColors.backgroundPrimary,
@@ -240,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               left: 0, right: 0,
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
-                                children: List.generate(_encouragements.length + 1, (index) {
+                                children: List.generate(_encouragements.length, (index) {
                                   return AnimatedContainer(
                                     duration: const Duration(milliseconds: 300),
                                     margin: const EdgeInsets.symmetric(horizontal: 2),
