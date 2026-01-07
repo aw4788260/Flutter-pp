@@ -52,7 +52,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    // ✅ تم إرجاعها لحرف واحد فقط (A) كما طلبت
+                    // Avatar: First Letter Only
                     Container(
                       width: 64, height: 64,
                       decoration: BoxDecoration(
@@ -163,37 +163,12 @@ class ProfileScreen extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    // ✅ اللوجو المفرغ داخل زر App Information
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevInfoScreen())),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: AppColors.backgroundPrimary,
-                                  borderRadius: BorderRadius.circular(8),
-                                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
-                                ),
-                                // هنا نضع الصورة بدلاً من الأيقونة
-                                child: Image.asset('assets/images/logo.png', width: 18, height: 18),
-                              ),
-                              const SizedBox(width: 16),
-                              const Expanded(
-                                child: Text(
-                                  "App Information",
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                                ),
-                              ),
-                              const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
-                            ],
-                          ),
-                        ),
-                      ),
+                    // ✅ تم استرجاع الأيقونة العادية (LucideIcons.info) هنا بدلاً من الصورة
+                    _buildMenuItem(
+                      context, 
+                      icon: LucideIcons.info, 
+                      title: "App Information", 
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevInfoScreen()))
                     ),
                   ],
                 ),
@@ -229,7 +204,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // Helper method for standard items (if needed for others)
   Widget _buildMenuItem(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap, String? badge}) {
     return Material(
       color: Colors.transparent,
