@@ -55,32 +55,17 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 64),
 
               // --- Header Section ---
+              // ✅ اللوجو معروض بمفرده بدون خلفية
               Center(
-                child: Container(
-                  width: 100, height: 100, // حجم مناسب للوجو
-                  margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(
-                    color: AppColors.backgroundSecondary,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.05)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 20,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  // ✅ اللوجو المفرغ هنا
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      fit: BoxFit.contain,
-                    ),
-                  ),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  width: 120, // حجم كبير وواضح
+                  height: 120,
+                  fit: BoxFit.contain,
                 ),
               ),
+              const SizedBox(height: 24),
+              
               const Center(
                 child: Text(
                   "LOGIN",
