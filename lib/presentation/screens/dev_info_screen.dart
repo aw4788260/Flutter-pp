@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart'; // ✅ استيراد المكتبة
 import '../../core/constants/app_colors.dart';
 
 class DevInfoScreen extends StatelessWidget {
@@ -70,15 +71,13 @@ class DevInfoScreen extends StatelessWidget {
                               border: Border.all(color: Colors.white.withOpacity(0.05)),
                               boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                             ),
-                            // استخدام اللوجو هنا أيضاً بدلاً من الأيقونة
                             child: Padding(
                               padding: const EdgeInsets.all(16.0),
                               child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                             ),
                           ),
-                          // ✅ حذفنا النص "MeD O7aS Pro" واستبدلناه بـ App Info
                           const Text(
-                            "App Info", 
+                            "مــــــداد",
                             style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
@@ -92,21 +91,31 @@ class DevInfoScreen extends StatelessWidget {
                             style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                           ),
                           const SizedBox(height: 32),
+                          
+                          // ✅ أزرار التواصل الجديدة (تليجرام و واتساب)
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _buildSocialBtn(LucideIcons.github),
-                              const SizedBox(width: 16),
-                              _buildSocialBtn(LucideIcons.twitter),
-                              const SizedBox(width: 16),
-                              _buildSocialBtn(LucideIcons.globe),
+                              // Telegram Button
+                              _buildSocialBtn(
+                                icon: LucideIcons.send, // أيقونة الإرسال لتليجرام
+                                url: "https://t.me/A7MeDWaLiD0",
+                              ),
+                              const SizedBox(width: 24),
+                              // WhatsApp Button
+                              _buildSocialBtn(
+                                icon: LucideIcons.phone, // أيقونة الهاتف لواتساب
+                                url: "https://wa.me/201224984810",
+                              ),
                             ],
                           )
                         ],
                       ),
                     ),
-                    // ... (باقي الكود كما هو)
+                    
                     const SizedBox(height: 32),
+                    
+                    // Legal & Docs
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Padding(
@@ -132,6 +141,23 @@ class DevInfoScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                    
+                    const SizedBox(height: 32),
+                    
+                    // Developers Info
+                    const Text(
+                      "DEVELOPERS",
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      "A7MeD WaLiD & 5@LiD",
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                    ),
+                    const Text(
+                      "Egypt",
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
                     const SizedBox(height: 48),
                   ],
                 ),
@@ -143,16 +169,27 @@ class DevInfoScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSocialBtn(IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundPrimary,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+  // ✅ دالة بناء الزر مع رابط مخفي
+  Widget _buildSocialBtn({required IconData icon, required String url}) {
+    return GestureDetector(
+      onTap: () async {
+        final Uri uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          debugPrint("Could not launch $url");
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16), // تكبير منطقة اللمس
+        decoration: BoxDecoration(
+          color: AppColors.backgroundPrimary,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+        ),
+        child: Icon(icon, color: AppColors.accentYellow, size: 24),
       ),
-      child: Icon(icon, color: AppColors.accentYellow, size: 20),
     );
   }
 
