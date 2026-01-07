@@ -68,13 +68,17 @@ class DevInfoScreen extends StatelessWidget {
                               color: AppColors.backgroundPrimary,
                               borderRadius: BorderRadius.circular(24),
                               border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              // ✅ Fix: Removed inset: true
                               boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                             ),
-                            child: const Icon(LucideIcons.info, size: 40, color: AppColors.accentYellow),
+                            // استخدام اللوجو هنا أيضاً بدلاً من الأيقونة
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                            ),
                           ),
+                          // ✅ حذفنا النص "MeD O7aS Pro" واستبدلناه بـ App Info
                           const Text(
-                            "MeD O7aS Pro",
+                            "App Info", 
                             style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
@@ -101,22 +105,13 @@ class DevInfoScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                    // ... (باقي الكود كما هو)
                     const SizedBox(height: 32),
-
-                    // Legal & Docs
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Padding(
                         padding: const EdgeInsets.only(left: 8, bottom: 12),
-                        child: Text(
-                          "LEGAL & DOCS",
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 2.0,
-                          ),
-                        ),
+                        child: Text("LEGAL & DOCS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0)),
                       ),
                     ),
                     Container(
@@ -136,23 +131,6 @@ class DevInfoScreen extends StatelessWidget {
                           _buildDocItem(LucideIcons.mail, "Contact Support"),
                         ],
                       ),
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Developer
-                    const Text(
-                      "DEVELOPER",
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "Creative Digital Labs",
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                    ),
-                    const Text(
-                      "London, United Kingdom",
-                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 48),
                   ],
@@ -192,7 +170,6 @@ class DevInfoScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.backgroundPrimary,
                   borderRadius: BorderRadius.circular(8),
-                  // ✅ Fix: Removed inset: true
                   boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                 ),
                 child: Icon(icon, color: AppColors.accentYellow, size: 18),
