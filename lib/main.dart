@@ -51,7 +51,7 @@ class EduVantageApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'MeD O7aS Pro', // الاسم الظاهر في التطبيق
+      title: 'مــــداد', // الاسم الظاهر في التطبيق
       theme: AppTheme.darkTheme, // الثيم المطابق لـ Gunmetal
       themeMode: ThemeMode.dark,
       home: const SplashScreen(), // نقطة البداية (Splash -> Login -> Home)
