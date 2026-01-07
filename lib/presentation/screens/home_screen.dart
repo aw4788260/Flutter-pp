@@ -33,7 +33,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     // Slider Timer (8 seconds)
     _timer = Timer.periodic(const Duration(seconds: 8), (Timer timer) {
-      // ✅ التعديل: التعامل مع عدد الشرائح + 1 (اللوجو)
       if (_currentSlide < _encouragements.length) { 
         _currentSlide++;
       } else {
@@ -86,7 +85,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-                          // ✅ تم استرجاع كلمة WELCOME هنا
                           Text(
                             "WELCOME",
                             style: TextStyle(
@@ -187,6 +185,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(
                       height: 96,
                       child: Container(
+                        // ✅ إضافة clipBehavior لضمان قص الصورة الزائدة عن الحواف الدائرية
+                        clipBehavior: Clip.antiAlias, 
                         decoration: BoxDecoration(
                           color: Colors.grey[300],
                           borderRadius: BorderRadius.circular(16),
@@ -202,24 +202,21 @@ class _HomeScreenState extends State<HomeScreen> {
                             
                             PageView.builder(
                               controller: _pageController,
-                              // ✅ زيادة العدد +1 للوجو
                               itemCount: _encouragements.length + 1,
                               onPageChanged: (idx) => setState(() => _currentSlide = idx),
                               itemBuilder: (context, index) {
-                                // ✅ إذا كان الاندكس 0 اعرض اللوجو
+                                // ✅ تعديل: عرض اللوجو بعرض كامل
                                 if (index == 0) {
-                                  return Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Image.asset(
-                                        'assets/images/logo.png',
-                                        fit: BoxFit.contain,
-                                      ),
+                                  return SizedBox(
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    child: Image.asset(
+                                      'assets/images/logo.png',
+                                      fit: BoxFit.cover, // يملأ المساحة بالكامل
                                     ),
                                   );
                                 }
                                 
-                                // ✅ وإلا اعرض الاقتباس (مع إنقاص 1 من الاندكس)
                                 return Center(
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 32),
