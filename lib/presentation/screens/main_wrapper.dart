@@ -4,8 +4,7 @@ import '../../core/constants/app_colors.dart';
 import 'home_screen.dart';
 import 'my_courses_screen.dart';
 import 'profile_screen.dart';
-// سنقوم بإنشاء هذه الشاشة لاحقاً، حالياً نستخدم Placeholder
-class DownloadedFilesScreen extends StatelessWidget { const DownloadedFilesScreen({super.key}); @override Widget build(BuildContext context) => const Scaffold(body: Center(child: Text("Downloads"))); }
+import 'downloaded_files_screen.dart'; // ✅ تم إضافة الاستيراد الصحيح للصفحة
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -20,7 +19,7 @@ class _MainWrapperState extends State<MainWrapper> {
   final List<Widget> _pages = [
     const HomeScreen(),
     const MyCoursesScreen(),
-    const DownloadedFilesScreen(),
+    const DownloadedFilesScreen(), // ✅ الآن سيتم استدعاء الصفحة الحقيقية
     const ProfileScreen(),
   ];
 
