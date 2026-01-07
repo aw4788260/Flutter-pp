@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:url_launcher/url_launcher.dart'; // ✅ استيراد المكتبة
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 
 class DevInfoScreen extends StatelessWidget {
@@ -62,20 +62,14 @@ class DevInfoScreen extends StatelessWidget {
                       ),
                       child: Column(
                         children: [
+                          // ✅ اللوجو معروض بمفرده بدون مربع أو حدود
                           Container(
-                            width: 80, height: 80,
+                            width: 100, 
+                            height: 100,
                             margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundPrimary,
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                            ),
+                            child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                           ),
+                          
                           const Text(
                             "مــــــداد",
                             style: TextStyle(
@@ -92,19 +86,19 @@ class DevInfoScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 32),
                           
-                          // ✅ أزرار التواصل الجديدة (تليجرام و واتساب)
+                          // أزرار التواصل
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               // Telegram Button
                               _buildSocialBtn(
-                                icon: LucideIcons.send, // أيقونة الإرسال لتليجرام
+                                icon: LucideIcons.send, 
                                 url: "https://t.me/A7MeDWaLiD0",
                               ),
                               const SizedBox(width: 24),
-                              // WhatsApp Button
+                              // ✅ WhatsApp Button (تم تغيير الأيقونة)
                               _buildSocialBtn(
-                                icon: LucideIcons.phone, // أيقونة الهاتف لواتساب
+                                icon: LucideIcons.messageCircle, // أيقونة الرسائل بدلاً من الهاتف
                                 url: "https://wa.me/201224984810",
                               ),
                             ],
@@ -169,7 +163,6 @@ class DevInfoScreen extends StatelessWidget {
     );
   }
 
-  // ✅ دالة بناء الزر مع رابط مخفي
   Widget _buildSocialBtn({required IconData icon, required String url}) {
     return GestureDetector(
       onTap: () async {
@@ -181,7 +174,7 @@ class DevInfoScreen extends StatelessWidget {
         }
       },
       child: Container(
-        padding: const EdgeInsets.all(16), // تكبير منطقة اللمس
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.backgroundPrimary,
           shape: BoxShape.circle,
