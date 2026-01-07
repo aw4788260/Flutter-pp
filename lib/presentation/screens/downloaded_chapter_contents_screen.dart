@@ -219,7 +219,8 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                           decoration: BoxDecoration(
                             color: AppColors.backgroundPrimary,
                             borderRadius: BorderRadius.circular(8),
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, inset: true)],
+                            // ✅ تم التصحيح: إزالة inset: true
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                           ),
                           child: Icon(icon, color: activeTab == 'videos' ? AppColors.accentOrange : AppColors.accentYellow, size: 14),
                         ),
