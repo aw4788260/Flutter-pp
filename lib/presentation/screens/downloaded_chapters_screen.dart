@@ -115,7 +115,8 @@ class DownloadedChaptersScreen extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: AppColors.backgroundPrimary,
                               borderRadius: BorderRadius.circular(12),
-                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, inset: true)],
+                              // ✅ تم التصحيح: إزالة inset: true
+                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                             ),
                             child: const Icon(LucideIcons.bookOpen, color: AppColors.accentYellow, size: 18),
                           ),
