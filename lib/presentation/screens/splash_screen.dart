@@ -57,6 +57,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: SizedBox(
@@ -68,7 +70,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ✅ اللوجو المتحرك
+                // ✅ اللوجو المتحرك بدون مربع
                 AnimatedBuilder(
                   animation: _bounceAnimation,
                   builder: (context, child) {
@@ -77,41 +79,17 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       child: child,
                     );
                   },
-                  child: Container(
-                    padding: const EdgeInsets.all(24), // تعديل المسافة لتناسب اللوجو
-                    margin: const EdgeInsets.only(bottom: 32),
-                    decoration: BoxDecoration(
-                      color: AppColors.backgroundSecondary,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white.withOpacity(0.05)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 25,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    // عرض اللوجو المفرغ
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.contain,
-                    ),
+                  // عرض اللوجو مباشرة بحجم كبير
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    width: screenWidth * 0.6, // يأخذ 60% من عرض الشاشة
+                    fit: BoxFit.contain,
                   ),
                 ),
+                
+                const SizedBox(height: 16),
 
-                const Text(
-                  "MeD O7aS",
-                  style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -1.0,
-                  ),
-                ),
-                const SizedBox(height: 8),
+                // ✅ تم حذف النص "MeD O7aS"
 
                 const Text(
                   "EMPOWERING YOUR GROWTH",
