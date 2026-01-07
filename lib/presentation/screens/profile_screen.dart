@@ -52,7 +52,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    // ✅ Avatar: Logo Image
+                    // ✅ تم إرجاعها لحرف واحد فقط (A) كما طلبت
                     Container(
                       width: 64, height: 64,
                       decoration: BoxDecoration(
@@ -60,16 +60,18 @@ class ProfileScreen extends StatelessWidget {
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.accentYellow.withOpacity(0.5), width: 2),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(10.0), // مسافة داخلية ليكون اللوجو واضحاً
-                        child: Image.asset(
-                          'assets/images/logo.png',
-                          fit: BoxFit.contain,
+                      child: const Center(
+                        child: Text(
+                          "A",
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.accentYellow,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 16),
-                    // Texts
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,7 +104,6 @@ class ProfileScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // Edit Icon
                     GestureDetector(
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())),
                       child: Container(
@@ -120,17 +121,11 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
-              // Account Settings
               const Padding(
                 padding: EdgeInsets.only(left: 8, bottom: 12),
                 child: Text(
                   "ACCOUNT SETTINGS",
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textSecondary,
-                    letterSpacing: 2.0,
-                  ),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
                 ),
               ),
               Container(
@@ -152,17 +147,11 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
-              // General
               const Padding(
                 padding: EdgeInsets.only(left: 8, bottom: 12),
                 child: Text(
                   "GENERAL",
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textSecondary,
-                    letterSpacing: 2.0,
-                  ),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
                 ),
               ),
               Container(
@@ -174,14 +163,43 @@ class ProfileScreen extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    _buildMenuItem(context, icon: LucideIcons.info, title: "App Information", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevInfoScreen()))),
-                    // ❌ تم حذف خيار المشاركة
+                    // ✅ اللوجو المفرغ داخل زر App Information
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevInfoScreen())),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.backgroundPrimary,
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
+                                ),
+                                // هنا نضع الصورة بدلاً من الأيقونة
+                                child: Image.asset('assets/images/logo.png', width: 18, height: 18),
+                              ),
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Text(
+                                  "App Information",
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                                ),
+                              ),
+                              const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
-              // Logout
               GestureDetector(
                 onTap: () {
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
@@ -211,6 +229,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  // Helper method for standard items (if needed for others)
   Widget _buildMenuItem(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap, String? badge}) {
     return Material(
       color: Colors.transparent,
