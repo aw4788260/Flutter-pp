@@ -34,7 +34,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       final res = await Dio().get(
         '$_baseUrl/api/public/get-course-sales-details',
         queryParameters: {'courseCode': widget.courseCode},
-        options: Options(headers: {'x-user-id': userId}),
+        options: Options(headers: {
+    'x-user-id': userId,
+    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+  }),
       );
 
       if (mounted) {
