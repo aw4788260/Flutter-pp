@@ -6,7 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import 'main_wrapper.dart'; // للعودة للرئيسية بعد النجاح
+import 'main_wrapper.dart'; 
 
 class CheckoutScreen extends StatefulWidget {
   final double amount;
@@ -30,7 +30,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _isUploading = false;
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
-  // اختيار صورة من المعرض
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
@@ -42,7 +41,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  // إرسال الطلب
   Future<void> _submitOrder() async {
     if (_receiptImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -57,30 +55,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
 
-      // تجهيز البيانات
       String fileName = _receiptImage!.path.split('/').last;
       
       FormData formData = FormData.fromMap({
         'receiptFile': await MultipartFile.fromFile(_receiptImage!.path, filename: fileName),
         'user_note': _noteController.text,
-        'selectedItems': jsonEncode(widget.selectedItems), // إرسال العناصر كـ JSON
+        'selectedItems': jsonEncode(widget.selectedItems),
       });
 
       final response = await Dio().post(
         '$_baseUrl/api/student/request-course',
         data: formData,
         options: Options(
-    headers: {
-      'x-user-id': userId,
-      'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
-    },
-    validateStatus: (status) => status! < 500,
-  ),
+          headers: {
+            'x-user-id': userId,
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+          },
+          validateStatus: (status) => status! < 500,
+        ),
       );
 
       if (response.statusCode == 200 && response.data['success'] == true) {
         if (mounted) {
-          // عرض نافذة نجاح
           showDialog(
             context: context,
             barrierDismissible: false,
@@ -143,7 +139,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // --- Header ---
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
@@ -174,7 +169,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Amount Card
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(32),
@@ -194,7 +188,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    // Payment Methods
                     if (vodafone.isNotEmpty)
                       _buildPaymentMethod("VODAFONE CASH", vodafone, LucideIcons.smartphone),
                     
@@ -203,7 +196,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                     const SizedBox(height: 32),
                     
-                    // Upload Receipt
                     const Text("UPLOAD RECEIPT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
                     const SizedBox(height: 16),
                     GestureDetector(
@@ -214,9 +206,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.backgroundSecondary,
                           borderRadius: BorderRadius.circular(20),
+                          // ✅ تم التصحيح: استخدام BorderStyle.solid دائماً لأن dashed غير مدعوم
                           border: Border.all(
                             color: _receiptImage != null ? AppColors.accentYellow : Colors.white.withOpacity(0.1),
-                            style: _receiptImage != null ? BorderStyle.solid : BorderStyle.dashed,
+                            style: BorderStyle.solid, 
                             width: 2,
                           ),
                           image: _receiptImage != null 
@@ -246,7 +239,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                     const SizedBox(height: 32),
                     
-                    // Notes
                     const Text("NOTES (OPTIONAL)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
                     const SizedBox(height: 16),
                     Container(
@@ -273,7 +265,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
 
-            // Submit Button
             Padding(
               padding: const EdgeInsets.all(24),
               child: SizedBox(
