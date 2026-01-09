@@ -1,9 +1,11 @@
 import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import 'main_wrapper.dart';
@@ -17,10 +19,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _identifierController = TextEditingController();
+  // تم تغيير الاسم ليعكس أنه للمستخدم فقط
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   
-  // Focus Nodes للتصميم
   final FocusNode _userFocus = FocusNode();
   final FocusNode _passFocus = FocusNode();
 
@@ -34,35 +36,43 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     FirebaseCrashlytics.instance.log("Entered Login Screen");
-    // تحديث الواجهة عند تغيير التركيز لتلوين الحقول
     _userFocus.addListener(() => setState(() {}));
     _passFocus.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
-    _identifierController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     _userFocus.dispose();
     _passFocus.dispose();
     super.dispose();
   }
 
-  // توليد أو جلب بصمة الجهاز
-  String _getOrCreateDeviceId(Box box) {
-    String? deviceId = box.get('device_id');
-    if (deviceId == null) {
+  // دالة جلب معرف الجهاز الحقيقي
+  Future<String> _getAndSaveDeviceId(Box box) async {
+    String deviceId;
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        deviceId = 'android_${androidInfo.id}'; 
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        deviceId = 'ios_${iosInfo.identifierForVendor}';
+      } else {
+        deviceId = 'unknown_${DateTime.now().millisecondsSinceEpoch}';
+      }
+    } catch (e) {
       final random = Random();
-      final date = DateTime.now().millisecondsSinceEpoch;
-      final rand = random.nextInt(1000000);
-      deviceId = 'app_v1_${date}_$rand';
-      box.put('device_id', deviceId);
+      deviceId = 'fallback_${DateTime.now().millisecondsSinceEpoch}_${random.nextInt(1000)}';
     }
+    await box.put('device_id', deviceId);
     return deviceId;
   }
 
   Future<void> _handleLogin() async {
-    final username = _identifierController.text.trim();
+    final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {
@@ -77,13 +87,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       var box = await Hive.openBox('auth_box');
-      final deviceId = _getOrCreateDeviceId(box);
+      final deviceId = await _getAndSaveDeviceId(box);
 
-      // 1. طلب تسجيل الدخول
       final response = await _dio.post(
         '$_baseUrl/api/auth/login',
         data: {
-          'username': username,
+          'username': username, // إرسال اسم المستخدم فقط
           'password': password,
           'deviceId': deviceId,
         },
@@ -98,13 +107,11 @@ class _LoginScreenState extends State<LoginScreen> {
       final data = response.data;
 
       if (response.statusCode == 200 && data['success'] == true) {
-        // 2. حفظ البيانات
         final userMap = data['user'];
         await box.put('user_id', userMap['id'].toString());
         await box.put('username', userMap['username']);
         await box.put('first_name', userMap['firstName']);
         
-        // 3. جلب بيانات التهيئة قبل الدخول
         await _fetchInitData(userMap['id'].toString(), deviceId);
 
         if (mounted) {
@@ -154,7 +161,6 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               const SizedBox(height: 64),
 
-              // Header Section
               Center(
                 child: Image.asset(
                   'assets/images/logo.png',
@@ -190,7 +196,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 48),
 
-              // Error Message
               if (_errorMessage != null)
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -207,13 +212,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-              // Form Section
-              _buildInputLabel("Username or Phone"),
+              // ✅ التعديل هنا: اسم المستخدم فقط
+              _buildInputLabel("Username"),
               const SizedBox(height: 8),
               _buildTextField(
-                controller: _identifierController,
+                controller: _usernameController,
                 focusNode: _userFocus,
-                hint: "e.g. @john or 01012345678",
+                hint: "Enter your username", // تلميح بسيط
                 icon: LucideIcons.user,
               ),
               const SizedBox(height: 24),
