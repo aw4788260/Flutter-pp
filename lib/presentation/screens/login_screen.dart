@@ -19,17 +19,39 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
+  
+  // Focus Nodes للتصميم
+  final FocusNode _userFocus = FocusNode();
+  final FocusNode _passFocus = FocusNode();
+
   final Dio _dio = Dio();
-  final String _baseUrl = 'https://courses.aw478260.dpdns.org'; // رابط السيرفر
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   bool _isLoading = false;
   String? _errorMessage;
 
-  // لتوليد بصمة جهاز فريدة إذا لم تكن موجودة
+  @override
+  void initState() {
+    super.initState();
+    FirebaseCrashlytics.instance.log("Entered Login Screen");
+    // تحديث الواجهة عند تغيير التركيز لتلوين الحقول
+    _userFocus.addListener(() => setState(() {}));
+    _passFocus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _identifierController.dispose();
+    _passwordController.dispose();
+    _userFocus.dispose();
+    _passFocus.dispose();
+    super.dispose();
+  }
+
+  // توليد أو جلب بصمة الجهاز
   String _getOrCreateDeviceId(Box box) {
     String? deviceId = box.get('device_id');
     if (deviceId == null) {
-      // توليد معرف عشوائي كبصمة للجهاز
       final random = Random();
       final date = DateTime.now().millisecondsSinceEpoch;
       final rand = random.nextInt(1000000);
@@ -44,7 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = "يرجى إدخال اسم المستخدم وكلمة المرور");
+      setState(() => _errorMessage = "Please enter username and password");
       return;
     }
 
@@ -65,24 +87,21 @@ class _LoginScreenState extends State<LoginScreen> {
           'password': password,
           'deviceId': deviceId,
         },
-        options: Options(
-          validateStatus: (status) => status! < 500, // لمعالجة أخطاء 401/403 يدوياً
-        ),
+        options: Options(validateStatus: (status) => status! < 500),
       );
 
       final data = response.data;
 
       if (response.statusCode == 200 && data['success'] == true) {
-        // 2. حفظ البيانات محلياً
+        // 2. حفظ البيانات
         final userMap = data['user'];
         await box.put('user_id', userMap['id'].toString());
         await box.put('username', userMap['username']);
         await box.put('first_name', userMap['firstName']);
         
-        // 3. جلب بيانات التهيئة (الكورسات والاشتراكات) قبل الدخول
+        // 3. جلب بيانات التهيئة قبل الدخول
         await _fetchInitData(userMap['id'].toString(), deviceId);
 
-        // 4. الانتقال للرئيسية
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -90,33 +109,26 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
-        setState(() {
-          _errorMessage = data['message'] ?? 'فشل تسجيل الدخول';
-        });
+        setState(() => _errorMessage = data['message'] ?? 'Login failed');
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack);
-      setState(() => _errorMessage = "حدث خطأ في الاتصال بالسيرفر");
+      setState(() => _errorMessage = "Connection Error");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // دالة مساعدة لجلب البيانات الأولية وتحديث State التطبيق
   Future<void> _fetchInitData(String userId, String deviceId) async {
     try {
       final response = await _dio.get(
         '$_baseUrl/api/public/get-app-init-data',
-        options: Options(headers: {
-          'x-user-id': userId,
-          'x-device-id': deviceId,
-        }),
+        options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId}),
       );
       if (response.statusCode == 200 && response.data['success'] == true) {
         AppState().updateFromInitData(response.data);
       }
     } catch (e) {
-      // حتى لو فشل جلب البيانات، سنسمح بالدخول وسيحاول التطبيق جلبها لاحقاً
       debugPrint("Init Data Error: $e");
     }
   }
@@ -132,6 +144,8 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 64),
+
+              // Header Section
               Center(
                 child: Image.asset(
                   'assets/images/logo.png',
@@ -141,6 +155,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+              
               const Center(
                 child: Text(
                   "LOGIN",
@@ -166,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 48),
 
-              // عرض رسالة الخطأ إن وجدت
+              // Error Message
               if (_errorMessage != null)
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -183,15 +198,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
+              // Form Section
+              _buildInputLabel("Username or Phone"),
+              const SizedBox(height: 8),
               _buildTextField(
                 controller: _identifierController,
-                hint: "Username",
+                focusNode: _userFocus,
+                hint: "e.g. @john or 01012345678",
                 icon: LucideIcons.user,
               ),
               const SizedBox(height: 24),
+
+              _buildInputLabel("Password"),
+              const SizedBox(height: 8),
               _buildTextField(
                 controller: _passwordController,
-                hint: "Password",
+                focusNode: _passFocus,
+                hint: "••••••••",
                 icon: LucideIcons.lock,
                 isPassword: true,
               ),
@@ -239,7 +262,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   GestureDetector(
                     onTap: () {
-                      Navigator.push(
+                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => const RegisterScreen()),
                       );
@@ -264,8 +287,24 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Widget _buildInputLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        label.toUpperCase(),
+        style: const TextStyle(
+          color: AppColors.accentYellow,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
+
   Widget _buildTextField({
     required TextEditingController controller,
+    required FocusNode focusNode,
     required String hint,
     required IconData icon,
     bool isPassword = false,
@@ -275,11 +314,14 @@ class _LoginScreenState extends State<LoginScreen> {
         color: AppColors.backgroundSecondary,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.05),
+          color: focusNode.hasFocus 
+              ? AppColors.accentYellow.withOpacity(0.5) 
+              : Colors.white.withOpacity(0.05),
         ),
       ),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
         obscureText: isPassword,
         style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
         cursorColor: AppColors.accentYellow,
@@ -287,11 +329,13 @@ class _LoginScreenState extends State<LoginScreen> {
           hintText: hint,
           hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.5)),
           border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
           prefixIcon: Icon(
             icon,
             size: 18,
-            color: AppColors.textSecondary,
+            color: (controller.text.isNotEmpty || focusNode.hasFocus) ? AppColors.accentYellow : AppColors.textSecondary,
           ),
         ),
       ),
