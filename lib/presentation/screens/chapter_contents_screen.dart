@@ -9,7 +9,6 @@ import 'video_player_screen.dart'; // ✅ للمشغل
 import 'pdf_viewer_screen.dart'; // ✅ للـ PDF
 
 class ChapterContentsScreen extends StatefulWidget {
-  // نستقبل الشابتر كـ Map لأننا نستخدم الـ API الآن
   final Map<String, dynamic> chapter;
 
   const ChapterContentsScreen({super.key, required this.chapter});
@@ -22,7 +21,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   String activeTab = 'videos'; // videos | pdfs
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
-  // --- دوال التشغيل والتحميل (نفس المنطق الموحد) ---
+  // --- دوال التشغيل والتحميل (تمت إعادتها لتعمل مع البيانات الحقيقية) ---
   Future<void> _playVideo(Map<String, dynamic> video) async {
     showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
 
@@ -32,10 +31,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         '$_baseUrl/api/secure/get-video-id',
         queryParameters: {'lessonId': video['id'].toString()}, 
         options: Options(headers: {
-    'x-user-id': box.get('user_id'), 
-    'x-device-id': box.get('device_id'),
-    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
-  }),
+          'x-user-id': box.get('user_id'), 
+          'x-device-id': box.get('device_id'),
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
       );
 
       if (mounted) Navigator.pop(context);
@@ -79,7 +78,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // استخراج الفيديوهات والملفات من الـ Map
+    // استخراج البيانات من الـ Map بدلاً من الموديل
     final videos = (widget.chapter['videos'] as List? ?? []).cast<Map<String, dynamic>>();
     final pdfs = (widget.chapter['pdfs'] as List? ?? []).cast<Map<String, dynamic>>();
 
@@ -88,7 +87,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
+            // Header (نفس تصميمك)
             Container(
               color: AppColors.backgroundPrimary.withOpacity(0.95),
               child: Column(
