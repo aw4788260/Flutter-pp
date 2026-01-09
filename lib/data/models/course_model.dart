@@ -80,31 +80,40 @@ class ExamModel {
 }
 
 // --- Main Course Model ---
+// استبدل المحتوى الحالي بهذا الكود المحدث
 class CourseModel {
   final String id;
   final String title;
-  final String teacherId;
-  final double rating;
-  final int reviews;
-  final String description;
+  final String instructorName; // الجديد
+  final String code;           // الجديد
   final double fullPrice;
-  final String category;
-  final List<Subject> subjects;
-  final List<ExamModel> exams;
-  
-  // خاصية إضافية للتوافق مع واجهات سابقة إذا لزم الأمر
-  String get instructorName => "Instructor"; 
+  final String? description;   // الجديد
+
+  // هذه الحقول سنملؤها لاحقاً عند طلب التفاصيل، حالياً ستكون فارغة في شاشة البداية
+  final List<dynamic> subjects; 
+  final List<dynamic> exams;
 
   CourseModel({
     required this.id,
     required this.title,
-    required this.teacherId,
-    required this.rating,
-    required this.reviews,
-    required this.description,
+    required this.instructorName,
+    required this.code,
     required this.fullPrice,
-    required this.category,
+    this.description,
     this.subjects = const [],
     this.exams = const [],
   });
+
+  factory CourseModel.fromJson(Map<String, dynamic> json) {
+    return CourseModel(
+      id: json['course_id'].toString(),
+      title: json['course_title'] ?? '',
+      instructorName: json['instructor_name'] ?? 'Instructor',
+      code: json['code'] ?? '',
+      fullPrice: (json['price'] ?? 0).toDouble(),
+      description: json['description'],
+      subjects: [], // لا تأتي من الـ Init API
+      exams: [],
+    );
+  }
 }
