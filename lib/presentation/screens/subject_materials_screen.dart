@@ -48,7 +48,11 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-subject-content',
         queryParameters: {'subjectId': widget.subjectId},
-        options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId}),
+        options: Options(headers: {
+  'x-user-id': userId, 
+  'x-device-id': deviceId,
+  'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+}),
       );
 
       if (mounted) {
@@ -72,7 +76,11 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-video-id',
         queryParameters: {'lessonId': video['id'].toString()}, 
-        options: Options(headers: {'x-user-id': box.get('user_id'), 'x-device-id': box.get('device_id')}),
+        options: Options(headers: {
+  'x-user-id': box.get('user_id'), 
+  'x-device-id': box.get('device_id'),
+  'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+}),
       );
 
       if (mounted) Navigator.pop(context);
