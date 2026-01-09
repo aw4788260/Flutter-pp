@@ -52,7 +52,10 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       final res = await Dio().get(
         '$_baseUrl/api/student/get-exam-questions',
         queryParameters: {'examId': widget.examId},
-        options: Options(headers: {'x-user-id': userId}),
+        options: Options(headers: {
+    'x-user-id': userId,
+    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+  }),
       );
 
       if (mounted && res.statusCode == 200) {
