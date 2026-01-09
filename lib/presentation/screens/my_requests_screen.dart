@@ -31,7 +31,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         '$_baseUrl/api/student/my-requests',
         options: Options(headers: {
     'x-user-id': userId,
-    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+    'x-app-secret': const String.fromEnvironment('APP_SECRET'),
   }),
       );
       
@@ -205,7 +205,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           
           if (status == 'rejected' && req['rejection_reason'] != null)
             Container(
-              margin: const EdgeInsets.top(16),
+              // ✅ تم التصحيح هنا: استخدام only بدلاً من top
+              margin: const EdgeInsets.only(top: 16),
               padding: const EdgeInsets.all(12),
               width: double.infinity,
               decoration: BoxDecoration(
