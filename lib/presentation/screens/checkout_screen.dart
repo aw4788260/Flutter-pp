@@ -1,257 +1,335 @@
-import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import 'main_wrapper.dart'; // ✅ الرجوع للغلاف الرئيسي
+import 'main_wrapper.dart'; // للعودة للرئيسية بعد النجاح
 
 class CheckoutScreen extends StatefulWidget {
   final double amount;
+  final Map<String, dynamic> paymentInfo;
+  final List<Map<String, dynamic>> selectedItems;
 
-  const CheckoutScreen({super.key, this.amount = 1200});
+  const CheckoutScreen({
+    super.key,
+    required this.amount,
+    required this.paymentInfo,
+    required this.selectedItems,
+  });
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  bool hasImage = false;
-  bool isSuccess = false;
   final TextEditingController _noteController = TextEditingController();
+  File? _receiptImage;
+  bool _isUploading = false;
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
-  void _handleSubmit() {
-    setState(() => isSuccess = true);
-    Timer(const Duration(seconds: 3), () {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const MainWrapper()), // ✅
-        (r) => false,
-      );
-    });
+  // اختيار صورة من المعرض
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      setState(() {
+        _receiptImage = File(pickedFile.path);
+      });
+    }
   }
 
-  // ... (باقي الكود مطابق للملف الموجود مسبقاً، فقط تأكد من دالة _handleSubmit)
-  // سأرفق الدالة build للكامل للاحتياط:
-  
+  // إرسال الطلب
+  Future<void> _submitOrder() async {
+    if (_receiptImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please upload the payment receipt image"), backgroundColor: AppColors.error),
+      );
+      return;
+    }
+
+    setState(() => _isUploading = true);
+
+    try {
+      var box = await Hive.openBox('auth_box');
+      final userId = box.get('user_id');
+
+      // تجهيز البيانات
+      String fileName = _receiptImage!.path.split('/').last;
+      
+      FormData formData = FormData.fromMap({
+        'receiptFile': await MultipartFile.fromFile(_receiptImage!.path, filename: fileName),
+        'user_note': _noteController.text,
+        'selectedItems': jsonEncode(widget.selectedItems), // إرسال العناصر كـ JSON
+      });
+
+      final response = await Dio().post(
+        '$_baseUrl/api/student/request-course',
+        data: formData,
+        options: Options(
+          headers: {'x-user-id': userId},
+          validateStatus: (status) => status! < 500,
+        ),
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        if (mounted) {
+          // عرض نافذة نجاح
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: AppColors.backgroundSecondary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Column(
+                children: const [
+                  Icon(LucideIcons.checkCircle, color: AppColors.success, size: 48),
+                  SizedBox(height: 16),
+                  Text("REQUEST SENT", style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: const Text(
+                "We have received your request.\nYou will be notified once approved.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MainWrapper()),
+                      (route) => false,
+                    );
+                  },
+                  child: const Text("OK", style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold)),
+                )
+              ],
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(response.data['error'] ?? "Failed to send request"), backgroundColor: AppColors.error),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Connection Error"), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (isSuccess) return _buildSuccessView();
+    final String vodafone = widget.paymentInfo['vodafone_cash_number'] ?? '';
+    final String instapayNum = widget.paymentInfo['instapay_number'] ?? '';
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: SafeArea(
         child: Column(
           children: [
+            // --- Header ---
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.backgroundSecondary,
-                            borderRadius: BorderRadius.circular(50),
-                            border: Border.all(color: Colors.white.withOpacity(0.05)),
-                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                          ),
-                          child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 18),
-                        ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundSecondary,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(width: 16),
-                      const Text(
-                        "CHECKOUT PORTAL",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                    ],
+                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                    ),
                   ),
-                  const Icon(LucideIcons.shield, color: AppColors.accentYellow, size: 18),
+                  const SizedBox(width: 16),
+                  const Text(
+                    "CHECKOUT",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                  ),
                 ],
               ),
             ),
-            // ... (باقي المحتوى كما هو في الردود السابقة، لا تغيير جوهري سوى التنقل)
+
             Expanded(
               child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Amount Card
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      padding: const EdgeInsets.all(32),
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSecondary,
-                        border: const Border(bottom: BorderSide(color: Colors.white10)),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)],
                       ),
                       child: Column(
                         children: [
-                          const Text("PAYABLE AMOUNT", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0)),
-                          const SizedBox(height: 8),
-                          Text("\$${widget.amount}", style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: AppColors.textPrimary, letterSpacing: -1.0)),
+                          const Text("TOTAL AMOUNT", style: TextStyle(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 2.0, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppColors.accentYellow.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(50),
-                              border: Border.all(color: AppColors.accentYellow.withOpacity(0.2)),
-                            ),
-                            child: const Text("VERIFIED", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 1.5)),
-                          ),
+                          Text("${widget.amount} EGP", style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: AppColors.accentYellow)),
                         ],
                       ),
                     ),
-                    // ... (خطوات الدفع كما هي)
-                    Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionTitle("STEP 1: CASH TRANSFER"),
-                          // ... (محتوى البطاقة)
-                          Container(
-                            padding: const EdgeInsets.all(24),
-                            margin: const EdgeInsets.only(bottom: 24),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8)],
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(color: AppColors.backgroundPrimary, borderRadius: BorderRadius.circular(12), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)]),
-                                          child: const Icon(LucideIcons.smartphone, color: AppColors.accentYellow, size: 24),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text("CASH NUMBER", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.5), letterSpacing: 1.5)),
-                                            const Text("010 1234 5678", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontFamily: 'monospace')),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(color: AppColors.backgroundPrimary, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.05))),
-                                      child: const Icon(LucideIcons.copy, color: AppColors.accentYellow, size: 18),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                const Text.rich(TextSpan(text: "Pay with InstaPay App: ", style: TextStyle(color: AppColors.textSecondary, fontSize: 12), children: [TextSpan(text: "@medo7as", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold))]), textAlign: TextAlign.center),
-                              ],
-                            ),
+                    const SizedBox(height: 32),
+
+                    // Payment Methods
+                    if (vodafone.isNotEmpty)
+                      _buildPaymentMethod("VODAFONE CASH", vodafone, LucideIcons.smartphone),
+                    
+                    if (instapayNum.isNotEmpty)
+                      _buildPaymentMethod("INSTAPAY", instapayNum, LucideIcons.creditCard),
+
+                    const SizedBox(height: 32),
+                    
+                    // Upload Receipt
+                    const Text("UPLOAD RECEIPT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: _pickImage,
+                      child: Container(
+                        height: 180,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: _receiptImage != null ? AppColors.accentYellow : Colors.white.withOpacity(0.1),
+                            style: _receiptImage != null ? BorderStyle.solid : BorderStyle.dashed,
+                            width: 2,
                           ),
-                          _buildSectionTitle("STEP 2: PAYMENT PROVE SCREENSHOT"),
-                          if (hasImage)
-                            Stack(
-                              children: [
-                                Container(
-                                  height: 200, width: double.infinity, margin: const EdgeInsets.only(bottom: 24),
-                                  decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.1))),
-                                  alignment: Alignment.center,
-                                  child: const Icon(LucideIcons.image, size: 48, color: Colors.white24),
+                          image: _receiptImage != null 
+                              ? DecorationImage(image: FileImage(_receiptImage!), fit: BoxFit.cover)
+                              : null,
+                        ),
+                        child: _receiptImage == null 
+                            ? Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(LucideIcons.uploadCloud, color: AppColors.accentYellow, size: 40),
+                                  SizedBox(height: 12),
+                                  Text("Tap to upload screenshot", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                ],
+                              )
+                            : Container(
+                                alignment: Alignment.topRight,
+                                padding: const EdgeInsets.all(12),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                                  child: const Icon(LucideIcons.edit2, color: Colors.white, size: 16),
                                 ),
-                                Positioned(top: 10, right: 10, child: GestureDetector(onTap: () => setState(() => hasImage = false), child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(LucideIcons.x, color: Colors.white, size: 16)))),
-                              ],
-                            )
-                          else
-                            GestureDetector(
-                              onTap: () => setState(() => hasImage = true),
-                              child: Container(
-                                height: 160, width: double.infinity, margin: const EdgeInsets.only(bottom: 24),
-                                decoration: BoxDecoration(color: AppColors.backgroundSecondary.withOpacity(0.5), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.accentYellow.withOpacity(0.3), style: BorderStyle.solid)),
-                                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: const [Icon(LucideIcons.upload, size: 32, color: AppColors.accentYellow), SizedBox(height: 12), Text("ADD SCREENSHOT", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5))]),
                               ),
-                            ),
-                          _buildSectionTitle("STEP 3: OPTIONAL NOTES"),
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 24),
-                            decoration: BoxDecoration(color: AppColors.backgroundSecondary, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.05)), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)]),
-                            child: TextField(controller: _noteController, maxLines: 4, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14), decoration: InputDecoration(hintText: "Write any additional info here...", hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.6)), border: InputBorder.none, contentPadding: const EdgeInsets.all(20))),
-                          ),
-                          const SizedBox(height: 100),
-                        ],
                       ),
                     ),
+
+                    const SizedBox(height: 32),
+                    
+                    // Notes
+                    const Text("NOTES (OPTIONAL)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                    const SizedBox(height: 16),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundSecondary,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                      ),
+                      child: TextField(
+                        controller: _noteController,
+                        style: const TextStyle(color: Colors.white),
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          hintText: "Add any notes...",
+                          hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.5)),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.all(20),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 40),
                   ],
+                ),
+              ),
+            ),
+
+            // Submit Button
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isUploading ? null : _submitOrder,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accentYellow,
+                    foregroundColor: AppColors.backgroundPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  child: _isUploading 
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: AppColors.backgroundPrimary, strokeWidth: 2))
+                      : const Text("CONFIRM PAYMENT", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.0)),
                 ),
               ),
             ),
           ],
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: hasImage ? _handleSubmit : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accentYellow,
-              foregroundColor: AppColors.backgroundPrimary,
-              disabledBackgroundColor: AppColors.backgroundSecondary,
-              disabledForegroundColor: AppColors.textSecondary.withOpacity(0.5),
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              elevation: hasImage ? 10 : 0,
-              shadowColor: AppColors.accentYellow.withOpacity(0.3),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (hasImage) const Icon(LucideIcons.checkCircle2, size: 18),
-                if (hasImage) const SizedBox(width: 12),
-                const Text("SUBMIT PROVE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.5)),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(padding: const EdgeInsets.only(bottom: 12, left: 4), child: Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accentYellow.withOpacity(0.8), letterSpacing: 1.5)));
-  }
-
-  Widget _buildSuccessView() {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundPrimary,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(width: 100, height: 100, decoration: BoxDecoration(color: AppColors.backgroundSecondary, shape: BoxShape.circle, border: Border.all(color: AppColors.accentYellow.withOpacity(0.2)), boxShadow: const [BoxShadow(color: AppColors.accentYellow, blurRadius: 20, spreadRadius: -5)]), child: const Icon(LucideIcons.checkCircle, size: 50, color: AppColors.accentYellow)),
-              const SizedBox(height: 32),
-              const Text("SUBMISSION COMPLETE", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.textPrimary, letterSpacing: -0.5), textAlign: TextAlign.center),
-              const SizedBox(height: 8),
-              const Text("Our finance department will verify your proof within several hours.", textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5)),
-              const SizedBox(height: 48),
-              Column(children: [Container(width: 160, height: 4, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(2)), child: Align(alignment: Alignment.centerLeft, child: Container(width: 100, decoration: BoxDecoration(color: AppColors.accentYellow, borderRadius: BorderRadius.circular(2), boxShadow: const [BoxShadow(color: AppColors.accentYellow, blurRadius: 8)])))), const SizedBox(height: 16), Text("PROCESSING...", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accentYellow.withOpacity(0.5), letterSpacing: 2.0))]),
-            ],
+  Widget _buildPaymentMethod(String title, String value, IconData icon) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSecondary.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundPrimary,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: AppColors.accentYellow, size: 24),
           ),
-        ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                const SizedBox(height: 6),
+                SelectableText(
+                  value, 
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'monospace')
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
