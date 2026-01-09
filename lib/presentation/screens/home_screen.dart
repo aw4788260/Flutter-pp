@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../data/mock_data.dart';
+import '../../core/services/app_state.dart'; // ✅ المصدر الجديد للبيانات
 import 'course_details_screen.dart';
-import 'my_requests_screen.dart'; // ✅ تم الربط
-import 'teacher_profile_screen.dart'; // ✅ تم الربط
+import 'my_requests_screen.dart';
+// import 'teacher_profile_screen.dart'; // يمكن تفعيله لاحقاً
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +19,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentSlide = 0;
   late Timer _timer;
   final PageController _pageController = PageController();
+
+  // البيانات من الذاكرة
+  final _allCourses = AppState().allCourses;
+  final _user = AppState().userData;
 
   final List<String> _encouragements = [
     "Knowledge is the key to unlocking your true potential.",
@@ -58,11 +62,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Filter courses logic
-    final filteredCourses = mockCourses.where((course) => 
+    // 1. فلترة الكورسات بناءً على البحث
+    // وعرض أول 5 كورسات فقط (أو القائمة المفلترة)
+    final filteredCourses = _allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
-      course.id.toLowerCase().contains(_searchTerm.toLowerCase())
-    ).toList();
+      course.code.toLowerCase().contains(_searchTerm.toLowerCase())
+    ).take(5).toList();
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -84,8 +89,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
+                        children: [
+                          const Text(
                             "WELCOME",
                             style: TextStyle(
                               color: AppColors.accentYellow,
@@ -94,10 +99,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               letterSpacing: 1.5,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
-                            "AHMED WALID",
-                            style: TextStyle(
+                            (_user?['first_name'] ?? "GUEST").toUpperCase(),
+                            style: const TextStyle(
                               color: AppColors.textPrimary,
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -106,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      // My Requests Button ✅
+                      // My Requests Button
                       GestureDetector(
                         onTap: () {
                            Navigator.push(
@@ -162,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: _searchTerm.isNotEmpty ? AppColors.accentYellow : AppColors.textSecondary,
                           size: 18,
                         ),
-                        hintText: "Search course name or code (ID)...",
+                        hintText: "Search course name or code...",
                         hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.5)),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -273,20 +278,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 16),
 
                     // Course List
-                    ListView.builder(
+                    filteredCourses.isEmpty 
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 40),
+                        child: Text("No courses found", style: TextStyle(color: AppColors.textSecondary.withOpacity(0.5))),
+                      )
+                    : ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: filteredCourses.length,
                       itemBuilder: (context, index) {
                         final course = filteredCourses[index];
-                        final teacher = mockTeachers.firstWhere((t) => t.id == course.teacherId);
                         
                         return GestureDetector(
                           onTap: () {
                              Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => CourseDetailsScreen(course: course),
+                                // الانتقال لصفحة التفاصيل باستخدام الكود
+                                builder: (context) => CourseDetailsScreen(courseCode: course.code),
                               ),
                             );
                           },
@@ -296,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             decoration: BoxDecoration(
                               color: AppColors.backgroundSecondary,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withOpacity(0.2)),
+                              border: Border.all(color: Colors.white.withOpacity(0.05)),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withOpacity(0.1),
@@ -319,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
-                                        "#${course.id.toUpperCase()}",
+                                        "#${course.code}", // عرض كود الكورس
                                         style: const TextStyle(
                                           color: AppColors.accentOrange,
                                           fontSize: 9,
@@ -346,29 +356,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 const SizedBox(height: 8),
 
-                                // Teacher info - Clickable ✅
-                                GestureDetector(
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(builder: (_) => TeacherProfileScreen(teacher: teacher)),
-                                    );
-                                  },
-                                  child: Row(
-                                    children: [
-                                      const Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        teacher.name.toUpperCase(),
-                                        style: const TextStyle(
-                                          color: AppColors.textSecondary,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 1.5,
-                                        ),
+                                // Teacher info
+                                Row(
+                                  children: [
+                                    const Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      course.instructorName.toUpperCase(),
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.5,
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
