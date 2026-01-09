@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart'; // ✅ إضافة الاستيراد
 import '../../core/constants/app_colors.dart';
 import 'main_wrapper.dart'; 
 
@@ -38,6 +39,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       setState(() {
         _receiptImage = File(pickedFile.path);
       });
+    }
+  }
+
+  // ✅ دالة فتح الروابط
+  Future<void> _launchURL(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not launch link"), backgroundColor: AppColors.error),
+        );
+      }
     }
   }
 
@@ -133,6 +146,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget build(BuildContext context) {
     final String vodafone = widget.paymentInfo['vodafone_cash_number'] ?? '';
     final String instapayNum = widget.paymentInfo['instapay_number'] ?? '';
+    final String instapayLink = widget.paymentInfo['instapay_link'] ?? ''; // ✅ جلب رابط انستا باي
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -192,7 +206,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       _buildPaymentMethod("VODAFONE CASH", vodafone, LucideIcons.smartphone),
                     
                     if (instapayNum.isNotEmpty)
-                      _buildPaymentMethod("INSTAPAY", instapayNum, LucideIcons.creditCard),
+                      _buildPaymentMethod(
+                        "INSTAPAY", 
+                        instapayNum, 
+                        LucideIcons.creditCard,
+                        link: instapayLink // ✅ تمرير الرابط
+                      ),
 
                     const SizedBox(height: 32),
                     
@@ -206,7 +225,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.backgroundSecondary,
                           borderRadius: BorderRadius.circular(20),
-                          // ✅ تم التأكيد: استخدام BorderStyle.solid فقط
                           border: Border.all(
                             color: _receiptImage != null ? AppColors.accentYellow : Colors.white.withOpacity(0.1),
                             style: BorderStyle.solid, 
@@ -290,7 +308,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _buildPaymentMethod(String title, String value, IconData icon) {
+  // ✅ تحديث دالة بناء طريقة الدفع لإضافة زر الرابط
+  Widget _buildPaymentMethod(String title, String value, IconData icon, {String? link}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
@@ -299,30 +318,53 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
-      child: Row(
+      child: Column( // تم التغيير إلى Column لاستيعاب الزر
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundPrimary,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: AppColors.accentYellow, size: 24),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-                const SizedBox(height: 6),
-                SelectableText(
-                  value, 
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'monospace')
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundPrimary,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ],
-            ),
+                child: Icon(icon, color: AppColors.accentYellow, size: 24),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                    const SizedBox(height: 6),
+                    SelectableText(
+                      value, 
+                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'monospace')
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+          
+          // ✅ إضافة زر الفتح إذا وجد الرابط
+          if (link != null && link.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _launchURL(link),
+                icon: const Icon(LucideIcons.externalLink, size: 14),
+                label: const Text("Open in InstaPay", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.accentYellow,
+                  side: BorderSide(color: AppColors.accentYellow.withOpacity(0.3)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
