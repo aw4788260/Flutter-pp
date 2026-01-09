@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/app_state.dart'; // ✅ المصدر الجديد للبيانات
+import '../../core/services/app_state.dart';
 import 'course_details_screen.dart';
 import 'my_requests_screen.dart';
-// import 'teacher_profile_screen.dart'; // يمكن تفعيله لاحقاً
+import 'teacher_profile_screen.dart'; // ✅ تم تفعيل الاستيراد
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,7 +20,6 @@ class _HomeScreenState extends State<HomeScreen> {
   late Timer _timer;
   final PageController _pageController = PageController();
 
-  // البيانات من الذاكرة
   final _allCourses = AppState().allCourses;
   final _user = AppState().userData;
 
@@ -35,7 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Slider Timer (8 seconds)
     _timer = Timer.periodic(const Duration(seconds: 8), (Timer timer) {
       if (_currentSlide < _encouragements.length - 1) {
         _currentSlide++;
@@ -62,8 +60,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. فلترة الكورسات بناءً على البحث
-    // وعرض أول 5 كورسات فقط (أو القائمة المفلترة)
     final filteredCourses = _allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
       course.code.toLowerCase().contains(_searchTerm.toLowerCase())
@@ -83,7 +79,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Column(
                 children: [
-                  // Top Row
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -111,7 +106,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      // My Requests Button
                       GestureDetector(
                         onTap: () {
                            Navigator.push(
@@ -151,7 +145,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Search Bar
                   Container(
                     decoration: BoxDecoration(
                       color: AppColors.backgroundSecondary,
@@ -186,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    // Encouragement Slider
+                    // Slider
                     SizedBox(
                       height: 96,
                       child: Container(
@@ -222,7 +215,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 );
                               },
                             ),
-                            // Indicators
                             Positioned(
                               bottom: 12,
                               left: 0, right: 0,
@@ -295,7 +287,6 @@ class _HomeScreenState extends State<HomeScreen> {
                              Navigator.push(
                               context,
                               MaterialPageRoute(
-                                // الانتقال لصفحة التفاصيل باستخدام الكود
                                 builder: (context) => CourseDetailsScreen(courseCode: course.code),
                               ),
                             );
@@ -329,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
-                                        "#${course.code}", // عرض كود الكورس
+                                        "#${course.code}",
                                         style: const TextStyle(
                                           color: AppColors.accentOrange,
                                           fontSize: 9,
@@ -356,21 +347,33 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 const SizedBox(height: 8),
 
-                                // Teacher info
-                                Row(
-                                  children: [
-                                    const Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      course.instructorName.toUpperCase(),
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 1.5,
+                                // ✅ Teacher info (CLICKABLE NOW)
+                                GestureDetector(
+                                  onTap: () {
+                                    if (course.teacherId.isNotEmpty) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => TeacherProfileScreen(teacherId: course.teacherId)
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: Row(
+                                    children: [
+                                      const Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        course.instructorName.toUpperCase(),
+                                        style: const TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 1.5,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
