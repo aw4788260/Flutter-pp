@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../data/mock_data.dart';
+import '../../core/services/app_state.dart'; // ✅ مصدر البيانات الحقيقي
 import 'course_details_screen.dart';
 import 'course_materials_screen.dart';
 
@@ -13,7 +13,7 @@ class MyCoursesScreen extends StatefulWidget {
 }
 
 class _MyCoursesScreenState extends State<MyCoursesScreen> {
-  String _view = 'library'; 
+  String _view = 'library'; // library | market
   String _searchTerm = '';
 
   @override
@@ -24,8 +24,12 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     return _buildLibraryView();
   }
 
+  // --- 1. واجهة المكتبة (الكورسات المملوكة) ---
   Widget _buildLibraryView() {
-    final myCourses = mockCourses.take(2).toList();
+    // جلب الكورسات المملوكة من الذاكرة
+    final myCourses = AppState().allCourses.where((c) {
+      return AppState().ownsCourse(c.id);
+    }).toList();
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -76,6 +80,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       ),
                     ],
                   ),
+                  // زر الانتقال للمتجر
                   GestureDetector(
                     onTap: () => setState(() => _view = 'market'),
                     child: Container(
@@ -110,14 +115,18 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       itemCount: myCourses.length,
                       itemBuilder: (context, index) {
                         final course = myCourses[index];
-                        final teacher = mockTeachers.firstWhere((t) => t.id == course.teacherId);
                         
                         return GestureDetector(
                           onTap: () {
-                             Navigator.push(
+                            // من المكتبة -> نذهب للمحتوى
+                            Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const CourseMaterialsScreen(),
+                                builder: (context) => CourseMaterialsScreen(
+                                  courseId: course.id,
+                                  courseTitle: course.title,
+                                  courseCode: course.code,
+                                ),
                               ),
                             );
                           },
@@ -137,7 +146,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   decoration: BoxDecoration(
                                     color: AppColors.backgroundPrimary,
                                     borderRadius: BorderRadius.circular(12),
-                                    // ✅ Fixed: Removed inset: true
                                     boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                   ),
                                   child: const Icon(LucideIcons.playCircle, color: AppColors.accentOrange, size: 24),
@@ -160,7 +168,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        teacher.name.toUpperCase(),
+                                        course.instructorName.toUpperCase(),
                                         style: TextStyle(
                                           color: AppColors.textSecondary.withOpacity(0.7),
                                           fontSize: 9,
@@ -185,10 +193,12 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
+  // --- 2. واجهة المتجر (كل الكورسات) ---
   Widget _buildMarketView() {
-    final availableCourses = mockCourses.where((course) => 
+    // جلب كل الكورسات + الفلترة بالبحث
+    final availableCourses = AppState().allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
-      course.id.toLowerCase().contains(_searchTerm.toLowerCase())
+      course.code.toLowerCase().contains(_searchTerm.toLowerCase())
     ).toList();
 
     return Scaffold(
@@ -226,6 +236,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                 ],
               ),
             ),
+            
+            // Search Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Container(
@@ -255,6 +267,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               ),
             ),
             const SizedBox(height: 24),
+            
+            // Grid List
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -267,14 +281,14 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                 itemCount: availableCourses.length,
                 itemBuilder: (context, index) {
                   final course = availableCourses[index];
-                  final teacher = mockTeachers.firstWhere((t) => t.id == course.teacherId);
 
                   return GestureDetector(
                     onTap: () {
-                       Navigator.push(
+                      // من المتجر -> نذهب للتفاصيل (صفحة البيع)
+                      Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const CourseDetailsScreen(),
+                          builder: (context) => CourseDetailsScreen(courseCode: course.code),
                         ),
                       );
                     },
@@ -313,7 +327,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                teacher.name.toUpperCase(),
+                                course.instructorName.toUpperCase(),
                                 style: TextStyle(
                                   color: AppColors.textSecondary.withOpacity(0.7),
                                   fontSize: 9,
@@ -325,7 +339,9 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                "\$${course.fullPrice}",
+                                // نستخدم السعر الكامل للعرض (تأكد أن الموديل يحتوي عليه)
+                                // سنفترضه موجوداً، أو يمكن عرضه لاحقاً
+                                "\$COURSE", 
                                 style: const TextStyle(
                                   color: AppColors.accentYellow,
                                   fontSize: 16,
