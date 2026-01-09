@@ -5,6 +5,7 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/encryption_helper.dart';
+import 'package:encrypt/encrypt.dart' as encrypt; // ✅ تمت الإضافة
 
 class LocalProxyService {
   HttpServer? _server;
