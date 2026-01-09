@@ -3,8 +3,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import 'home_screen.dart';
 import 'my_courses_screen.dart';
-import 'downloaded_files_screen.dart';
 import 'profile_screen.dart';
+import 'downloaded_files_screen.dart'; // ✅ استيراد صفحة التحميلات
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -16,12 +16,19 @@ class MainWrapper extends StatefulWidget {
 class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
+  // القوائم المرتبطة بالأزرار
+  final List<Widget> _pages = [
     const HomeScreen(),
     const MyCoursesScreen(),
-    const DownloadedFilesScreen(),
+    const DownloadedFilesScreen(), // ✅ الصفحة الحقيقية للتحميلات
     const ProfileScreen(),
   ];
+
+  void _onTabTapped(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,29 +36,86 @@ class _MainWrapperState extends State<MainWrapper> {
       backgroundColor: AppColors.backgroundPrimary,
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: _pages,
       ),
+      // ✅ Custom Bottom Navigation (تصميم مخصص يطابق التصميم الأصلي)
       bottomNavigationBar: Container(
+        height: 80, // ارتفاع الشريط
         decoration: BoxDecoration(
-          color: AppColors.backgroundPrimary,
-          border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
+          color: AppColors.backgroundSecondary.withOpacity(0.9), // لون خلفية نصف شفاف
+          border: const Border(
+            top: BorderSide(color: Colors.white10), // خط فاصل علوي خفيف
+          ),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 8), // مسافة للأزرار
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: AppColors.accentYellow,
-          unselectedItemColor: AppColors.textSecondary,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 1.0),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 1.0),
-          items: const [
-            BottomNavigationBarItem(icon: Icon(LucideIcons.home), label: "HOME"),
-            BottomNavigationBarItem(icon: Icon(LucideIcons.bookOpen), label: "LIBRARY"),
-            BottomNavigationBarItem(icon: Icon(LucideIcons.downloadCloud), label: "DOWNLOADS"),
-            BottomNavigationBarItem(icon: Icon(LucideIcons.user), label: "PROFILE"),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildNavItem(0, LucideIcons.home, "Home"),
+            _buildNavItem(1, LucideIcons.bookOpen, "Courses"),
+            _buildNavItem(2, LucideIcons.download, "Downloads"), // أيقونة التحميلات
+            _buildNavItem(3, LucideIcons.user, "Profile"),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ودجت بناء العنصر المخصص في الشريط السفلي
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    final isSelected = _currentIndex == index;
+    
+    return GestureDetector(
+      onTap: () => _onTabTapped(index),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 80, // عرض منطقة اللمس
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // 1. المؤشر العلوي المضيء (يظهر فقط عند التحديد)
+            if (isSelected)
+              Positioned(
+                top: 0,
+                child: Container(
+                  width: 48,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.accentYellow,
+                    borderRadius: BorderRadius.circular(2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.accentYellow.withOpacity(0.5),
+                        blurRadius: 12, // تأثير التوهج (Glow)
+                      )
+                    ],
+                  ),
+                ),
+              ),
+
+            // 2. الأيقونة والنص
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 8), 
+                Icon(
+                  icon,
+                  size: 24,
+                  color: isSelected ? AppColors.accentYellow : AppColors.textSecondary,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  label.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5, // تباعد الأحرف المميز للتصميم
+                    color: isSelected 
+                        ? AppColors.accentYellow 
+                        : AppColors.textSecondary.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
