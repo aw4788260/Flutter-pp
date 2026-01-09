@@ -49,12 +49,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         'https://courses.aw478260.dpdns.org/api/secure/get-pdf',
         queryParameters: {'pdfId': widget.pdfId},
         options: Options(
-          responseType: ResponseType.bytes, // مهم جداً
-          headers: {
-            'x-user-id': userId,
-            'x-device-id': deviceId,
-          },
-        ),
+    responseType: ResponseType.bytes,
+    headers: {
+      'x-user-id': userId,
+      'x-device-id': deviceId,
+      'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+    },
+  ),
       );
 
       // 2. حفظ الملف مؤقتاً
