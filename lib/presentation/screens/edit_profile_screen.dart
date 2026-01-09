@@ -50,7 +50,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           'phone': _phoneController.text,
           'username': _usernameController.text,
         },
-        options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId}),
+        options: Options(headers: {
+    'x-user-id': userId, 
+    'x-device-id': deviceId,
+    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+  }),
       );
 
       if (res.statusCode == 200 && res.data['success'] == true) {
