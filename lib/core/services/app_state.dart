@@ -11,6 +11,9 @@ class AppState {
   Map<String, dynamic>? userData;
   List<String> myCourseIds = [];
   List<String> mySubjectIds = [];
+  
+  // ✅ NEW: قائمة المكتبة الجاهزة للعرض (كورسات كاملة + مواد منفصلة مجمعة)
+  List<Map<String, dynamic>> myLibrary = [];
 
   // التحقق من الملكية
   bool ownsCourse(String courseId) => myCourseIds.contains(courseId);
@@ -32,6 +35,11 @@ class AppState {
       myCourseIds = List<String>.from(data['myAccess']['courses'] ?? []);
       mySubjectIds = List<String>.from(data['myAccess']['subjects'] ?? []);
     }
+
+    // ✅ NEW: استقبال وتخزين هيكل المكتبة الجديد
+    if (data['library'] != null) {
+      myLibrary = List<Map<String, dynamic>>.from(data['library']);
+    }
   }
   
   // دالة لمسح البيانات عند الخروج
@@ -39,6 +47,7 @@ class AppState {
     userData = null;
     myCourseIds = [];
     mySubjectIds = [];
+    myLibrary = []; // ✅ تفريغ المكتبة
     // لا نمسح الكورسات لأنها عامة
   }
 }
