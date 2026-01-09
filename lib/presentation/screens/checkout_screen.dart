@@ -70,9 +70,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         '$_baseUrl/api/student/request-course',
         data: formData,
         options: Options(
-          headers: {'x-user-id': userId},
-          validateStatus: (status) => status! < 500,
-        ),
+    headers: {
+      'x-user-id': userId,
+      'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+    },
+    validateStatus: (status) => status! < 500,
+  ),
       );
 
       if (response.statusCode == 200 && response.data['success'] == true) {
