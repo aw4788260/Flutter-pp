@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../data/models/course_model.dart';
-import 'downloaded_files_screen.dart'; // For allDownloads
+import '../../core/services/local_proxy.dart'; // لتشغيل الفيديو
 import 'video_player_screen.dart';
 
 class DownloadedChapterContentsScreen extends StatefulWidget {
@@ -24,16 +24,51 @@ class DownloadedChapterContentsScreen extends StatefulWidget {
 class _DownloadedChapterContentsScreenState extends State<DownloadedChapterContentsScreen> {
   String activeTab = 'videos'; // 'videos' | 'pdfs'
 
+  // --- تشغيل الفيديو أوفلاين ---
+  void _playOfflineVideo(Map<dynamic, dynamic> item) {
+    final proxyUrl = "http://127.0.0.1:8080/video?path=${item['path']}";
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VideoPlayerScreen(
+          streams: {"Offline": proxyUrl}, 
+          title: item['title'] ?? "Offline Video",
+        ),
+      ),
+    );
+  }
+
+  // --- حذف الملف ---
+  Future<void> _deleteFile(String key) async {
+    var box = await Hive.openBox('downloads_box');
+    await box.delete(key);
+    // يمكنك إضافة حذف الملف الفعلي من الجهاز هنا باستخدام dart:io
+    setState(() {}); // تحديث الواجهة
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File removed"), backgroundColor: AppColors.accentOrange));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final chapterFiles = allDownloads.where((d) => 
-      d.course == widget.courseTitle && 
-      d.subject == widget.subjectTitle && 
-      d.chapter == widget.chapterTitle
-    ).toList();
+    // 1. جلب وتصفية البيانات من Hive
+    var box = Hive.box('downloads_box');
+    List<Map<dynamic, dynamic>> chapterFiles = [];
+    List<dynamic> keys = []; // لحفظ المفاتيح للحذف
 
-    final videos = chapterFiles.where((f) => f.type == 'video').toList();
-    final pdfs = chapterFiles.where((f) => f.type == 'pdf').toList();
+    for (var key in box.keys) {
+      final item = box.get(key);
+      if (item['course'] == widget.courseTitle && 
+          item['subject'] == widget.subjectTitle &&
+          item['chapter'] == widget.chapterTitle) {
+        chapterFiles.add(item);
+        keys.add(key);
+      }
+    }
+
+    // 2. تصنيف الملفات (حالياً نعتبر الكل فيديو لأننا لم نضف نوع الملف عند التحميل بعد)
+    // إذا قمت بتحديث DownloadManager لحفظ النوع 'type': 'video'/'pdf'، يمكنك استخدام الفلتر أدناه
+    // حالياً سنفترض أن الكل فيديو حتى يتم دعم PDF
+    final videos = chapterFiles; 
+    final pdfs = <Map<dynamic, dynamic>>[]; 
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -120,8 +155,8 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
             // Content List
             Expanded(
               child: activeTab == 'videos'
-                  ? _buildFileList(videos, LucideIcons.play)
-                  : _buildFileList(pdfs, LucideIcons.fileText),
+                  ? _buildFileList(videos, keys, LucideIcons.play)
+                  : _buildFileList(pdfs, [], LucideIcons.fileText),
             ),
           ],
         ),
@@ -157,7 +192,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
     );
   }
 
-  Widget _buildFileList(List<DownloadItem> files, IconData icon) {
+  Widget _buildFileList(List<Map<dynamic, dynamic>> files, List<dynamic> keys, IconData icon) {
     if (files.isEmpty) {
       return Center(
         child: Column(
@@ -188,6 +223,12 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
       itemCount: files.length,
       itemBuilder: (context, index) {
         final item = files[index];
+        final key = keys.isNotEmpty ? keys[index] : null; // المفتاح للحذف
+        
+        // حساب الحجم
+        final sizeBytes = item['size'] ?? 0;
+        final sizeMB = (sizeBytes / (1024 * 1024)).toStringAsFixed(1);
+
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
@@ -201,13 +242,11 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
               Expanded(
                 child: GestureDetector(
                   onTap: () {
-                    if (item.type == 'video') {
-                      // Navigate to player with dummy lesson data
-                      final lesson = Lesson(id: item.id, title: item.title, type: LessonType.video);
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerScreen(lesson: lesson)));
+                    if (activeTab == 'videos') {
+                      _playOfflineVideo(item);
                     } else {
-                      // Mock PDF open
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Opening PDF: ${item.title}")));
+                      // فتح PDF (مستقبلاً)
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Opening PDF: ${item['title']}")));
                     }
                   },
                   child: Padding(
@@ -219,7 +258,6 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                           decoration: BoxDecoration(
                             color: AppColors.backgroundPrimary,
                             borderRadius: BorderRadius.circular(8),
-                            // ✅ تم التصحيح: إزالة inset: true
                             boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                           ),
                           child: Icon(icon, color: activeTab == 'videos' ? AppColors.accentOrange : AppColors.accentYellow, size: 14),
@@ -230,7 +268,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                item.title.toUpperCase(),
+                                item['title'].toString().toUpperCase(),
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -241,7 +279,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                item.size,
+                                "$sizeMB MB",
                                 style: const TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
@@ -260,7 +298,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
               IconButton(
                 icon: const Icon(LucideIcons.trash2, size: 14, color: AppColors.accentOrange),
                 onPressed: () {
-                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Removed ${item.title}")));
+                  if (key != null) _deleteFile(key.toString());
                 },
               ),
             ],
