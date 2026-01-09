@@ -80,16 +80,15 @@ class ExamModel {
 }
 
 // --- Main Course Model ---
-// استبدل المحتوى الحالي بهذا الكود المحدث
 class CourseModel {
   final String id;
   final String title;
-  final String instructorName; // الجديد
-  final String code;           // الجديد
+  final String instructorName;
+  final String teacherId; // ✅ تمت الإضافة: معرف المدرس
+  final String code;
   final double fullPrice;
-  final String? description;   // الجديد
+  final String? description;
 
-  // هذه الحقول سنملؤها لاحقاً عند طلب التفاصيل، حالياً ستكون فارغة في شاشة البداية
   final List<dynamic> subjects; 
   final List<dynamic> exams;
 
@@ -97,6 +96,7 @@ class CourseModel {
     required this.id,
     required this.title,
     required this.instructorName,
+    required this.teacherId, // ✅
     required this.code,
     required this.fullPrice,
     this.description,
@@ -109,10 +109,11 @@ class CourseModel {
       id: json['course_id'].toString(),
       title: json['course_title'] ?? '',
       instructorName: json['instructor_name'] ?? 'Instructor',
+      teacherId: json['teacher_id']?.toString() ?? '', // ✅ قراءة المعرف من الـ API
       code: json['code'] ?? '',
       fullPrice: (json['price'] ?? 0).toDouble(),
       description: json['description'],
-      subjects: [], // لا تأتي من الـ Init API
+      subjects: [],
       exams: [],
     );
   }
