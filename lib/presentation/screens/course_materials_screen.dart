@@ -4,18 +4,21 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import 'subject_materials_screen.dart'; // تأكد من وجود ملف المحتوى الذي أرسلته سابقاً
+import 'subject_materials_screen.dart';
 
 class CourseMaterialsScreen extends StatefulWidget {
   final String courseId;
   final String courseCode;
   final String courseTitle;
+  // ✅ متغير جديد لاستقبال المواد المحملة مسبقاً
+  final List<dynamic>? preLoadedSubjects;
 
   const CourseMaterialsScreen({
     super.key, 
     required this.courseId, 
     required this.courseTitle, 
-    required this.courseCode
+    required this.courseCode,
+    this.preLoadedSubjects, // ✅
   });
 
   @override
@@ -30,7 +33,15 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchSubjects();
+    
+    // ✅ التحقق: هل لدينا بيانات جاهزة؟
+    if (widget.preLoadedSubjects != null && widget.preLoadedSubjects!.isNotEmpty) {
+      _ownedSubjects = widget.preLoadedSubjects!;
+      _loading = false;
+    } else {
+      // إذا لم تتوفر (مثلاً كورس كامل لم يتم جلب تفاصيله)، نقوم بالتحميل
+      _fetchSubjects();
+    }
   }
 
   Future<void> _fetchSubjects() async {
@@ -38,7 +49,6 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
 
-      // نستخدم API تفاصيل الكورس لجلب المواد
       final res = await Dio().get(
         '$_baseUrl/api/public/get-course-sales-details',
         queryParameters: {'courseCode': widget.courseCode},
@@ -49,13 +59,11 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
         final data = res.data;
         final allSubjects = data['subjects'] as List;
         
-        // التحقق من ملكية الكورس أو المواد
         bool ownsCourse = AppState().ownsCourse(widget.courseId);
 
         setState(() {
           _ownedSubjects = allSubjects.where((sub) {
             bool ownsSubject = AppState().ownsSubject(sub['id'].toString());
-            // اعرض المادة إذا كان يملك الكورس كاملاً أو يملك المادة منفصلة
             return ownsCourse || ownsSubject;
           }).toList();
           _loading = false;
@@ -129,7 +137,6 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                             final subject = _ownedSubjects[index];
                             return GestureDetector(
                               onTap: () {
-                                // الانتقال لشاشة المحتوى (الفيديوهات والامتحانات)
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(builder: (_) => SubjectMaterialsScreen(
