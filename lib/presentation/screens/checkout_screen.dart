@@ -206,7 +206,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.backgroundSecondary,
                           borderRadius: BorderRadius.circular(20),
-                          // ✅ تم التصحيح: استخدام BorderStyle.solid دائماً لأن dashed غير مدعوم
+                          // ✅ تم التأكيد: استخدام BorderStyle.solid فقط
                           border: Border.all(
                             color: _receiptImage != null ? AppColors.accentYellow : Colors.white.withOpacity(0.1),
                             style: BorderStyle.solid, 
