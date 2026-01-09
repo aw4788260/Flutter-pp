@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart'; // للاتصال بالشبكة
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import 'main_wrapper.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -16,22 +16,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Controllers
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _usernameController = TextEditingController(); // ✅ تمت الإضافة
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  // Focus Nodes for styling
+  // Focus Nodes
   final _nameFocus = FocusNode();
   final _phoneFocus = FocusNode();
   final _userFocus = FocusNode();
   final _passFocus = FocusNode();
   final _confirmPassFocus = FocusNode();
 
+  final Dio _dio = Dio();
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org'; // رابط السيرفر
+
+  bool _isLoading = false;
+  String? _errorMessage;
+
   @override
   void initState() {
     super.initState();
     FirebaseCrashlytics.instance.log("Entered Register Screen");
-    // Rebuild on focus change
+    // Rebuild on focus change for styling
     for (var node in [_nameFocus, _phoneFocus, _userFocus, _passFocus, _confirmPassFocus]) {
       node.addListener(() => setState(() {}));
     }
@@ -52,13 +58,91 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _handleRegister() {
-    // محاكاة إنشاء الحساب والانتقال للرئيسية
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const MainWrapper()),
-      (route) => false,
-    );
+  Future<void> _handleRegister() async {
+    // 1. تصفير الأخطاء
+    setState(() => _errorMessage = null);
+
+    // 2. التحقق من المدخلات (Validation)
+    final name = _nameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (name.isEmpty || phone.isEmpty || username.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = "جميع الحقول مطلوبة");
+      return;
+    }
+
+    // التحقق من اسم المستخدم (إنجليزي وأرقام فقط)
+    final usernameRegex = RegExp(r'^[a-zA-Z0-9]+$');
+    if (!usernameRegex.hasMatch(username)) {
+      setState(() => _errorMessage = "اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام فقط (بدون مسافات)");
+      return;
+    }
+
+    // التحقق من رقم الهاتف (يبدأ بـ 01 ويتكون من 11 رقم)
+    final phoneRegex = RegExp(r'^01[0-9]{9}$');
+    if (!phoneRegex.hasMatch(phone)) {
+      setState(() => _errorMessage = "رقم الهاتف غير صحيح (يجب أن يكون 11 رقم ويبدأ بـ 01)");
+      return;
+    }
+
+    // التحقق من كلمة المرور
+    if (password.length < 6) {
+      setState(() => _errorMessage = "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+      return;
+    }
+
+    if (password != confirmPassword) {
+      setState(() => _errorMessage = "كلمات المرور غير متطابقة");
+      return;
+    }
+
+    // 3. إرسال الطلب
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/auth/signup',
+        data: {
+          'firstName': name,
+          'username': username,
+          'phone': phone,
+          'password': password,
+        },
+        options: Options(
+          validateStatus: (status) => status! < 500,
+        ),
+      );
+
+      final data = response.data;
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        // نجاح
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(data['message'] ?? "تم إنشاء الحساب بنجاح. قم بتسجيل الدخول."),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          // التوجيه لصفحة تسجيل الدخول
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+          );
+        }
+      } else {
+        // خطأ من السيرفر (مثل تكرار الاسم)
+        setState(() => _errorMessage = data['message'] ?? "فشل إنشاء الحساب");
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack);
+      setState(() => _errorMessage = "حدث خطأ في الاتصال بالسيرفر");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -91,7 +175,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const Text(
                 "CREATE ACCOUNT",
                 style: TextStyle(
-                  fontSize: 24, // text-2xl
+                  fontSize: 24, 
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
                   letterSpacing: -0.5,
@@ -108,6 +192,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
               const SizedBox(height: 32),
+
+              // Error Message
+              if (_errorMessage != null)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.alertCircle, color: AppColors.error, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(color: AppColors.error, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
               // --- Form Fields ---
 
@@ -128,20 +236,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
               _buildTextField(
                 controller: _phoneController,
                 focusNode: _phoneFocus,
-                hint: "+1 234 567 890",
+                hint: "01xxxxxxxxx",
                 icon: LucideIcons.phone,
                 inputType: TextInputType.phone,
               ),
               const SizedBox(height: 16),
 
-              // 3. Username (NEW ✅)
-              _buildInputLabel("Username"),
+              // 3. Username
+              _buildInputLabel("Username (English Only)"),
               const SizedBox(height: 4),
               _buildTextField(
                 controller: _usernameController,
                 focusNode: _userFocus,
-                hint: "@username",
-                icon: LucideIcons.user,
+                hint: "username",
+                icon: LucideIcons.atSign,
               ),
               const SizedBox(height: 16),
 
@@ -151,7 +259,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               _buildTextField(
                 controller: _passwordController,
                 focusNode: _passFocus,
-                hint: "Create password",
+                hint: "••••••",
                 icon: LucideIcons.lock,
                 isPassword: true,
               ),
@@ -163,8 +271,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
               _buildTextField(
                 controller: _confirmPasswordController,
                 focusNode: _confirmPassFocus,
-                hint: "Confirm password",
-                icon: LucideIcons.lock, // LucideLock match
+                hint: "••••••",
+                icon: LucideIcons.lock, 
                 isPassword: true,
               ),
               const SizedBox(height: 32),
@@ -173,32 +281,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _handleRegister,
+                  onPressed: _isLoading ? null : _handleRegister,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.accentYellow,
                     foregroundColor: AppColors.backgroundPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24), // rounded-m3-xl
+                      borderRadius: BorderRadius.circular(24),
                     ),
                     elevation: 10,
                     shadowColor: AppColors.accentYellow.withOpacity(0.2),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Text(
-                        "CREATE ACCOUNT",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          letterSpacing: 1.0,
-                        ),
+                  child: _isLoading 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.backgroundPrimary))
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Text(
+                            "CREATE ACCOUNT",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Icon(LucideIcons.arrowRight, size: 18),
+                        ],
                       ),
-                      SizedBox(width: 12),
-                      Icon(LucideIcons.arrowRight, size: 18),
-                    ],
-                  ),
                 ),
               ),
 
