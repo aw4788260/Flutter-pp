@@ -92,7 +92,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           additionalOptions: (context) {
             return <OptionItem>[
               OptionItem(
-                onTap: () {
+                // ✅ تم التصحيح: إضافة context للمعامل
+                onTap: (context) {
                   Navigator.pop(context); // إغلاق قائمة الخيارات الأساسية
                   _showQualitySheet();    // فتح قائمة الجودات
                 },
