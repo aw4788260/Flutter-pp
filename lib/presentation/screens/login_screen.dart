@@ -87,7 +87,12 @@ class _LoginScreenState extends State<LoginScreen> {
           'password': password,
           'deviceId': deviceId,
         },
-        options: Options(validateStatus: (status) => status! < 500),
+        options: Options(
+          headers: {
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+          },
+          validateStatus: (status) => status! < 500,
+        ),
       );
 
       final data = response.data;
@@ -123,7 +128,11 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final response = await _dio.get(
         '$_baseUrl/api/public/get-app-init-data',
-        options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId}),
+        options: Options(headers: {
+          'x-user-id': userId, 
+          'x-device-id': deviceId,
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
       );
       if (response.statusCode == 200 && response.data['success'] == true) {
         AppState().updateFromInitData(response.data);
