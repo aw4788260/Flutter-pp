@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import 'checkout_screen.dart'; // تأكد من وجود ملف CheckoutScreen
+import 'checkout_screen.dart';
 
 class CourseDetailsScreen extends StatefulWidget {
   final String courseCode;
@@ -36,7 +36,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         queryParameters: {'courseCode': widget.courseCode},
         options: Options(headers: {
     'x-user-id': userId,
-    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+    'x-app-secret': const String.fromEnvironment('APP_SECRET'),
   }),
       );
 
@@ -60,6 +60,15 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     final teacher = course['teacher'] ?? {};
     final subjects = List<Map<String, dynamic>>.from(course['subjects'] ?? []);
     final double fullPrice = (course['price'] ?? 0).toDouble();
+
+    // ✅ منطق جديد: التحقق مما إذا كانت جميع المواد مملوكة
+    bool allSubjectsOwned = false;
+    if (subjects.isNotEmpty) {
+      allSubjectsOwned = subjects.every((s) => s['isOwned'] == true);
+    }
+
+    // ✅ اعتبار الكورس مملوكاً إذا تم شراؤه كحزمة أو تم شراء جميع مواده
+    bool isCourseOwned = (course['isOwned'] ?? false) || allSubjectsOwned;
 
     // حساب السعر الإجمالي
     double currentPrice = _isFullCourse 
@@ -143,8 +152,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       const Text("PURCHASE OPTIONS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 2.0)),
                       const SizedBox(height: 20),
 
-                      // 1. Full Course Option
-                      if (!(course['isOwned'] ?? false))
+                      // 1. Full Course Option (يظهر فقط إذا لم يكن مملوكاً بالكامل)
+                      if (!isCourseOwned) // ✅ تم استخدام المتغير الجديد هنا
                         GestureDetector(
                           onTap: () => setState(() { _isFullCourse = !_isFullCourse; _selectedSubjectIds.clear(); }),
                           child: AnimatedContainer(
@@ -174,6 +183,24 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                               ],
                             ),
                           ),
+                        )
+                      else 
+                        // ✅ رسالة تظهر إذا كان الكورس مملوكاً
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppColors.success.withOpacity(0.5)),
+                          ),
+                          child: Column(
+                            children: const [
+                              Icon(LucideIcons.checkCircle, color: AppColors.success, size: 32),
+                              SizedBox(height: 8),
+                              Text("COURSE OWNED", style: TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                            ],
+                          ),
                         ),
 
                       if (subjects.isNotEmpty) ...[
@@ -187,7 +214,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           bool isSelected = _selectedSubjectIds.contains(sub['id'].toString());
                           
                           return GestureDetector(
-                            onTap: isOwned ? null : () {
+                            onTap: (isOwned || isCourseOwned) ? null : () { // ✅ منع الاختيار إذا كان الكورس مملوكاً
                               setState(() {
                                 _isFullCourse = false;
                                 if (isSelected) {
@@ -209,7 +236,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  if (!isOwned)
+                                  if (!isOwned && !isCourseOwned)
                                     Container(
                                       margin: const EdgeInsets.only(right: 16),
                                       width: 20, height: 20,
@@ -223,13 +250,13 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                     child: Text(
                                       sub['title'],
                                       style: TextStyle(
-                                        color: isOwned ? AppColors.textSecondary : Colors.white,
+                                        color: (isOwned || isCourseOwned) ? AppColors.textSecondary : Colors.white,
                                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                        decoration: isOwned ? TextDecoration.lineThrough : null,
+                                        decoration: (isOwned || isCourseOwned) ? TextDecoration.lineThrough : null,
                                       ),
                                     ),
                                   ),
-                                  if (isOwned)
+                                  if (isOwned || isCourseOwned)
                                     const Text("OWNED", style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold))
                                   else
                                     Text("${sub['price']} EGP", style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
