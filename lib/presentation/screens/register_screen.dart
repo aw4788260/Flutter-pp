@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart'; // للاتصال بالشبكة
+import 'package:dio/dio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
@@ -28,7 +28,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmPassFocus = FocusNode();
 
   final Dio _dio = Dio();
-  final String _baseUrl = 'https://courses.aw478260.dpdns.org'; // رابط السيرفر
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -37,7 +37,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void initState() {
     super.initState();
     FirebaseCrashlytics.instance.log("Entered Register Screen");
-    // Rebuild on focus change for styling
+    // تحديث الواجهة عند تغيير التركيز
     for (var node in [_nameFocus, _phoneFocus, _userFocus, _passFocus, _confirmPassFocus]) {
       node.addListener(() => setState(() {}));
     }
@@ -59,47 +59,43 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _handleRegister() async {
-    // 1. تصفير الأخطاء
     setState(() => _errorMessage = null);
 
-    // 2. التحقق من المدخلات (Validation)
     final name = _nameController.text.trim();
     final phone = _phoneController.text.trim();
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
+    // Validation
     if (name.isEmpty || phone.isEmpty || username.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = "جميع الحقول مطلوبة");
+      setState(() => _errorMessage = "All fields are required");
       return;
     }
 
-    // التحقق من اسم المستخدم (إنجليزي وأرقام فقط)
     final usernameRegex = RegExp(r'^[a-zA-Z0-9]+$');
     if (!usernameRegex.hasMatch(username)) {
-      setState(() => _errorMessage = "اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام فقط (بدون مسافات)");
+      setState(() => _errorMessage = "Username must be English letters & numbers only");
       return;
     }
 
-    // التحقق من رقم الهاتف (يبدأ بـ 01 ويتكون من 11 رقم)
     final phoneRegex = RegExp(r'^01[0-9]{9}$');
     if (!phoneRegex.hasMatch(phone)) {
-      setState(() => _errorMessage = "رقم الهاتف غير صحيح (يجب أن يكون 11 رقم ويبدأ بـ 01)");
+      setState(() => _errorMessage = "Invalid phone number (must be 11 digits starting with 01)");
       return;
     }
 
-    // التحقق من كلمة المرور
     if (password.length < 6) {
-      setState(() => _errorMessage = "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+      setState(() => _errorMessage = "Password must be at least 6 characters");
       return;
     }
 
     if (password != confirmPassword) {
-      setState(() => _errorMessage = "كلمات المرور غير متطابقة");
+      setState(() => _errorMessage = "Passwords do not match");
       return;
     }
 
-    // 3. إرسال الطلب
+    // Call API
     setState(() => _isLoading = true);
 
     try {
@@ -111,35 +107,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'phone': phone,
           'password': password,
         },
-        options: Options(
-          validateStatus: (status) => status! < 500,
-        ),
+        options: Options(validateStatus: (status) => status! < 500),
       );
 
       final data = response.data;
 
       if (response.statusCode == 200 && data['success'] == true) {
-        // نجاح
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(data['message'] ?? "تم إنشاء الحساب بنجاح. قم بتسجيل الدخول."),
+            const SnackBar(
+              content: Text("Account created successfully. Please login."),
               backgroundColor: AppColors.success,
             ),
           );
-          // التوجيه لصفحة تسجيل الدخول
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const LoginScreen()),
           );
         }
       } else {
-        // خطأ من السيرفر (مثل تكرار الاسم)
-        setState(() => _errorMessage = data['message'] ?? "فشل إنشاء الحساب");
+        setState(() => _errorMessage = data['message'] ?? "Registration failed");
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack);
-      setState(() => _errorMessage = "حدث خطأ في الاتصال بالسيرفر");
+      setState(() => _errorMessage = "Connection Error");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -193,7 +184,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 32),
 
-              // Error Message
+              // Error Display
               if (_errorMessage != null)
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -219,7 +210,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               // --- Form Fields ---
 
-              // 1. Full Name
               _buildInputLabel("Full Name"),
               const SizedBox(height: 4),
               _buildTextField(
@@ -230,7 +220,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 2. Phone Number
               _buildInputLabel("Phone Number"),
               const SizedBox(height: 4),
               _buildTextField(
@@ -242,7 +231,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 3. Username
               _buildInputLabel("Username (English Only)"),
               const SizedBox(height: 4),
               _buildTextField(
@@ -253,7 +241,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 4. Password
               _buildInputLabel("Password"),
               const SizedBox(height: 4),
               _buildTextField(
@@ -265,7 +252,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 5. Confirm Password
               _buildInputLabel("Confirm Password"),
               const SizedBox(height: 4),
               _buildTextField(
