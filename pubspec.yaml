@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
   # Firebase Core & Crashlytics
   firebase_core: ^2.24.2
   firebase_crashlytics: ^3.4.9
@@ -18,32 +19,50 @@ dependencies:
   equatable: ^2.0.5
   get_it: ^7.6.6
   
-  # UI Components & Icons matching React design
+  # UI Components & Icons
   google_fonts: ^6.1.0
   flutter_svg: ^2.0.9
   url_launcher: ^6.3.0
-  # تم تصحيح الإصدار هنا ليطابق الموجود في Pub.dev
   lucide_icons: ^0.257.0 
   cached_network_image: ^3.3.1
-  
-  # Security (مهم جداً لكود الحماية في main.dart)
-  flutter_windowmanager_plus: ^1.0.1
+  percent_indicator: ^4.2.3 # شريط التقدم للتحميل
+
+  # Security & Privacy
+  flutter_windowmanager_plus: ^1.0.1 # منع تصوير الشاشة
+  encrypt: ^5.0.3 # التشفير (AES)
 
   # Networking
   dio: ^5.4.0
   
-  # Storage
+  # Storage & Local Database
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  path_provider: ^2.1.2 # الوصول لمسارات الملفات
+  permission_handler: ^11.3.0 # إدارة الأذونات
+
+  # File Handling & Uploads
+  image_picker: ^1.0.7 # اختيار صور الإيصالات
+
+  # Video Players
+  video_player: ^2.8.2
+  chewie: ^1.7.4 # مشغل فيديو متقدم
+  youtube_player_flutter: ^8.1.2 # مشغل يوتيوب
+
+  # PDF Viewer
+  flutter_pdfview: ^1.3.2
+
+  # Local Server (Offline Playback Proxy)
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
-  # 👇 1. إضافة مكتبة توليد الأيقونات
+  # مكتبة توليد الأيقونات
   flutter_launcher_icons: ^0.13.1
 
-# 👇 2. إعدادات الأيقونة (تستخدم الصورة المرفوعة assets/images/app_icon.png)
+# إعدادات الأيقونة
 flutter_icons:
   android: "ic_launcher"
   ios: false
@@ -52,6 +71,6 @@ flutter_icons:
 
 flutter:
   uses-material-design: true
-  # 👇 3. تعريف مسار الصور (ليتمكن التطبيق من قراءتها داخلياً أيضاً)
+  # مسار الصور
   assets:
     - assets/images/
