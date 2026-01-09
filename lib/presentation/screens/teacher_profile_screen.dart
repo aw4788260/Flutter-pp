@@ -27,6 +27,11 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
       final res = await Dio().get(
         'https://courses.aw478260.dpdns.org/api/public/get-teacher-details',
         queryParameters: {'teacherId': widget.teacherId},
+        options: Options(
+          headers: {
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة السر هنا
+          },
+        ),
       );
       if (mounted) setState(() { _teacher = res.data; _loading = false; });
     } catch (e) {
