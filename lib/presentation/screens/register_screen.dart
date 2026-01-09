@@ -107,7 +107,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'phone': phone,
           'password': password,
         },
-        options: Options(validateStatus: (status) => status! < 500),
+        options: Options(
+    headers: {
+      'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+    },
+    validateStatus: (status) => status! < 500
+  ),
       );
 
       final data = response.data;
