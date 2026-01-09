@@ -24,12 +24,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     return _buildLibraryView();
   }
 
-  // --- 1. واجهة المكتبة (الكورسات المملوكة) ---
+  // --- 1. واجهة المكتبة (تعتمد الآن على myLibrary من السيرفر) ---
   Widget _buildLibraryView() {
-    // جلب الكورسات المملوكة من الذاكرة
-    final myCourses = AppState().allCourses.where((c) {
-      return AppState().ownsCourse(c.id);
-    }).toList();
+    // ✅ التعديل: استخدام القائمة الجاهزة من السيرفر التي تحتوي الكورسات والمواد المجمعة
+    final libraryItems = AppState().myLibrary;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -68,7 +66,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            "LESSONS",
+                            "MY LESSONS", // تم تغيير النص ليعكس المحتوى
                             style: TextStyle(
                               color: AppColors.textSecondary,
                               fontSize: 10,
@@ -98,7 +96,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               ),
             ),
             Expanded(
-              child: myCourses.isEmpty
+              child: libraryItems.isEmpty
                   ? Center(
                       child: Text(
                         "NO ACTIVE COURSES",
@@ -112,20 +110,29 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
-                      itemCount: myCourses.length,
+                      itemCount: libraryItems.length,
                       itemBuilder: (context, index) {
-                        final course = myCourses[index];
+                        final item = libraryItems[index];
                         
+                        // استخراج البيانات (سواء كانت كورس كامل أو مادة منفصلة مجمعة)
+                        final String title = item['title'] ?? 'Unknown Course';
+                        final String instructor = item['instructor'] ?? 'Instructor';
+                        final String code = item['code'] ?? '';
+                        final String id = item['id'].toString();
+                        
+                        // التحقق من نوع الاشتراك للعرض (اختياري)
+                        final bool isPartial = item['type'] == 'subject_group';
+
                         return GestureDetector(
                           onTap: () {
-                            // من المكتبة -> نذهب للمحتوى
+                            // الانتقال لصفحة محتوى الكورس
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => CourseMaterialsScreen(
-                                  courseId: course.id,
-                                  courseTitle: course.title,
-                                  courseCode: course.code,
+                                  courseId: id,
+                                  courseTitle: title,
+                                  courseCode: code,
                                 ),
                               ),
                             );
@@ -136,7 +143,12 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             decoration: BoxDecoration(
                               color: AppColors.backgroundSecondary,
                               borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
+                              border: Border.all(
+                                // تمييز الكورسات الجزئية بلون حدود مختلف قليلاً (اختياري)
+                                color: isPartial 
+                                    ? AppColors.accentOrange.withOpacity(0.3) 
+                                    : Colors.white.withOpacity(0.05)
+                              ),
                               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
                             ),
                             child: Row(
@@ -148,7 +160,12 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                     boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                   ),
-                                  child: const Icon(LucideIcons.playCircle, color: AppColors.accentOrange, size: 24),
+                                  child: Icon(
+                                    // أيقونة مختلفة للمواد المنفصلة
+                                    isPartial ? LucideIcons.layers : LucideIcons.playCircle, 
+                                    color: isPartial ? AppColors.accentYellow : AppColors.accentOrange, 
+                                    size: 24
+                                  ),
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
@@ -156,7 +173,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        course.title.toUpperCase(),
+                                        title.toUpperCase(),
                                         style: const TextStyle(
                                           color: AppColors.textPrimary,
                                           fontSize: 15,
@@ -167,14 +184,32 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 4),
-                                      Text(
-                                        course.instructorName.toUpperCase(),
-                                        style: TextStyle(
-                                          color: AppColors.textSecondary.withOpacity(0.7),
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 1.5,
-                                        ),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            instructor.toUpperCase(),
+                                            style: TextStyle(
+                                              color: AppColors.textSecondary.withOpacity(0.7),
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 1.5,
+                                            ),
+                                          ),
+                                          if (isPartial) ...[
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.accentYellow.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(4)
+                                              ),
+                                              child: const Text(
+                                                "PARTIAL",
+                                                style: TextStyle(fontSize: 8, color: AppColors.accentYellow, fontWeight: FontWeight.bold),
+                                              ),
+                                            )
+                                          ]
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -339,9 +374,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                // نستخدم السعر الكامل للعرض (تأكد أن الموديل يحتوي عليه)
-                                // سنفترضه موجوداً، أو يمكن عرضه لاحقاً
-                                "\$COURSE", 
+                                "${course.fullPrice.toInt()} EGP", // عرض السعر
                                 style: const TextStyle(
                                   color: AppColors.accentYellow,
                                   fontSize: 16,
