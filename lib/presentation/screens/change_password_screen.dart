@@ -37,7 +37,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           'oldPassword': _oldPassController.text,
           'newPassword': _newPassController.text,
         },
-        options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId}),
+        options: Options(headers: {
+    'x-user-id': userId, 
+    'x-device-id': deviceId,
+    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+  }),
       );
 
       if (res.statusCode == 200 && res.data['success'] == true) {
