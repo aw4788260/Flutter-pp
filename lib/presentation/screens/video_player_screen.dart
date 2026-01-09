@@ -1,148 +1,175 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../data/models/course_model.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  final Lesson lesson;
+  // نستقبل قائمة الجودات { "1080p": "url", "720p": "url" }
+  final Map<String, String> streams; 
+  final String title;
 
-  const VideoPlayerScreen({super.key, required this.lesson});
+  const VideoPlayerScreen({super.key, required this.streams, required this.title});
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
-  // Normally use video_player package, here we simulate UI
-  bool _showControls = true;
+  late VideoPlayerController _videoPlayerController;
+  ChewieController? _chewieController;
+  bool _isError = false;
+  
+  String _currentQuality = "";
+  List<String> _sortedQualities = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _parseQualities();
+  }
+
+  void _parseQualities() {
+    if (widget.streams.isEmpty) {
+      setState(() => _isError = true);
+      return;
+    }
+
+    // ترتيب الجودات رقمياً (مثلاً 360, 720, 1080)
+    _sortedQualities = widget.streams.keys.toList();
+    _sortedQualities.sort((a, b) {
+      // استخراج الرقم من النص (مثلاً "720p" -> 720)
+      int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+      int valB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+      return valA.compareTo(valB);
+    });
+
+    // البدء بأفضل جودة (آخر عنصر في القائمة المرتبة تصاعدياً)
+    // أو يمكن البدء بـ 720p (أو 480p) لتوفير البيانات إذا توفرت
+    _currentQuality = _sortedQualities.contains("720p") ? "720p" : _sortedQualities.last;
+    
+    _initializePlayer(widget.streams[_currentQuality]!);
+  }
+
+  Future<void> _initializePlayer(String url) async {
+    // حفظ مكان التوقف الحالي لاستكمال المشاهدة عند تغيير الجودة
+    Duration currentPos = Duration.zero;
+    if (_chewieController != null && _videoPlayerController.value.isInitialized) {
+      currentPos = _videoPlayerController.value.position;
+      _chewieController!.dispose();
+      await _videoPlayerController.dispose();
+    }
+
+    try {
+      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url));
+      await _videoPlayerController.initialize();
+      
+      if (currentPos > Duration.zero) {
+        await _videoPlayerController.seekTo(currentPos);
+      }
+
+      setState(() {
+        _chewieController = ChewieController(
+          videoPlayerController: _videoPlayerController,
+          autoPlay: true,
+          looping: false,
+          allowFullScreen: true,
+          showControls: true,
+          
+          // تخصيص الألوان
+          materialProgressColors: ChewieProgressColors(
+            playedColor: AppColors.accentYellow,
+            handleColor: AppColors.accentYellow,
+            backgroundColor: Colors.grey,
+            bufferedColor: Colors.white24,
+          ),
+          
+          // سرعات التشغيل
+          playbackSpeeds: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+          
+          // إضافة زر "الإعدادات" في الشريط العلوي للمشغل
+          additionalOptions: (context) {
+            return <OptionItem>[
+              OptionItem(
+                onTap: () {
+                  Navigator.pop(context); // إغلاق قائمة الخيارات الأساسية
+                  _showQualitySheet();    // فتح قائمة الجودات
+                },
+                iconData: LucideIcons.settings,
+                title: 'Quality: $_currentQuality',
+              ),
+            ];
+          },
+          
+          errorBuilder: (context, errorMessage) {
+            return Center(child: Text(errorMessage, style: const TextStyle(color: Colors.white)));
+          },
+        );
+      });
+    } catch (e) {
+      setState(() => _isError = true);
+    }
+  }
+
+  void _showQualitySheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.backgroundSecondary,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("Select Quality", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              // نعرض القائمة معكوسة لتكون أعلى جودة في الأعلى
+              ..._sortedQualities.reversed.map((q) => ListTile(
+                title: Text(q, style: TextStyle(color: q == _currentQuality ? AppColors.accentYellow : Colors.white)),
+                trailing: q == _currentQuality ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (q != _currentQuality) {
+                    setState(() {
+                      _currentQuality = q;
+                      _chewieController = null; // إظهار مؤشر التحميل
+                    });
+                    _initializePlayer(widget.streams[q]!);
+                  }
+                },
+              )),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _videoPlayerController.dispose();
+    _chewieController?.dispose();
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: () => setState(() => _showControls = !_showControls),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Video Placeholder (Simulated)
-            Container(width: double.infinity, height: double.infinity, color: Colors.black),
-            
-            // Simulated Video Content
-            const Text("VIDEO PLAYING...", style: TextStyle(color: Colors.white24, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
-
-            // Controls Overlay
-            AnimatedOpacity(
-              opacity: _showControls ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: Container(
-                color: Colors.black.withOpacity(0.4),
-                padding: const EdgeInsets.all(24),
-                child: SafeArea(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Top Bar
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 24),
-                            ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: const [
-                              Text(
-                                "Watching Now",
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
-                              Text(
-                                "HD STREAMING",
-                                style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 1.5),
-                              ),
-                            ],
-                          )
-                        ],
-                      ),
-
-                      // Center Controls
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(LucideIcons.skipBack, color: Colors.white70, size: 36),
-                          const SizedBox(width: 48),
-                          Container(
-                            width: 80, height: 80,
-                            decoration: BoxDecoration(
-                              color: AppColors.accentYellow,
-                              shape: BoxShape.circle,
-                              boxShadow: const [BoxShadow(color: AppColors.accentYellow, blurRadius: 25)],
-                            ),
-                            child: const Icon(LucideIcons.play, color: Colors.white, size: 40),
-                          ),
-                          const SizedBox(width: 48),
-                          const Icon(LucideIcons.skipForward, color: Colors.white70, size: 36),
-                        ],
-                      ),
-
-                      // Bottom Bar
-                      Column(
-                        children: [
-                          // Progress Bar
-                          Container(
-                            height: 4,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              width: MediaQuery.of(context).size.width * 0.45,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: AppColors.accentYellow,
-                                borderRadius: BorderRadius.circular(2),
-                                boxShadow: const [BoxShadow(color: AppColors.accentYellow, blurRadius: 8)],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          
-                          // Settings
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                "HD 1080P",
-                                style: TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5),
-                              ),
-                              Row(
-                                children: const [
-                                  Icon(LucideIcons.settings, color: Colors.white, size: 20),
-                                  SizedBox(width: 24),
-                                  Icon(LucideIcons.maximize, color: Colors.white, size: 20),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: const BackButton(color: Colors.white),
+        title: Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 14)),
+      ),
+      body: Center(
+        child: _isError
+            ? const Text("Error loading video", style: TextStyle(color: AppColors.error))
+            : _chewieController != null && _chewieController!.videoPlayerController.value.isInitialized
+                ? Chewie(controller: _chewieController!)
+                : const CircularProgressIndicator(color: AppColors.accentYellow),
       ),
     );
   }
