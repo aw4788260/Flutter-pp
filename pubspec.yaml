@@ -26,6 +26,7 @@ dependencies:
   lucide_icons: ^0.257.0 
   cached_network_image: ^3.3.1
   percent_indicator: ^4.2.3 # شريط التقدم للتحميل
+  device_info_plus: ^10.1.0
 
   # Security & Privacy
   flutter_windowmanager_plus: ^1.0.1 # منع تصوير الشاشة
