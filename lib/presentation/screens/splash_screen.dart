@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/app_state.dart'; // استدعاء المخزن الجديد
 import 'login_screen.dart';
+import 'main_wrapper.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -14,15 +18,17 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
   late AnimationController _bounceController;
   late Animation<double> _bounceAnimation;
-  
-  late AnimationController _progressController;
-  late Animation<double> _progressAnimation;
+  final Dio _dio = Dio();
+
+  // رابط الباك اند الخاص بك (تأكد من تغييره للرابط الحقيقي)
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org'; 
 
   @override
   void initState() {
     super.initState();
     FirebaseCrashlytics.instance.log("App Started - Splash Screen");
 
+    // Animation Setup
     _bounceController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -32,26 +38,76 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       CurvedAnimation(parent: _bounceController, curve: Curves.easeInOut),
     );
 
-    _progressController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..forward();
+    // البدء في عملية التهيئة
+    _initializeApp();
+  }
 
-    _progressAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
-    );
+  Future<void> _initializeApp() async {
+    try {
+      // 1. فتح صندوق التخزين المحلي
+      await Hive.initFlutter();
+      var box = await Hive.openBox('auth_box');
+      
+      String? userId = box.get('user_id');
+      String? deviceId = box.get('device_id');
 
-    Timer(const Duration(milliseconds: 2500), () {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      // 2. استدعاء API التهيئة
+      // نرسل الهيدرز حتى لو كانت null، الباك اند سيتعامل معها
+      final response = await _dio.get(
+        '$_baseUrl/api/public/get-app-init-data',
+        options: Options(
+          headers: {
+            'x-user-id': userId,
+            'x-device-id': deviceId,
+          },
+          receiveTimeout: const Duration(seconds: 10),
+        ),
       );
-    });
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        // 3. تخزين البيانات في الذاكرة (State)
+        AppState().updateFromInitData(response.data);
+
+        bool isLoggedIn = response.data['isLoggedIn'] ?? false;
+
+        // إذا فشل التحقق من السيرفر (رغم وجود بيانات محلية)، نعتبره خروج
+        if (userId != null && !isLoggedIn) {
+          await box.clear(); // مسح البيانات القديمة
+        }
+
+        // 4. التوجيه
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => isLoggedIn ? const MainWrapper() : const LoginScreen(),
+            ),
+          );
+        }
+      } else {
+        throw Exception("Failed to init data");
+      }
+
+    } catch (e, stack) {
+      // تسجيل الخطأ
+      FirebaseCrashlytics.instance.recordError(e, stack);
+      debugPrint("Splash Error: $e");
+      
+      // في حالة الخطأ (انترنت مثلاً)، نذهب لتسجيل الدخول كاحتياط
+      // أو يمكن إظهار رسالة خطأ وإعادة المحاولة
+      if (mounted) {
+        // تأخير بسيط لإظهار اللوجو
+        Future.delayed(const Duration(seconds: 2), () {
+           Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _bounceController.dispose();
-    _progressController.dispose();
     super.dispose();
   }
 
@@ -68,9 +124,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           children: [
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ✅ اللوجو المتحرك بدون مربع
                 AnimatedBuilder(
                   animation: _bounceAnimation,
                   builder: (context, child) {
@@ -79,18 +133,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       child: child,
                     );
                   },
-                  // عرض اللوجو مباشرة بحجم كبير
                   child: Image.asset(
                     'assets/images/logo.png',
-                    width: screenWidth * 0.6, // يأخذ 60% من عرض الشاشة
+                    width: screenWidth * 0.6,
                     fit: BoxFit.contain,
                   ),
                 ),
-                
                 const SizedBox(height: 16),
-
-                // ✅ تم حذف النص "MeD O7aS"
-
                 const Text(
                   "EMPOWERING YOUR GROWTH",
                   style: TextStyle(
@@ -102,53 +151,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 ),
               ],
             ),
-
-            Positioned(
+            const Positioned(
               bottom: 80,
-              child: Column(
-                children: [
-                  Container(
-                    width: 160,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                    child: AnimatedBuilder(
-                      animation: _progressAnimation,
-                      builder: (context, child) {
-                        return FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: 0.4 + (0.6 * _progressAnimation.value),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.accentYellow,
-                              borderRadius: BorderRadius.circular(2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.accentYellow.withOpacity(0.6),
-                                  blurRadius: 12,
-                                )
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  Text(
-                    "LOADING SYSTEM",
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 6.0,
-                      color: AppColors.textSecondary.withOpacity(0.3),
-                    ),
-                  ),
-                ],
-              ),
+              child: CircularProgressIndicator(color: AppColors.accentYellow),
             ),
           ],
         ),
