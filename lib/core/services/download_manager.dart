@@ -37,12 +37,13 @@ class DownloadManager {
         '$_baseUrl/api/secure/get-video-id',
         queryParameters: {'lessonId': lessonId},
         options: Options(
-          headers: {
-            'x-user-id': userId,
-            'x-device-id': deviceId
-          },
-          validateStatus: (status) => status! < 500, // قبول الردود لمعالجتها يدوياً
-        ),
+    headers: {
+      'x-user-id': userId,
+      'x-device-id': deviceId,
+      'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+    },
+    validateStatus: (status) => status! < 500,
+  ),
       );
 
       if (res.statusCode != 200) {
