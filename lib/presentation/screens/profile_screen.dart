@@ -1,17 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/app_state.dart'; // ✅ استيراد مصدر البيانات الحقيقي
 import 'edit_profile_screen.dart';
 import 'change_password_screen.dart';
 import 'my_requests_screen.dart';
 import 'dev_info_screen.dart';
 import 'login_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  // دالة تسجيل الخروج الفعلية
+  Future<void> _logout() async {
+    try {
+      // 1. مسح البيانات من التخزين المحلي
+      var authBox = await Hive.openBox('auth_box');
+      await authBox.clear();
+      
+      // 2. مسح البيانات من الذاكرة
+      AppState().clear();
+
+      if (mounted) {
+        // 3. التوجيه لشاشة تسجيل الدخول ومسح كل الصفحات السابقة
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      debugPrint("Logout Error: $e");
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // ✅ جلب البيانات الحية من الذاكرة
+    final user = AppState().userData;
+    final String name = (user?['first_name'] ?? "GUEST").toUpperCase();
+    final String username = user?['username'] ?? "@guest";
+    final String firstLetter = name.isNotEmpty ? name[0] : "G";
+
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: SafeArea(
@@ -60,10 +95,10 @@ class ProfileScreen extends StatelessWidget {
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.accentYellow.withOpacity(0.5), width: 2),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Text(
-                          "A",
-                          style: TextStyle(
+                          firstLetter,
+                          style: const TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
                             color: AppColors.accentYellow,
@@ -76,9 +111,9 @@ class ProfileScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            "AHMED WALID",
-                            style: TextStyle(
+                          Text(
+                            name,
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: AppColors.textPrimary,
@@ -91,9 +126,9 @@ class ProfileScreen extends StatelessWidget {
                               color: AppColors.backgroundPrimary,
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text(
-                              "@aw478260",
-                              style: TextStyle(
+                            child: Text(
+                              username,
+                              style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.textSecondary,
@@ -105,7 +140,10 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())),
+                      onTap: () {
+                        // عند العودة من التعديل، نقوم بإعادة بناء الواجهة لتحديث الاسم
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => setState(() {}));
+                      },
                       child: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
@@ -137,11 +175,11 @@ class ProfileScreen extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen()))),
+                    _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => setState(() {}))),
                     const Divider(height: 1, color: Colors.white10),
                     _buildMenuItem(context, icon: LucideIcons.lock, title: "Change Password", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
                     const Divider(height: 1, color: Colors.white10),
-                    _buildMenuItem(context, icon: LucideIcons.clipboardList, title: "My Requests", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen())), badge: "3"),
+                    _buildMenuItem(context, icon: LucideIcons.clipboardList, title: "My Requests", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen()))), // أزلت الـ Badge الثابتة لأنه يجب أن تكون ديناميكية
                   ],
                 ),
               ),
@@ -163,7 +201,6 @@ class ProfileScreen extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    // ✅ تم استرجاع الأيقونة العادية (LucideIcons.info) هنا بدلاً من الصورة
                     _buildMenuItem(
                       context, 
                       icon: LucideIcons.info, 
@@ -176,9 +213,7 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 32),
 
               GestureDetector(
-                onTap: () {
-                  Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
-                },
+                onTap: _logout, // ✅ استدعاء دالة الخروج الحقيقية
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
