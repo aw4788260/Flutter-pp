@@ -29,7 +29,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
       
       final res = await Dio().get(
         '$_baseUrl/api/student/my-requests',
-        options: Options(headers: {'x-user-id': userId}),
+        options: Options(headers: {
+    'x-user-id': userId,
+    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
+  }),
       );
       
       if (mounted) {
