@@ -74,6 +74,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           headers: {
             'x-user-id': userId,
             'x-device-id': deviceId,
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
           receiveTimeout: const Duration(seconds: 10),
         ),
