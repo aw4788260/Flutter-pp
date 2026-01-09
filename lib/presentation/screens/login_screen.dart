@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:android_id/android_id.dart'; // ✅ مكتبة المعرف الفريد
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import 'main_wrapper.dart';
@@ -19,8 +20,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // تم تغيير الاسم ليعكس أنه للمستخدم فقط
-  final _usernameController = TextEditingController();
+  // نستخدم هذا المتحكم لاسم المستخدم أو رقم الهاتف
+  final _identifierController = TextEditingController(); 
   final _passwordController = TextEditingController();
   
   final FocusNode _userFocus = FocusNode();
@@ -42,22 +43,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _identifierController.dispose();
     _passwordController.dispose();
     _userFocus.dispose();
     _passFocus.dispose();
     super.dispose();
   }
 
-  // دالة جلب معرف الجهاز الحقيقي
+  // ✅ دالة الحصول على معرف الجهاز الفريد (Android ID)
   Future<String> _getAndSaveDeviceId(Box box) async {
     String deviceId;
     try {
-      final deviceInfo = DeviceInfoPlugin();
       if (Platform.isAndroid) {
-        final androidInfo = await deviceInfo.androidInfo;
-        deviceId = 'android_${androidInfo.id}'; 
+        const androidIdPlugin = AndroidId();
+        final String? androidId = await androidIdPlugin.getId();
+        deviceId = androidId ?? 'unknown_android_${DateTime.now().millisecondsSinceEpoch}';
       } else if (Platform.isIOS) {
+        final deviceInfo = DeviceInfoPlugin();
         final iosInfo = await deviceInfo.iosInfo;
         deviceId = 'ios_${iosInfo.identifierForVendor}';
       } else {
@@ -67,16 +69,17 @@ class _LoginScreenState extends State<LoginScreen> {
       final random = Random();
       deviceId = 'fallback_${DateTime.now().millisecondsSinceEpoch}_${random.nextInt(1000)}';
     }
+    
     await box.put('device_id', deviceId);
     return deviceId;
   }
 
   Future<void> _handleLogin() async {
-    final username = _usernameController.text.trim();
+    final identifier = _identifierController.text.trim(); // ✅ القيمة المدخلة (اسم أو هاتف)
     final password = _passwordController.text.trim();
 
-    if (username.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = "Please enter username and password");
+    if (identifier.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = "Please enter username/phone and password");
       return;
     }
 
@@ -87,12 +90,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       var box = await Hive.openBox('auth_box');
+      // 1. جلب معرف الجهاز الحقيقي
       final deviceId = await _getAndSaveDeviceId(box);
 
+      // 2. إرسال الطلب للباك اند المعدل
       final response = await _dio.post(
         '$_baseUrl/api/auth/login',
         data: {
-          'username': username, // إرسال اسم المستخدم فقط
+          'identifier': identifier, // ✅ إرسال identifier بدلاً من username
           'password': password,
           'deviceId': deviceId,
         },
@@ -212,13 +217,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-              // ✅ التعديل هنا: اسم المستخدم فقط
-              _buildInputLabel("Username"),
+              // ✅ تحديث التسمية لتوضيح إمكانية استخدام الهاتف
+              _buildInputLabel("Username or Phone"),
               const SizedBox(height: 8),
               _buildTextField(
-                controller: _usernameController,
+                controller: _identifierController,
                 focusNode: _userFocus,
-                hint: "Enter your username", // تلميح بسيط
+                hint: "Enter username or 01xxxxxxxxx", // ✅ تلميح محدث
                 icon: LucideIcons.user,
               ),
               const SizedBox(height: 24),
