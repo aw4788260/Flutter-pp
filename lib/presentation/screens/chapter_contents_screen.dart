@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import '../../data/models/course_model.dart';
-import 'video_player_screen.dart';
+import '../../core/services/download_manager.dart'; // ✅ للمنطق
+import 'video_player_screen.dart'; // ✅ للمشغل
+import 'pdf_viewer_screen.dart'; // ✅ للـ PDF
 
 class ChapterContentsScreen extends StatefulWidget {
-  final Chapter chapter;
+  // نستقبل الشابتر كـ Map لأننا نستخدم الـ API الآن
+  final Map<String, dynamic> chapter;
 
   const ChapterContentsScreen({super.key, required this.chapter});
 
@@ -14,12 +19,65 @@ class ChapterContentsScreen extends StatefulWidget {
 }
 
 class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
-  String activeTab = 'videos';
+  String activeTab = 'videos'; // videos | pdfs
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org';
+
+  // --- دوال التشغيل والتحميل (نفس المنطق الموحد) ---
+  Future<void> _playVideo(Map<String, dynamic> video) async {
+    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
+
+    try {
+      var box = await Hive.openBox('auth_box');
+      final res = await Dio().get(
+        '$_baseUrl/api/secure/get-video-id',
+        queryParameters: {'lessonId': video['id'].toString()}, 
+        options: Options(headers: {'x-user-id': box.get('user_id'), 'x-device-id': box.get('device_id')}),
+      );
+
+      if (mounted) Navigator.pop(context);
+
+      if (res.statusCode == 200) {
+        final data = res.data;
+        Map<String, String> qualities = {};
+        if (data['availableQualities'] != null) {
+          for (var q in data['availableQualities']) qualities["${q['quality']}p"] = q['url'];
+        }
+        if (qualities.isEmpty && data['url'] != null) qualities["Auto"] = data['url'];
+
+        if (qualities.isNotEmpty && mounted) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerScreen(streams: qualities, title: data['db_video_title'] ?? video['title'])));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No playable stream found."), backgroundColor: AppColors.error));
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.data['message'] ?? "Access Denied"), backgroundColor: AppColors.error));
+      }
+    } catch (e, stack) {
+      if (mounted) Navigator.pop(context);
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chapter Play Video Failed');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Connection Error"), backgroundColor: AppColors.error));
+    }
+  }
+
+  void _startDownload(String videoId, String videoTitle) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
+    DownloadManager().startDownload(
+      lessonId: videoId,
+      videoTitle: videoTitle,
+      courseName: "My Courses",
+      subjectName: "Subject Content",
+      chapterName: widget.chapter['title'],
+      onProgress: (p) {},
+      onComplete: () { if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Completed!"), backgroundColor: AppColors.success)); },
+      onError: (e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error)); },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final videos = widget.chapter.lessons.where((l) => l.type == LessonType.video).toList();
-    final pdfs = widget.chapter.lessons.where((l) => l.type == LessonType.file).toList();
+    // استخراج الفيديوهات والملفات من الـ Map
+    final videos = (widget.chapter['videos'] as List? ?? []).cast<Map<String, dynamic>>();
+    final pdfs = (widget.chapter['pdfs'] as List? ?? []).cast<Map<String, dynamic>>();
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -54,7 +112,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                widget.chapter.title.toUpperCase(),
+                                widget.chapter['title'].toString().toUpperCase(),
                                 style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
@@ -143,7 +201,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  Widget _buildVideosList(List<Lesson> videos) {
+  Widget _buildVideosList(List<Map<String, dynamic>> videos) {
     if (videos.isEmpty) {
       return _buildEmptyState(LucideIcons.monitorPlay, "No video lessons");
     }
@@ -182,7 +240,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            video.title.toUpperCase(),
+                            video['title'].toString().toUpperCase(),
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
@@ -215,7 +273,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: _buildActionButton(
                       "Watch Now", 
                       AppColors.accentYellow, 
-                      () => Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerScreen(lesson: video))),
+                      () => _playVideo(video),
                     ),
                   ),
                   Container(width: 1, height: 48, color: Colors.white10),
@@ -223,7 +281,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: _buildActionButton(
                       "Download", 
                       AppColors.textSecondary, 
-                      () { /* Download logic */ },
+                      () => _startDownload(video['id'].toString(), video['title']),
                     ),
                   ),
                 ],
@@ -235,17 +293,16 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  Widget _buildPdfsList(List<Lesson> pdfs) {
-    // ✅ إذا كانت القائمة فارغة، قم بإنشاء قائمة وهمية لعرض بطاقة واحدة على الأقل
-    final displayList = pdfs.isEmpty 
-        ? [Lesson(id: 'dummy', title: 'Sample Lecture Notes', type: LessonType.file)] 
-        : pdfs;
+  Widget _buildPdfsList(List<Map<String, dynamic>> pdfs) {
+    if (pdfs.isEmpty) {
+      return _buildEmptyState(LucideIcons.fileText, "No PDF files");
+    }
 
     return ListView.builder(
       padding: const EdgeInsets.all(24),
-      itemCount: displayList.length,
+      itemCount: pdfs.length,
       itemBuilder: (context, index) {
-        final pdf = displayList[index];
+        final pdf = pdfs[index];
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
@@ -276,7 +333,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            pdf.title.toUpperCase(),
+                            pdf['title'].toString().toUpperCase(),
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
@@ -299,17 +356,12 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                 ),
               ),
               const Divider(height: 1, color: Colors.white10),
-              // ✅ الأزرار المطلوبة (Watch Now و Download)
               Row(
                 children: [
                   Expanded(
-                    child: _buildActionButton("Watch Now", AppColors.accentYellow, () {
-                      // محاكاة فتح ملف أو فيديو
+                    child: _buildActionButton("Open File", AppColors.accentYellow, () {
+                       Navigator.push(context, MaterialPageRoute(builder: (_) => PdfViewerScreen(pdfId: pdf['id'].toString(), title: pdf['title'])));
                     }),
-                  ),
-                  Container(width: 1, height: 48, color: Colors.white10),
-                  Expanded(
-                    child: _buildActionButton("Download", AppColors.textSecondary, () {}),
                   ),
                 ],
               ),
