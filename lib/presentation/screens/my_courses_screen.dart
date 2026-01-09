@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/app_state.dart'; // ✅ مصدر البيانات الحقيقي
+import '../../core/services/app_state.dart';
 import 'course_details_screen.dart';
 import 'course_materials_screen.dart';
 
@@ -13,7 +13,7 @@ class MyCoursesScreen extends StatefulWidget {
 }
 
 class _MyCoursesScreenState extends State<MyCoursesScreen> {
-  String _view = 'library'; // library | market
+  String _view = 'library'; 
   String _searchTerm = '';
 
   @override
@@ -24,9 +24,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     return _buildLibraryView();
   }
 
-  // --- 1. واجهة المكتبة (تعتمد الآن على myLibrary من السيرفر) ---
+  // --- 1. واجهة المكتبة ---
   Widget _buildLibraryView() {
-    // ✅ التعديل: استخدام القائمة الجاهزة من السيرفر التي تحتوي الكورسات والمواد المجمعة
     final libraryItems = AppState().myLibrary;
 
     return Scaffold(
@@ -66,7 +65,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            "MY LESSONS", // تم تغيير النص ليعكس المحتوى
+                            "MY LESSONS",
                             style: TextStyle(
                               color: AppColors.textSecondary,
                               fontSize: 10,
@@ -78,7 +77,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       ),
                     ],
                   ),
-                  // زر الانتقال للمتجر
                   GestureDetector(
                     onTap: () => setState(() => _view = 'market'),
                     child: Container(
@@ -114,18 +112,21 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       itemBuilder: (context, index) {
                         final item = libraryItems[index];
                         
-                        // استخراج البيانات (سواء كانت كورس كامل أو مادة منفصلة مجمعة)
                         final String title = item['title'] ?? 'Unknown Course';
                         final String instructor = item['instructor'] ?? 'Instructor';
                         final String code = item['code'] ?? '';
                         final String id = item['id'].toString();
                         
-                        // التحقق من نوع الاشتراك للعرض (اختياري)
                         final bool isPartial = item['type'] == 'subject_group';
+                        
+                        // ✅ استخراج قائمة المواد إذا كانت متوفرة
+                        List<dynamic>? subjectsToPass;
+                        if (item['owned_subjects'] is List) {
+                          subjectsToPass = item['owned_subjects'];
+                        }
 
                         return GestureDetector(
                           onTap: () {
-                            // الانتقال لصفحة محتوى الكورس
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -133,6 +134,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   courseId: id,
                                   courseTitle: title,
                                   courseCode: code,
+                                  preLoadedSubjects: subjectsToPass, // ✅ تمرير البيانات
                                 ),
                               ),
                             );
@@ -144,7 +146,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               color: AppColors.backgroundSecondary,
                               borderRadius: BorderRadius.circular(24),
                               border: Border.all(
-                                // تمييز الكورسات الجزئية بلون حدود مختلف قليلاً (اختياري)
                                 color: isPartial 
                                     ? AppColors.accentOrange.withOpacity(0.3) 
                                     : Colors.white.withOpacity(0.05)
@@ -161,7 +162,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                     boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                   ),
                                   child: Icon(
-                                    // أيقونة مختلفة للمواد المنفصلة
                                     isPartial ? LucideIcons.layers : LucideIcons.playCircle, 
                                     color: isPartial ? AppColors.accentYellow : AppColors.accentOrange, 
                                     size: 24
@@ -228,9 +228,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 2. واجهة المتجر (كل الكورسات) ---
+  // --- 2. واجهة المتجر ---
   Widget _buildMarketView() {
-    // جلب كل الكورسات + الفلترة بالبحث
     final availableCourses = AppState().allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
       course.code.toLowerCase().contains(_searchTerm.toLowerCase())
@@ -272,7 +271,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               ),
             ),
             
-            // Search Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Container(
@@ -303,7 +301,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
             ),
             const SizedBox(height: 24),
             
-            // Grid List
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -319,7 +316,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
 
                   return GestureDetector(
                     onTap: () {
-                      // من المتجر -> نذهب للتفاصيل (صفحة البيع)
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -374,7 +370,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                "${course.fullPrice.toInt()} EGP", // عرض السعر
+                                // ✅ التصحيح: عرض السعر الحقيقي بدلاً من $COURSE
+                                "${course.fullPrice.toInt()} EGP", 
                                 style: const TextStyle(
                                   color: AppColors.accentYellow,
                                   fontSize: 16,
