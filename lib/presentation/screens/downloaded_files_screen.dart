@@ -1,31 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import 'downloaded_subjects_screen.dart';
-
-// ✅ البيانات الوهمية
-class DownloadItem {
-  final String id;
-  final String title;
-  final String type;
-  final String size;
-  final String course;
-  final String subject;
-  final String chapter;
-
-  DownloadItem({
-    required this.id, required this.title, required this.type,
-    required this.size, required this.course, required this.subject, required this.chapter
-  });
-}
-
-final List<DownloadItem> allDownloads = [
-    DownloadItem(id: 'd1', title: 'Dynamic Coloring Video', type: 'video', size: '45MB', course: 'Modern UI Design with Material 3', subject: 'Design Foundations', chapter: 'Dynamic Coloring'),
-    DownloadItem(id: 'd2', title: 'M3 Guidelines', type: 'pdf', size: '2MB', course: 'Modern UI Design with Material 3', subject: 'Design Foundations', chapter: 'Dynamic Coloring'),
-    DownloadItem(id: 'd3', title: 'Responsive Grids', type: 'video', size: '62MB', course: 'Modern UI Design with Material 3', subject: 'Layout Systems', chapter: 'Grid vs Flex'),
-    DownloadItem(id: 'd4', title: 'React Core Internals', type: 'video', size: '115MB', course: 'Advanced React Architecture', subject: 'React Core Internals', chapter: 'Introduction'),
-];
+import '../../core/services/local_proxy.dart';
+import 'video_player_screen.dart';
+import 'downloaded_subjects_screen.dart'; // سنحتاج لإنشاء هذه الشاشة الفرعية لاحقاً أو دمجها
 
 class DownloadedFilesScreen extends StatefulWidget {
   const DownloadedFilesScreen({super.key});
@@ -35,44 +15,41 @@ class DownloadedFilesScreen extends StatefulWidget {
 }
 
 class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
-  // Active Downloads Simulation
-  List<Map<String, dynamic>> activeDownloads = [
-    {'id': 'ad1', 'title': 'Extraction Logic', 'progress': 45}
-  ];
-  Timer? _timer;
+  final LocalProxyService _proxy = LocalProxyService();
+  Box? _downloadsBox;
+  
+  // سنستخدم هذا لعرض التحميلات النشطة (مستقبلاً يمكن ربطه بـ DownloadManager الحقيقي)
+  // حالياً سنتركه فارغاً أو نستخدمه للعرض فقط
+  List<Map<String, dynamic>> activeDownloads = []; 
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (mounted) {
-        setState(() {
-          activeDownloads = activeDownloads.map((dl) {
-            final newProgress = (dl['progress'] as int) + 5;
-            return {...dl, 'progress': newProgress > 100 ? 100 : newProgress};
-          }).toList();
-        });
-      }
-    });
+    _init();
+  }
+
+  Future<void> _init() async {
+    _downloadsBox = await Hive.openBox('downloads_box');
+    await _proxy.start();
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _proxy.stop();
     super.dispose();
-  }
-
-  void _cancelDownload(String id) {
-    setState(() {
-      activeDownloads.removeWhere((element) => element['id'] == id);
-    });
   }
 
   @override
   Widget build(BuildContext context) {
+    // تجميع الكورسات من Hive
     final Map<String, int> groupedCourses = {};
-    for (var item in allDownloads) {
-      groupedCourses[item.course] = (groupedCourses[item.course] ?? 0) + 1;
+    if (_downloadsBox != null) {
+      for (var key in _downloadsBox!.keys) {
+        final item = _downloadsBox!.get(key);
+        final courseName = item['course'] ?? 'Unknown Course';
+        groupedCourses[courseName] = (groupedCourses[courseName] ?? 0) + 1;
+      }
     }
 
     return Scaffold(
@@ -153,91 +130,16 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Active Downloads
+                    // Active Downloads Section (Placeholder Logic)
                     if (activeDownloads.isNotEmpty) ...[
                       const Padding(
                         padding: EdgeInsets.only(left: 4, bottom: 12),
                         child: Text(
                           "ACTIVE DOWNLOADS",
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 2.0,
-                          ),
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
                         ),
                       ),
-                      ...activeDownloads.map((dl) => Container(
-                        margin: const EdgeInsets.only(bottom: 24),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.backgroundSecondary,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white.withOpacity(0.05)),
-                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(LucideIcons.loader2, size: 16, color: AppColors.accentYellow),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      (dl['title'] as String).toUpperCase(),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Row(
-                                  children: [
-                                    Text(
-                                      "${dl['progress']}%",
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.accentYellow,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    GestureDetector(
-                                      onTap: () => _cancelDownload(dl['id']),
-                                      child: const Icon(LucideIcons.x, size: 16, color: AppColors.accentOrange),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Container(
-                              height: 6,
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: AppColors.backgroundPrimary,
-                                borderRadius: BorderRadius.circular(3),
-                                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
-                              ),
-                              alignment: Alignment.centerLeft,
-                              child: FractionallySizedBox(
-                                widthFactor: (dl['progress'] as int) / 100,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.accentYellow,
-                                    borderRadius: BorderRadius.circular(3),
-                                    boxShadow: const [BoxShadow(color: AppColors.accentYellow, blurRadius: 8)],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )),
+                      // ... (Active Download Items Logic)
                     ],
 
                     // Downloaded Courses
@@ -253,12 +155,16 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                       )
                     else
                       ...groupedCourses.entries.map((entry) => GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => DownloadedSubjectsScreen(courseTitle: entry.key),
-                          ),
-                        ),
+                        onTap: () {
+                          // الانتقال لشاشة التفاصيل الخاصة بالكورس المحمل
+                          // سنستخدم DownloadedSubjectsScreen ونمرر لها اسم الكورس
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => DownloadedSubjectsScreen(courseTitle: entry.key),
+                            ),
+                          );
+                        },
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(20),
@@ -286,24 +192,14 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                                   children: [
                                     Text(
                                       entry.key.toUpperCase(),
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.textPrimary,
-                                        letterSpacing: -0.5,
-                                      ),
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary, letterSpacing: -0.5),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
                                       "${entry.value} FILES DOWNLOADED",
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.textSecondary.withOpacity(0.7),
-                                        letterSpacing: 1.5,
-                                      ),
+                                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.7), letterSpacing: 1.5),
                                     ),
                                   ],
                                 ),
