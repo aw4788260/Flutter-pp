@@ -28,6 +28,8 @@ dependencies:
   percent_indicator: ^4.2.3 # شريط التقدم للتحميل
   device_info_plus: ^10.1.0
   android_id: ^0.4.0
+  wakelock_plus: ^1.1.0        # لإبقاء الشاشة تعمل
+  screen_protector: ^2.0.1     # لحماية الشاشة (منع التصوير/لقطات الشاشة)
 
   # Security & Privacy
   flutter_windowmanager_plus: ^1.0.1 # منع تصوير الشاشة
