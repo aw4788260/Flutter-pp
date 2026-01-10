@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ تأكد من الاستيراد
 import '../../core/constants/app_colors.dart';
-import 'chapter_contents_screen.dart'; // ✅ الصفحة التفصيلية الجديدة
+import 'chapter_contents_screen.dart';
 import 'exam_view_screen.dart';
 
 class SubjectMaterialsScreen extends StatefulWidget {
@@ -32,10 +32,11 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
   @override
   void initState() {
     super.initState();
+    // ✅ تسجيل الدخول للصفحة
+    FirebaseCrashlytics.instance.log("Opened Subject: ${widget.subjectTitle} (${widget.subjectId})");
     _fetchContent();
   }
 
-  // --- جلب البيانات (منطق حقيقي) ---
   Future<void> _fetchContent() async {
     try {
       var box = await Hive.openBox('auth_box');
@@ -59,7 +60,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         });
       }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Fetching Subject Content');
+      // ✅ تسجيل خطأ الجلب
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Fetching Subject Content Failed');
       if (mounted) setState(() { _error = "Failed to load content."; _loading = false; });
     }
   }
@@ -77,7 +79,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header (نفس التصميم)
+            // Header
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
@@ -162,7 +164,110 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     );
   }
 
-  // قائمة الشباتر (تعرض فقط أسماء الشباتر وتضغط عليها للتفاصيل)
+  // --- قائمة الامتحانات (معدلة بالألوان) ---
+  Widget _buildExamsList(List exams) {
+    if (exams.isEmpty) return _buildEmptyState(LucideIcons.fileCheck, "No exams available");
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      itemCount: exams.length,
+      itemBuilder: (context, index) {
+        final exam = exams[index];
+        final bool isCompleted = exam['isCompleted'] ?? false;
+
+        // ✅ تحديد اللون والحالة بناءً على الحل
+        final Color statusColor = isCompleted ? AppColors.success : AppColors.error;
+        final String statusText = isCompleted ? "COMPLETED" : "UNSOLVED";
+
+        return GestureDetector(
+          onTap: () {
+             Navigator.push(
+               context,
+               MaterialPageRoute(builder: (_) => ExamViewScreen(
+                 examId: exam['id'].toString(),
+                 examTitle: exam['title'],
+                 isCompleted: isCompleted,
+               )),
+             );
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSecondary,
+              borderRadius: BorderRadius.circular(16),
+              // ✅ إضافة إطار خفيف بلون الحالة
+              border: Border.all(color: statusColor.withOpacity(0.3), width: 1),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48, height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundPrimary,
+                    borderRadius: BorderRadius.circular(12),
+                    // ✅ تغيير لون الحدود الداخلية للأيقونة
+                    border: Border.all(color: statusColor.withOpacity(0.5)),
+                  ),
+                  // ✅ تغيير الأيقونة حسب الحالة
+                  child: Icon(
+                    isCompleted ? LucideIcons.checkCircle2 : LucideIcons.fileX, 
+                    color: statusColor, 
+                    size: 20
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exam['title'].toString().toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                        maxLines: 1,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            "${exam['duration_minutes']} MINS",
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textSecondary.withOpacity(0.7),
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // ✅ عرض نص الحالة (Completed/Unsolved)
+                          Text(
+                            statusText,
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                              color: statusColor,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // سهم ملون
+                Icon(LucideIcons.chevronRight, size: 20, color: statusColor.withOpacity(0.5)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildChaptersList(List chapters) {
     if (chapters.isEmpty) return _buildEmptyState(LucideIcons.bookOpen, "No chapters found");
 
@@ -190,7 +295,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
             ),
             child: Row(
               children: [
-                // Index Box
                 Container(
                   width: 40, height: 40,
                   decoration: BoxDecoration(
@@ -254,88 +358,15 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     );
   }
 
-  // قائمة الامتحانات (كما هي في التصميم الجديد)
-  Widget _buildExamsList(List exams) {
-    if (exams.isEmpty) return _buildEmptyState(LucideIcons.fileCheck, "No exams available");
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      itemCount: exams.length,
-      itemBuilder: (context, index) {
-        final exam = exams[index];
-        final bool isCompleted = exam['isCompleted'] ?? false;
-
-        return GestureDetector(
-          onTap: () {
-             Navigator.push(
-               context,
-               MaterialPageRoute(builder: (_) => ExamViewScreen(
-                 examId: exam['id'].toString(),
-                 examTitle: exam['title'],
-                 isCompleted: isCompleted,
-               )),
-             );
-          },
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundSecondary,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.05)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 48, height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.backgroundPrimary,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withOpacity(0.05)),
-                  ),
-                  child: const Icon(LucideIcons.fileCheck, color: AppColors.accentOrange, size: 20),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        exam['title'].toString().toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                        maxLines: 1,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "${exam['duration_minutes']} MINS",
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textSecondary.withOpacity(0.7),
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(LucideIcons.chevronRight, size: 20, color: AppColors.textSecondary),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildTab(String title, String key) {
     final isActive = _activeTab == key;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _activeTab = key),
+        onTap: () {
+          setState(() => _activeTab = key);
+          // ✅ تسجيل التبديل
+          FirebaseCrashlytics.instance.log("Switched tab to: $key");
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 10),
