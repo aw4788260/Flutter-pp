@@ -7,12 +7,13 @@ class AppState {
   AppState._internal();
 
   // البيانات المخزنة
-  List<CourseModel> allCourses = [];
+  List<CourseModel> allCourses = []; // للمتجر والشاشة الرئيسية
   Map<String, dynamic>? userData;
+  
   List<String> myCourseIds = [];
   List<String> mySubjectIds = [];
   
-  // ✅ NEW: قائمة المكتبة الجاهزة للعرض (كورسات كاملة + مواد منفصلة مجمعة)
+  // ✅ القائمة الجاهزة للعرض في صفحة "مكتبتي"
   List<Map<String, dynamic>> myLibrary = [];
 
   // التحقق من الملكية
@@ -21,22 +22,30 @@ class AppState {
 
   // تحديث البيانات القادمة من الـ API
   void updateFromInitData(Map<String, dynamic> data) {
+    // 1. استقبال كورسات المتجر
     if (data['courses'] != null) {
       allCourses = (data['courses'] as List)
           .map((e) => CourseModel.fromJson(e))
           .toList();
     }
     
+    // 2. بيانات المستخدم
     if (data['user'] != null) {
       userData = data['user'];
     }
 
+    // 3. أرقام الاشتراكات (للحماية والتحقق الداخلي)
     if (data['myAccess'] != null) {
-      myCourseIds = List<String>.from(data['myAccess']['courses'] ?? []);
-      mySubjectIds = List<String>.from(data['myAccess']['subjects'] ?? []);
+      myCourseIds = (data['myAccess']['courses'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ?? [];
+
+      mySubjectIds = (data['myAccess']['subjects'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ?? [];
     }
 
-    // ✅ NEW: استقبال وتخزين هيكل المكتبة الجديد
+    // 4. ✅ استقبال مكتبة الطالب الجاهزة (نصوص)
     if (data['library'] != null) {
       myLibrary = List<Map<String, dynamic>>.from(data['library']);
     }
@@ -47,7 +56,7 @@ class AppState {
     userData = null;
     myCourseIds = [];
     mySubjectIds = [];
-    myLibrary = []; // ✅ تفريغ المكتبة
-    // لا نمسح الكورسات لأنها عامة
+    myLibrary = [];
+    // لا نمسح allCourses لأنها بيانات عامة
   }
 }
