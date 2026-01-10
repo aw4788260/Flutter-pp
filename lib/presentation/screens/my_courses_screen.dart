@@ -133,6 +133,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   courseId: id,
                                   courseTitle: title,
                                   courseCode: code,
+                                  instructorName: instructor, // ✅ تم إضافة تمرير اسم المدرس هنا
                                   preLoadedSubjects: subjectsToPass, // ✅ تمرير المواد الجاهزة
                                 ),
                               ),
