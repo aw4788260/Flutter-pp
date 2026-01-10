@@ -138,7 +138,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         options: Options(headers: {
           'x-user-id': box.get('user_id'),
           'x-device-id': box.get('device_id'),
-          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ التعديل المطلوب
         }),
       );
 
@@ -149,10 +149,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         
         if (useYoutube) {
           // التوجيه لمشغل اليوتيوب
-          // نفترض أن الـ API يرجع youtubeVideoId أو يمكن استخراجه من الرابط
           String? youtubeId = data['youtubeId']; 
           
-          // محاولة استخراج المعرف من الرابط إذا لم يكن موجوداً بشكل صريح
           if (youtubeId == null && data['url'] != null) {
              try {
                final uri = Uri.parse(data['url']);
@@ -207,7 +205,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         options: Options(headers: {
           'x-user-id': box.get('user_id'),
           'x-device-id': box.get('device_id'),
-          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ التعديل المطلوب
         }),
       );
 
@@ -268,9 +266,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // تم تعديل الدالة لتقبل رابط اختياري
-  // ملاحظة: تأكد أن DownloadManager في تطبيقك يدعم معامل 'downloadUrl' (أو customUrl)
-  // إذا لم يكن يدعمه، سيقوم DownloadManager بجلب الرابط مرة أخرى (قد يختار جودة مختلفة)
   void _startVideoDownload(String videoId, String videoTitle, [String? specificUrl]) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
     
@@ -280,14 +275,13 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       courseName: "My Courses",
       subjectName: "Subject Content",
       chapterName: widget.chapter['title'],
-      // downloadUrl: specificUrl, // ⚠️ قم بإلغاء التعليق هنا إذا قمت بتحديث DownloadManager لقبول هذا المعامل
+      // downloadUrl: specificUrl, // قم بتفعيل هذا إذا كان DownloadManager يدعمه
       onProgress: (p) {},
       onComplete: () { if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Completed!"), backgroundColor: AppColors.success)); },
       onError: (e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error)); },
     );
   }
 
-  // تحميل الـ PDF 
   void _startPdfDownload(String pdfId, String pdfTitle) {
      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
      DownloadManager().startDownload(
@@ -445,7 +439,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: _buildActionButton(
                       "Watch Now", 
                       AppColors.accentYellow, 
-                      () => _showPlayerSelectionDialog(video), // ✅ فتح قائمة المشغلات
+                      () => _showPlayerSelectionDialog(video), 
                     ),
                   ),
                   Container(width: 1, height: 48, color: Colors.white10),
@@ -453,7 +447,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: _buildActionButton(
                       "Download", 
                       AppColors.textSecondary, 
-                      () => _prepareVideoDownload(video['id'].toString(), video['title']), // ✅ فتح قائمة الجودات للتحميل
+                      () => _prepareVideoDownload(video['id'].toString(), video['title']), 
                     ),
                   ),
                 ],
