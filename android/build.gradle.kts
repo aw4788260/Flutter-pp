@@ -13,10 +13,10 @@ allprojects {
                 // إجبار النظام على استخدام نسخة LTS المستقرة والموجودة فعلياً في Maven Central
                 if (requested.group == "com.arthenica" && 
                     requested.name.contains("ffmpeg-kit") && 
-                    requested.version == "6.0-2") {
+                    requested.version == "6.0-3") {
                     
-                    useVersion("6.0-2.LTS")
-                    because("The non-LTS version 6.0-2 is missing from Maven Central, forcing stable LTS version.")
+                    useVersion("6.0-3.LTS")
+                    because("The non-LTS version 6.0-3 is missing from Maven Central, forcing stable LTS version.")
                 }
             }
         }
