@@ -19,44 +19,75 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   Future<void> _changePassword() async {
+    // 1. التحقق من تطابق كلمة السر الجديدة قبل الإرسال
     if (_newPassController.text != _confirmPassController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Passwords do not match"), backgroundColor: AppColors.error));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Passwords do not match"), backgroundColor: AppColors.error)
+      );
+      return;
+    }
+
+    if (_oldPassController.text.isEmpty || _newPassController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please fill all fields"), backgroundColor: AppColors.error)
+      );
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
+      // 2. جلب بيانات المصادقة المخزنة محلياً
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
       final deviceId = box.get('device_id');
 
+      if (userId == null || deviceId == null) {
+        throw Exception("Authentication data not found. Please login again.");
+      }
+
+      // 3. إرسال الطلب مع الـ Headers والـ App Secret
       final res = await Dio().post(
         '$_baseUrl/api/student/change-password',
         data: {
           'oldPassword': _oldPassController.text,
           'newPassword': _newPassController.text,
         },
-        options: Options(headers: {
-    'x-user-id': userId, 
-    'x-device-id': deviceId,
-    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
-  }),
+        options: Options(
+          headers: {
+            'x-user-id': userId, 
+            'x-device-id': deviceId,
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+          },
+          // لضمان استلام رسائل الخطأ من السيرفر حتى لو كان الكود 400 أو 401
+          validateStatus: (status) => status! < 500,
+        ),
       );
 
-      if (res.statusCode == 200 && res.data['success'] == true) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password Updated"), backgroundColor: AppColors.success));
+      if (mounted) {
+        // التحقق من نجاح العملية بناءً على رد السيرفر
+        if (res.statusCode == 200 && res.data['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Password Updated Successfully"), backgroundColor: AppColors.success)
+          );
           Navigator.pop(context);
+        } else {
+          // عرض رسالة الخطأ القادمة من السيرفر (مثل: Incorrect old password)
+          String errorMsg = res.data['message'] ?? res.data['error'] ?? "Failed to update password";
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errorMsg), backgroundColor: AppColors.error)
+          );
         }
       }
     } catch (e) {
       if (mounted) {
-        String msg = "Failed to change password";
+        String msg = "Connection error. Please try again.";
         if (e is DioException && e.response != null) {
-          msg = e.response?.data['error'] ?? msg;
+          msg = e.response?.data['error'] ?? e.response?.data['message'] ?? msg;
         }
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppColors.error));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: AppColors.error)
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -70,6 +101,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // Header
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
@@ -90,11 +122,18 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   const SizedBox(width: 16),
                   const Text(
                     "CHANGE PASSWORD",
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary, letterSpacing: -0.5),
+                    style: TextStyle(
+                      fontSize: 20, 
+                      fontWeight: FontWeight.bold, 
+                      color: AppColors.textPrimary, 
+                      letterSpacing: -0.5
+                    ),
                   ),
                 ],
               ),
             ),
+            
+            // Content
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -109,6 +148,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ),
               ),
             ),
+
+            // Submit Button
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: SizedBox(
@@ -124,13 +165,16 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     shadowColor: AppColors.accentYellow.withOpacity(0.2),
                   ),
                   child: _isLoading 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.backgroundPrimary))
-                    : Row(
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.backgroundPrimary, strokeWidth: 2))
+                    : const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
+                        children: [
                           Icon(LucideIcons.save, size: 18),
                           SizedBox(width: 12),
-                          Text("UPDATE PASSWORD", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.0)),
+                          Text(
+                            "UPDATE PASSWORD", 
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.0)
+                          ),
                         ],
                       ),
                 ),
@@ -150,7 +194,12 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(
             label.toUpperCase(),
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 1.5),
+            style: const TextStyle(
+              fontSize: 10, 
+              fontWeight: FontWeight.bold, 
+              color: AppColors.accentYellow, 
+              letterSpacing: 1.5
+            ),
           ),
         ),
         Container(
