@@ -121,6 +121,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
             );
           } else {
+            // ✅ تسجيل خطأ منطقي (بيانات ناقصة)
+            FirebaseCrashlytics.instance.log("YouTube ID missing for lesson: ${video['id']}");
             _showErrorSnackBar("Not a YouTube video or ID missing.");
           }
 
@@ -150,15 +152,24 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
             );
           } else {
+            // ✅ تسجيل خطأ منطقي (لا توجد روابط)
+            FirebaseCrashlytics.instance.log("No streamable URLs found for lesson: ${video['id']}");
             _showErrorSnackBar("No playable stream found.");
           }
         }
       } else {
+        // ✅ تسجيل خطأ API (رفض الوصول أو غيره)
+        FirebaseCrashlytics.instance.recordError(
+          Exception("API Error ${res.statusCode}: ${res.data}"), 
+          null, 
+          reason: 'Fetch Video Failed'
+        );
         _showErrorSnackBar(res.data['message'] ?? "Access Denied");
       }
     } catch (e, stack) {
       if (mounted) Navigator.pop(context);
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Play Video Error');
+      // ✅ تسجيل الاستثناء الفعلي
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Play Video Exception');
       _showErrorSnackBar("Connection Error: Please check internet");
     }
   }
@@ -200,11 +211,19 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           // إذا كان رابط واحد فقط، ابدأ التحميل مباشرة
           _startVideoDownload(videoId, videoTitle, data['url']);
         } else {
+          // ✅ تسجيل خطأ منطقي
+          FirebaseCrashlytics.instance.log("No download links for lesson: $videoId");
           _showErrorSnackBar("No download links available");
         }
+      } else {
+        // ✅ تسجيل خطأ API
+        FirebaseCrashlytics.instance.log("Prepare download API returned: ${res.statusCode}");
+        _showErrorSnackBar("Server Error: ${res.statusCode}");
       }
-    } catch (e) {
+    } catch (e, stack) {
       if (mounted) Navigator.pop(context);
+      // ✅ تسجيل خطأ الشبكة أو غيره
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Prepare Download Failed: $videoId');
       _showErrorSnackBar("Failed to fetch download info");
     }
   }
@@ -269,6 +288,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Completed!"), backgroundColor: AppColors.success));
       },
       onError: (e) {
+        // ملاحظة: DownloadManager يقوم بتسجيل الخطأ في Crashlytics داخلياً
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error));
       },
     );
@@ -288,6 +308,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success));
       },
       onError: (e) {
+        // ملاحظة: DownloadManager يقوم بتسجيل الخطأ في Crashlytics داخلياً
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error));
       },
     );
