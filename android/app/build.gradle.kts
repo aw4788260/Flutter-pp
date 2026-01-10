@@ -1,54 +1,68 @@
-name: Build Android App
+import java.util.Properties
+import java.io.FileInputStream
 
-on:
-  workflow_dispatch:
+plugins {
+    id("com.android.application")
+    id("kotlin-android")
+    id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
+}
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+android {
+    namespace = "com.example.edu_vantage_app"
+    compileSdk = 36 
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    defaultConfig {
+        applicationId = "com.example.edu_vantage_app"
+        minSdk = 24
+        targetSdk = 36 
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+        multiDexEnabled = true
+    }
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
+    signingConfigs {
+        create("release") {
+            // ✅ القراءة من متغيرات البيئة بأسماء مطابقة تماماً للأسرار في الصورة
+            // استخدام .trim() يحل مشكلة الرموز الخاصة والمسافات الخفية
+            keyAlias = System.getenv("KEY_ALIAS")?.trim() ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD")?.trim() ?: ""
+            storePassword = System.getenv("STORE_PASSWORD")?.trim() ?: "" 
+            
+            // الملف يتم إنشاؤه بواسطة الأتمتة داخل مجلد app مباشرة
+            storeFile = file("upload-keystore.jks")
+        }
+    }
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
+    buildTypes {
+        release {
+            // ربط التوقيع بالنسخة النهائية
+            signingConfig = signingConfigs.getByName("release")
+            
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
 
-      - name: Clean and Get Packages
-        run: |
-          flutter clean
-          flutter pub get
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 
-      - name: Create Secrets Files
-        env:
-          DATA: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
-          KEYSTORE_DATA: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          # فك تشفير الملفات
-          echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
-          echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
 
-      - name: Build APK
-        env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          # ✅ جلب السر من GitHub Secrets إلى متغير بيئة
-          APP_SECRET: ${{ secrets.APP_SECRET }} 
-        run: |
-          # ✅ تمرير السر إلى Flutter أثناء البناء باستخدام --dart-define
-          flutter build apk --release --dart-define=APP_SECRET="$APP_SECRET"
+flutter {
+    source = "../.."
+}
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-crashlytics")
+    implementation("androidx.multidex:multidex:2.0.1")
+}
