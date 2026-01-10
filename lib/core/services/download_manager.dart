@@ -7,17 +7,17 @@ import '../utils/encryption_helper.dart';
 
 class DownloadManager {
   static final Dio _dio = Dio();
-  // ✅ قائمة لتتبع التحميلات النشطة حالياً
+  // قائمة لتتبع التحميلات النشطة حالياً
   static final Set<String> _activeDownloads = {};
 
-  final String _baseUrl = 'https://courses.aw478260.dpdns.org'; 
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
-  // ✅ دالة التحقق مما إذا كان الملف قيد التحميل
+  // دالة التحقق مما إذا كان الملف قيد التحميل
   bool isFileDownloading(String id) {
     return _activeDownloads.contains(id);
   }
 
-  // ✅ دالة التحقق مما إذا كان الملف محملاً بالفعل
+  // دالة التحقق مما إذا كان الملف محملاً بالفعل
   bool isFileDownloaded(String id) {
     if (!Hive.isBoxOpen('downloads_box')) return false;
     return Hive.box('downloads_box').containsKey(id);
@@ -30,6 +30,7 @@ class DownloadManager {
     required String courseName,
     required String subjectName,
     required String chapterName,
+    String? downloadUrl, // معامل اختياري للرابط المباشر (في حال تم اختياره من الواجهة)
     required Function(double) onProgress,
     required Function() onComplete,
     required Function(String) onError,
@@ -47,54 +48,60 @@ class DownloadManager {
         throw Exception("User authentication missing");
       }
 
-      // 2. الاتصال بالـ API لجلب رابط الفيديو
-      final res = await _dio.get(
-        '$_baseUrl/api/secure/get-video-id',
-        queryParameters: {'lessonId': lessonId},
-        options: Options(
-          headers: {
-            'x-user-id': userId,
-            'x-device-id': deviceId,
-            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
-          },
-          validateStatus: (status) => status! < 500,
-        ),
-      );
+      String? finalUrl = downloadUrl;
 
-      if (res.statusCode != 200) {
-        throw Exception(res.data['message'] ?? "Failed to get video info");
-      }
-
-      // 3. اختيار أفضل رابط للتحميل
-      String? downloadUrl;
-      final data = res.data;
-      
-      if (data['availableQualities'] != null) {
-        List qualities = data['availableQualities'];
-        // محاولة إيجاد 720p
-        var q720 = qualities.firstWhere(
-          (q) => q['quality'] == 720, 
-          orElse: () => null
+      // إذا لم يتم تمرير رابط مباشر، نجلبه من الـ API (المنطق التلقائي)
+      if (finalUrl == null) {
+        // 2. الاتصال بالـ API لجلب رابط الفيديو
+        final res = await _dio.get(
+          '$_baseUrl/api/secure/get-video-id',
+          queryParameters: {'lessonId': lessonId},
+          options: Options(
+            headers: {
+              'x-user-id': userId,
+              'x-device-id': deviceId,
+              // ✅ استخراج السر من متغيرات البيئة
+              'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+            },
+            validateStatus: (status) => status! < 500,
+          ),
         );
+
+        if (res.statusCode != 200) {
+          throw Exception(res.data['message'] ?? "Failed to get video info");
+        }
+
+        // 3. اختيار أفضل رابط للتحميل
+        final data = res.data;
         
-        if (q720 != null) {
-          downloadUrl = q720['url'];
-        } else if (qualities.isNotEmpty) {
-          downloadUrl = qualities.first['url'];
+        if (data['availableQualities'] != null) {
+          List qualities = data['availableQualities'];
+          // محاولة إيجاد 720p كخيار افتراضي متوازن
+          var q720 = qualities.firstWhere(
+            (q) => q['quality'] == 720, 
+            orElse: () => null
+          );
+          
+          if (q720 != null) {
+            finalUrl = q720['url'];
+          } else if (qualities.isNotEmpty) {
+            finalUrl = qualities.first['url'];
+          }
+        }
+        
+        if (finalUrl == null && data['url'] != null) {
+          finalUrl = data['url'];
         }
       }
-      
-      if (downloadUrl == null && data['url'] != null) {
-        downloadUrl = data['url'];
-      }
 
-      if (downloadUrl == null) {
+      if (finalUrl == null) {
         throw Exception("No valid download link found");
       }
 
       // 4. تجهيز مسار الحفظ
       final appDir = await getApplicationDocumentsDirectory();
       
+      // تنظيف الأسماء لتجنب مشاكل المسارات
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s]+'), '');
       final safeChapter = chapterName.replaceAll(RegExp(r'[^\w\s]+'), '');
@@ -109,7 +116,7 @@ class DownloadManager {
 
       // 5. بدء التحميل
       await _dio.download(
-        downloadUrl,
+        finalUrl,
         tempPath,
         onReceiveProgress: (received, total) {
           if (total != -1) {
@@ -131,6 +138,7 @@ class DownloadManager {
         final finalFile = File(savePath);
         await finalFile.writeAsBytes(encrypted.bytes);
         
+        // حذف الملف المؤقت غير المشفر
         await tempFile.delete();
       } else {
         throw Exception("Download failed: Temp file not created");
