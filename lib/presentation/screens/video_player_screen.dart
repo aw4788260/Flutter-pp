@@ -5,12 +5,11 @@ import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ استيراد Crashlytics
-import 'package:hive_flutter/hive_flutter.dart'; // ✅ استيراد Hive لجلب بيانات المستخدم
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_colors.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  // نستقبل قائمة الجودات { "1080p": "url", "720p": "url" }
   final Map<String, String> streams; 
   final String title;
 
@@ -28,7 +27,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String _currentQuality = "";
   List<String> _sortedQualities = [];
 
-  // متغيرات العلامة المائية
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
   String _userIdText = "User ID"; 
@@ -37,41 +35,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void initState() {
     super.initState();
     
-    // ✅ 1. إجبار الشاشة على الوضع الأفقي (ملء الشاشة)
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
 
-    // ✅ 2. جلب بيانات المستخدم وتشغيل العلامة المائية
     _getUserId();
     _startWatermarkAnimation();
-
-    // بدء تهيئة الفيديو
     _parseQualities();
   }
 
-  // دالة جلب معرف المستخدم
   void _getUserId() {
     try {
       if (Hive.isBoxOpen('auth_box')) {
         var box = Hive.box('auth_box');
         setState(() {
-          _userIdText = box.get('username') ?? box.get('phone') ?? box.get('user_id') ?? 'Student';
+          _userIdText = box.get('phone') ?? box.get('username') ?? box.get('user_id') ?? 'Student';
         });
       }
-    } catch (e) {
-      // تجاهل الخطأ البسيط
-    }
+    } catch (e) {}
   }
 
-  // منطق تحريك العلامة المائية
   void _startWatermarkAnimation() {
     _watermarkTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (mounted) {
         setState(() {
           final random = Random();
-          // توليد موقع عشوائي داخل الشاشة
           double x = (random.nextDouble() * 1.6) - 0.8;
           double y = (random.nextDouble() * 1.6) - 0.8;
           _watermarkAlignment = Alignment(x, y);
@@ -83,7 +72,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _parseQualities() {
     if (widget.streams.isEmpty) {
       setState(() => _isError = true);
-      FirebaseCrashlytics.instance.log("Video Error: No streams provided");
       return;
     }
 
@@ -108,7 +96,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     try {
-      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url));
+      // ✅ التعديل هنا: إضافة الهيدرز لإصلاح مشكلة التشغيل
+      _videoPlayerController = VideoPlayerController.networkUrl(
+        Uri.parse(url),
+        httpHeaders: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.youtube.com/',
+          'Accept': '*/*',
+        },
+      );
+
       await _videoPlayerController.initialize();
       
       if (currentPos > Duration.zero) {
@@ -122,16 +119,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           looping: false,
           allowFullScreen: true,
           showControls: true,
-          
           materialProgressColors: ChewieProgressColors(
             playedColor: AppColors.accentYellow,
             handleColor: AppColors.accentYellow,
             backgroundColor: Colors.grey,
             bufferedColor: Colors.white24,
           ),
-          
           playbackSpeeds: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
-          
           additionalOptions: (context) {
             return <OptionItem>[
               OptionItem(
@@ -144,17 +138,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ];
           },
-          
           errorBuilder: (context, errorMessage) {
-            // ✅ تسجيل أخطاء التشغيل الداخلية
-            FirebaseCrashlytics.instance.log("Chewie Player Error: $errorMessage");
-            return Center(child: Text(errorMessage, style: const TextStyle(color: Colors.white)));
+            FirebaseCrashlytics.instance.log("Player Err: $errorMessage");
+            return const Center(child: Text("Playback Error", style: TextStyle(color: Colors.white)));
           },
         );
       });
     } catch (e, stack) {
-      // ✅ تسجيل فشل التهيئة
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Video Player Init Error: $url');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Init Error: $url');
       setState(() => _isError = true);
     }
   }
@@ -194,10 +185,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
-    _watermarkTimer?.cancel(); // إيقاف العلامة المائية
+    _watermarkTimer?.cancel();
     _videoPlayerController.dispose();
     _chewieController?.dispose();
-    // ✅ إعادة الشاشة للوضع الرأسي
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
@@ -206,10 +196,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      // نستخدم Stack لدمج الفيديو والعلامة المائية
       body: Stack(
         children: [
-          // 1. مشغل الفيديو
           Center(
             child: _isError
                 ? const Text("Error loading video", style: TextStyle(color: AppColors.error))
@@ -217,14 +205,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ? Chewie(controller: _chewieController!)
                     : const CircularProgressIndicator(color: AppColors.accentYellow),
           ),
-
-          // 2. العلامة المائية المتحركة
           if (!_isError)
             AnimatedAlign(
-              duration: const Duration(seconds: 2), // حركة ناعمة
+              duration: const Duration(seconds: 2),
               curve: Curves.easeInOut,
               alignment: _watermarkAlignment,
-              child: IgnorePointer( // لكي لا تمنع اللمس
+              child: IgnorePointer(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -242,8 +228,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
             ),
-
-          // 3. زر الرجوع (لأننا أخفينا الـ AppBar التقليدي لتوفير المساحة)
           Positioned(
             top: 20,
             left: 20,
@@ -252,31 +236,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 onTap: () => Navigator.pop(context),
                 child: Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(
-                    color: Colors.black45,
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
                   child: const Icon(LucideIcons.arrowLeft, color: Colors.white),
                 ),
               ),
             ),
           ),
-          
-          // 4. عنوان الفيديو بجانب زر الرجوع
           Positioned(
-            top: 28, // محاذاة تقريبية مع الزر
+            top: 28,
             left: 70,
             child: SafeArea(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black45,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  widget.title,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
+                decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(4)),
+                child: Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 12)),
               ),
             ),
           ),
