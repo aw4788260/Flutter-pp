@@ -6,6 +6,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ تأكد
 import '../../core/constants/app_colors.dart';
 import 'chapter_contents_screen.dart';
 import 'exam_view_screen.dart';
+import 'exam_result_screen.dart'; // ✅ ضروري للانتقال لصفحة النتائج
 
 class SubjectMaterialsScreen extends StatefulWidget {
   final String subjectId;
@@ -164,7 +165,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     );
   }
 
-  // --- قائمة الامتحانات (معدلة بالألوان) ---
+  // --- قائمة الامتحانات (معدلة بالألوان والمنطق الجديد) ---
   Widget _buildExamsList(List exams) {
     if (exams.isEmpty) return _buildEmptyState(LucideIcons.fileCheck, "No exams available");
 
@@ -181,14 +182,38 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
 
         return GestureDetector(
           onTap: () {
-             Navigator.push(
-               context,
-               MaterialPageRoute(builder: (_) => ExamViewScreen(
-                 examId: exam['id'].toString(),
-                 examTitle: exam['title'],
-                 isCompleted: isCompleted,
-               )),
-             );
+             if (isCompleted) {
+               // ✅ 1. إذا كان محلولاً، اذهب لصفحة النتائج
+               // ملاحظة: يجب أن يعيد الـ API حقلاً مثل 'first_attempt_id' أو 'attempt_id'
+               // إذا لم يكن موجوداً، سيفشل الانتقال.
+               final attemptId = exam['first_attempt_id'] ?? exam['attempt_id']; 
+               
+               if (attemptId != null) {
+                 Navigator.push(
+                   context,
+                   MaterialPageRoute(
+                     builder: (_) => ExamResultScreen(
+                       attemptId: attemptId.toString(),
+                       examTitle: exam['title'],
+                     ),
+                   ),
+                 );
+               } else {
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   const SnackBar(content: Text("Error: Cannot load result (No Attempt ID)."), backgroundColor: AppColors.error)
+                 );
+               }
+             } else {
+               // ✅ 2. إذا كان غير محلول، اذهب لصفحة الامتحان
+               Navigator.push(
+                 context,
+                 MaterialPageRoute(builder: (_) => ExamViewScreen(
+                   examId: exam['id'].toString(),
+                   examTitle: exam['title'],
+                   isCompleted: isCompleted,
+                 )),
+               );
+             }
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
