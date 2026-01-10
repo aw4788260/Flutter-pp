@@ -4,6 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import 'checkout_screen.dart';
+import 'teacher_profile_screen.dart'; // ✅ تم إضافة الاستيراد
 
 class CourseDetailsScreen extends StatefulWidget {
   final String courseCode;
@@ -35,9 +36,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         '$_baseUrl/api/public/get-course-sales-details',
         queryParameters: {'courseCode': widget.courseCode},
         options: Options(headers: {
-    'x-user-id': userId,
-    'x-app-secret': const String.fromEnvironment('APP_SECRET'),
-  }),
+          'x-user-id': userId,
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
       );
 
       if (mounted) {
@@ -58,16 +59,20 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
 
     final course = _courseData!;
     final teacher = course['teacher'] ?? {};
+    final String teacherName = teacher['name'] ?? "Unknown Instructor";
+    // ✅ استخراج معرف المدرس لفتح البروفايل (تأكد أن الـ API يعيد id داخل كائن teacher)
+    final String? teacherId = teacher['id']?.toString(); 
+
     final subjects = List<Map<String, dynamic>>.from(course['subjects'] ?? []);
     final double fullPrice = (course['price'] ?? 0).toDouble();
 
-    // ✅ منطق جديد: التحقق مما إذا كانت جميع المواد مملوكة
+    // التحقق مما إذا كانت جميع المواد مملوكة
     bool allSubjectsOwned = false;
     if (subjects.isNotEmpty) {
       allSubjectsOwned = subjects.every((s) => s['isOwned'] == true);
     }
 
-    // ✅ اعتبار الكورس مملوكاً إذا تم شراؤه كحزمة أو تم شراء جميع مواده
+    // اعتبار الكورس مملوكاً إذا تم شراؤه كحزمة أو تم شراء جميع مواده
     bool isCourseOwned = (course['isOwned'] ?? false) || allSubjectsOwned;
 
     // حساب السعر الإجمالي
@@ -130,14 +135,36 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       ),
                       const SizedBox(height: 12),
                       
-                      // Instructor
+                      // ✅ Instructor (تم تعديل هذا الجزء ليصبح قابلاً للضغط)
                       Row(
                         children: [
                           const Icon(LucideIcons.userCircle, size: 16, color: AppColors.textSecondary),
                           const SizedBox(width: 8),
-                          Text(
-                            teacher['name'] ?? "Unknown Instructor",
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 14, fontWeight: FontWeight.bold),
+                          GestureDetector(
+                            onTap: () {
+                              if (teacherId != null && teacherId.isNotEmpty) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => TeacherProfileScreen(teacherId: teacherId),
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("Instructor profile not available")),
+                                );
+                              }
+                            },
+                            child: Text(
+                              teacherName.toUpperCase(),
+                              style: const TextStyle(
+                                color: AppColors.accentOrange, // تغيير اللون للإشارة للرابط
+                                fontSize: 14, 
+                                fontWeight: FontWeight.bold,
+                                decoration: TextDecoration.underline, // إضافة خط تحت الاسم
+                                decorationColor: AppColors.accentOrange,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -152,8 +179,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       const Text("PURCHASE OPTIONS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 2.0)),
                       const SizedBox(height: 20),
 
-                      // 1. Full Course Option (يظهر فقط إذا لم يكن مملوكاً بالكامل)
-                      if (!isCourseOwned) // ✅ تم استخدام المتغير الجديد هنا
+                      // 1. Full Course Option
+                      if (!isCourseOwned) 
                         GestureDetector(
                           onTap: () => setState(() { _isFullCourse = !_isFullCourse; _selectedSubjectIds.clear(); }),
                           child: AnimatedContainer(
@@ -185,7 +212,6 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           ),
                         )
                       else 
-                        // ✅ رسالة تظهر إذا كان الكورس مملوكاً
                         Container(
                           padding: const EdgeInsets.all(24),
                           width: double.infinity,
@@ -214,7 +240,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           bool isSelected = _selectedSubjectIds.contains(sub['id'].toString());
                           
                           return GestureDetector(
-                            onTap: (isOwned || isCourseOwned) ? null : () { // ✅ منع الاختيار إذا كان الكورس مملوكاً
+                            onTap: (isOwned || isCourseOwned) ? null : () {
                               setState(() {
                                 _isFullCourse = false;
                                 if (isSelected) {
@@ -299,7 +325,6 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                     ),
                     ElevatedButton(
                       onPressed: () {
-                        // تجهيز العناصر المختارة
                         List<Map<String, dynamic>> selectedItems = [];
                         if (_isFullCourse) {
                           selectedItems.add({'id': course['id'], 'type': 'course', 'title': course['title'], 'price': fullPrice});
@@ -311,7 +336,6 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           }
                         }
                         
-                        // الانتقال للدفع
                         Navigator.push(
                           context,
                           MaterialPageRoute(
