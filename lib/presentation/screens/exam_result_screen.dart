@@ -1,238 +1,255 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:percent_indicator/percent_indicator.dart'; // تأكد من إضافة هذه المكتبة في pubspec.yaml
+import 'package:percent_indicator/percent_indicator.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // ✅
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import 'main_wrapper.dart';
 
-class ExamResultScreen extends StatelessWidget {
+class ExamResultScreen extends StatefulWidget {
+  final String attemptId;
   final String examTitle;
-  final int score;
-  final int totalQuestions;
-  final int correctAnswers;
-  final int wrongAnswers;
 
-  const ExamResultScreen({
-    super.key,
-    required this.examTitle,
-    required this.score,
-    required this.totalQuestions,
-    required this.correctAnswers,
-    required this.wrongAnswers,
-  });
+  const ExamResultScreen({super.key, required this.attemptId, required this.examTitle});
+
+  @override
+  State<ExamResultScreen> createState() => _ExamResultScreenState();
+}
+
+class _ExamResultScreenState extends State<ExamResultScreen> {
+  bool _loading = true;
+  Map<String, dynamic>? _resultData;
+  
+  // لغرض الـ Image Headers
+  String? _userId;
+  String? _deviceId;
+  final String _appSecret = const String.fromEnvironment('APP_SECRET');
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org';
+
+  @override
+  void initState() {
+    super.initState();
+    FirebaseCrashlytics.instance.log("View Result: ${widget.attemptId}");
+    _fetchResults();
+  }
+
+  Future<void> _fetchResults() async {
+    try {
+      var box = await Hive.openBox('auth_box');
+      _userId = box.get('user_id');
+      _deviceId = box.get('device_id');
+
+      final res = await Dio().get(
+        '$_baseUrl/api/exams/get-results',
+        queryParameters: {'attemptId': widget.attemptId},
+        options: Options(headers: {
+          'x-user-id': _userId,
+          'x-device-id': _deviceId,
+          'x-app-secret': _appSecret,
+        }),
+      );
+
+      if (mounted && res.statusCode == 200) {
+        setState(() {
+          _resultData = res.data;
+          _loading = false;
+        });
+        
+        // ✅ تخزين النتيجة محلياً
+        _cacheResultLocally(res.data);
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Fetch Results Error');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ✅ دالة التخزين المحلي
+  Future<void> _cacheResultLocally(Map<String, dynamic> data) async {
+    try {
+      // فتح صندوق مخصص لنتائج الامتحانات
+      var historyBox = await Hive.openBox('exams_history_box');
+      // حفظ النتيجة باستخدام attemptId كمفتاح
+      await historyBox.put(widget.attemptId, data);
+    } catch (e) {
+      debugPrint("Failed to cache result: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final double percentage = (score / totalQuestions);
-    final int percentageInt = (percentage * 100).toInt();
+    if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
     
-    // تحديد لون ورسالة النتيجة
-    Color statusColor;
-    String statusMessage;
-    String statusIcon;
-
-    if (percentage >= 0.8) {
-      statusColor = AppColors.success;
-      statusMessage = "OUTSTANDING!";
-      statusIcon = "🏆";
-    } else if (percentage >= 0.5) {
-      statusColor = AppColors.accentYellow;
-      statusMessage = "GOOD JOB!";
-      statusIcon = "👍";
-    } else {
-      statusColor = AppColors.error;
-      statusMessage = "KEEP PRACTICING";
-      statusIcon = "💪";
+    if (_resultData == null) {
+      return Scaffold(
+        backgroundColor: AppColors.backgroundPrimary,
+        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: const IconThemeData(color: Colors.white)),
+        body: const Center(child: Text("Failed to load results", style: TextStyle(color: AppColors.error))),
+      );
     }
+
+    final scoreDetails = _resultData!['score_details'];
+    final questions = _resultData!['corrected_questions'] as List;
+    final double percentage = (scoreDetails['percentage'] ?? 0) / 100.0;
+    
+    Color statusColor = percentage >= 0.5 ? AppColors.success : AppColors.error;
+    String statusMsg = percentage >= 0.5 ? "PASSED" : "FAILED";
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 20),
-              
-              // 1. Result Title
-              Text(
-                "EXAM COMPLETED",
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textSecondary,
-                  letterSpacing: 2.0,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                examTitle.toUpperCase(),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-
-              const SizedBox(height: 48),
-
-              // 2. Circular Indicator
-              CircularPercentIndicator(
-                radius: 80.0,
-                lineWidth: 12.0,
-                animation: true,
-                percent: percentage,
-                center: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "$percentageInt%",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 32.0,
-                        color: statusColor,
-                      ),
-                    ),
-                    const Text(
-                      "SCORE",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 10.0,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-                circularStrokeCap: CircularStrokeCap.round,
-                backgroundColor: AppColors.backgroundSecondary,
-                progressColor: statusColor,
-              ),
-
-              const SizedBox(height: 32),
-
-              // 3. Status Message
-              Text(
-                statusIcon,
-                style: const TextStyle(fontSize: 40),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                statusMessage,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: statusColor,
-                  letterSpacing: 1.0,
-                ),
-              ),
-
-              const SizedBox(height: 48),
-
-              // 4. Statistics Cards
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      "CORRECT",
-                      "$correctAnswers",
-                      AppColors.success,
-                      LucideIcons.checkCircle2,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildStatCard(
-                      "WRONG",
-                      "$wrongAnswers",
-                      AppColors.error,
-                      LucideIcons.xCircle,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildStatCard(
-                      "TOTAL",
-                      "$totalQuestions",
-                      Colors.white,
-                      LucideIcons.list,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 60),
-
-              // 5. Action Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // العودة للصفحة الرئيسية ومسح الصفحات السابقة
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MainWrapper()),
-                      (route) => false,
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.backgroundSecondary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(color: Colors.white.withOpacity(0.1)),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    "BACK TO HOME",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+      appBar: AppBar(
+        title: const Text("EXAM RESULTS", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.backgroundSecondary,
+        leading: IconButton(
+          icon: const Icon(LucideIcons.x), 
+          onPressed: () => Navigator.pop(context), 
         ),
       ),
-    );
-  }
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            // 1. بطاقة النتيجة
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundSecondary,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                children: [
+                  CircularPercentIndicator(
+                    radius: 60.0,
+                    lineWidth: 10.0,
+                    percent: percentage,
+                    center: Text("${(percentage * 100).toInt()}%", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: statusColor)),
+                    progressColor: statusColor,
+                    backgroundColor: Colors.black26,
+                    circularStrokeCap: CircularStrokeCap.round,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(statusMsg, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 2.0)),
+                  const SizedBox(height: 8),
+                  Text("Score: ${scoreDetails['score']} / ${scoreDetails['total']}", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 32),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text("DETAILED ANALYSIS", style: TextStyle(color: AppColors.accentYellow, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+            ),
+            const SizedBox(height: 16),
 
-  Widget _buildStatCard(String label, String value, Color color, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSecondary,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textSecondary.withOpacity(0.7),
-              letterSpacing: 1.0,
-            ),
-          ),
-        ],
+            // 2. قائمة الأسئلة المصححة
+            ...List.generate(questions.length, (index) {
+              final q = questions[index];
+              // حسب هيكل الباك اند الجديد
+              final userAnsId = q['user_answer']?['selected_option_id'];
+              final correctOptId = q['correct_option_id'];
+              final bool isCorrect = userAnsId == correctOptId;
+              
+              final String? imageFileId = q['image_file_id'];
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 24),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundSecondary.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: isCorrect ? AppColors.success.withOpacity(0.3) : AppColors.error.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(isCorrect ? LucideIcons.checkCircle : LucideIcons.xCircle, color: isCorrect ? AppColors.success : AppColors.error, size: 20),
+                        const SizedBox(width: 10),
+                        Text("Question ${index + 1}", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // عرض الصورة إن وجدت
+                    if (imageFileId != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        height: 150,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: CachedNetworkImage(
+                            imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
+                            httpHeaders: {
+                              'x-user-id': _userId ?? '',
+                              'x-device-id': _deviceId ?? '',
+                              'x-app-secret': _appSecret,
+                            },
+                            placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)),
+                            errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.red),
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+
+                    Text(q['question_text'] ?? "", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 16),
+                    
+                    // الخيارات
+                    ...(q['options'] as List).map((opt) {
+                      final bool isSelected = opt['id'] == userAnsId;
+                      final bool isTheCorrectOne = opt['id'] == correctOptId;
+                      
+                      Color bgColor = Colors.transparent;
+                      Color borderColor = Colors.white10;
+                      IconData? icon;
+                      Color iconColor = Colors.transparent;
+                      
+                      if (isTheCorrectOne) {
+                        bgColor = AppColors.success.withOpacity(0.1);
+                        borderColor = AppColors.success;
+                        icon = Icons.check_circle;
+                        iconColor = AppColors.success;
+                      } else if (isSelected && !isTheCorrectOne) {
+                        bgColor = AppColors.error.withOpacity(0.1);
+                        borderColor = AppColors.error;
+                        icon = Icons.cancel;
+                        iconColor = AppColors.error;
+                      }
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: borderColor),
+                        ),
+                        child: Row(
+                          children: [
+                            if (icon != null) ...[
+                              Icon(icon, size: 16, color: iconColor),
+                              const SizedBox(width: 8),
+                            ],
+                            Expanded(child: Text(opt['option_text'], style: TextStyle(color: isTheCorrectOne ? AppColors.success : AppColors.textSecondary, fontWeight: isTheCorrectOne ? FontWeight.bold : FontWeight.normal))),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
