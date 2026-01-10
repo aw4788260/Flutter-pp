@@ -10,13 +10,13 @@ allprojects {
     configurations.all {
         resolutionStrategy {
             eachDependency {
-                // التحقق من الحزمة المطلوبة (full-gpl) واستبدال الإصدار المفقود
-                if (requested.group == "com.arthenica" &&
-                    requested.name == "ffmpeg-kit-full-gpl" &&
+                // إجبار النظام على استخدام نسخة LTS المستقرة والموجودة فعلياً في Maven Central
+                if (requested.group == "com.arthenica" && 
+                    requested.name.contains("ffmpeg-kit") && 
                     requested.version == "6.0-2") {
                     
                     useVersion("6.0-2.LTS")
-                    because("Version 6.0-2 is missing from Maven Central, replaced with 6.0-2.LTS")
+                    because("The non-LTS version 6.0-2 is missing from Maven Central, forcing stable LTS version.")
                 }
             }
         }
