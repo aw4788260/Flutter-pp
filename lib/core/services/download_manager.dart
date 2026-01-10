@@ -3,8 +3,8 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart'; // ✅ إضافة المكتبة
-import 'package:ffmpeg_kit_flutter/return_code.dart'; // ✅ إضافة المكتبة
+import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter/return_code.dart';
 import '../utils/encryption_helper.dart';
 
 class DownloadManager {
@@ -41,7 +41,7 @@ class DownloadManager {
 
       String? finalUrl = downloadUrl;
 
-      // --- نفس منطق جلب الرابط (Parsing) الذي كتبته سابقاً ---
+      // --- منطق جلب الرابط تلقائياً إذا لم يتم توفيره ---
       if (finalUrl == null) {
         final res = await _dio.get(
           '$_baseUrl/api/secure/get-video-id',
@@ -60,7 +60,6 @@ class DownloadManager {
 
         if (data['availableQualities'] != null) {
           List qualities = data['availableQualities'];
-          // تفضيل 720p
           var q720 = qualities.firstWhere((q) => q['quality'] == 720, orElse: () => null);
           if (q720 != null) finalUrl = q720['url'];
           else if (qualities.isNotEmpty) finalUrl = qualities.first['url'];
@@ -79,33 +78,42 @@ class DownloadManager {
       final dir = Directory('${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter');
       if (!await dir.exists()) await dir.create(recursive: true);
 
-      final tempPath = '${dir.path}/$lessonId.temp'; // للملف الخام
-      final savePath = '${dir.path}/$lessonId.enc';  // للملف المشفر النهائي
-      
-      // ✅✅ هنا التغيير الجوهري: التعامل مع m3u8 مقابل MP4 ✅✅
+      final tempPath = '${dir.path}/$lessonId.temp'; 
+      final savePath = '${dir.path}/$lessonId.enc';
       
       File tempFile = File(tempPath);
-      if (tempFile.exists()) await tempFile.delete(); // تنظيف القديم
+      if (tempFile.exists()) await tempFile.delete(); 
 
-      if (finalUrl.contains('.m3u8')) {
-        // 🎥 حالة HLS: نستخدم FFmpeg للتحميل والتحويل لـ MP4
-        // الأمر يقوم بتحميل الستريم ونسخه كملف واحد mp4
-        final command = '-y -i "$finalUrl" -c copy -bsf:a aac_adtstoasc "$tempPath"';
+      // ✅ التعديل الأول: التحقق من m3u و m3u8
+      bool isHls = finalUrl.contains('.m3u8') || finalUrl.contains('.m3u');
+
+      if (isHls) {
+        // 🎥 حالة HLS: التحويل باستخدام FFmpeg
         
-        // ملاحظة: FFmpegKit لا يوفر progress دقيق بسهولة مثل Dio، لذا قد نرسل تحديثات وهمية أو نتركه indeterminate
-        onProgress(0.1); 
+        // ✅ التعديل الثاني: إضافة "-f mp4" لإجبار الحاوية، لأن الملف ينتهي بـ .temp
+        // واستخدام user-agent لتجنب الحظر (كما في كود الجافا)
+        String userAgent = 'Mozilla/5.0 (Linux; Android 10; Mobile; rv:100.0) Gecko/100.0 Firefox/100.0';
+        
+        final command = '-y -user_agent "$userAgent" -i "$finalUrl" -c copy -bsf:a aac_adtstoasc -f mp4 "$tempPath"';
+        
+        onProgress(0.1); // تقدم وهمي للبداية
         
         final session = await FFmpegKit.execute(command);
         final returnCode = await session.getReturnCode();
 
         if (!ReturnCode.isSuccess(returnCode)) {
            final failStackTrace = await session.getFailStackTrace();
+           // في حال الفشل، تحقق من Logs
+           final logs = await session.getLogs();
+           String logMsg = logs.map((l) => l.getMessage()).join("\n");
+           FirebaseCrashlytics.instance.log("FFmpeg Output: $logMsg");
+           
            throw Exception("FFmpeg failed: $failStackTrace");
         }
-        onProgress(0.9); // اكتمل التحميل تقريباً
+        onProgress(0.9); 
         
       } else {
-        // 📁 حالة ملف مباشر (MP4): نستخدم Dio كما هو
+        // 📁 حالة ملف مباشر (MP4)
         await _dio.download(
           finalUrl,
           tempPath,
@@ -115,10 +123,10 @@ class DownloadManager {
         );
       }
 
-      // --- التشفير والحفظ (مشترك للكل) ---
+      // --- التشفير والحفظ ---
       if (await tempFile.exists()) {
         final fileSize = await tempFile.length();
-        if (fileSize < 1024 * 100) { // فحص الحجم لتجنب ملفات الخطأ
+        if (fileSize < 1024 * 10) { // تعديل بسيط: 10KB كحد أدنى للملفات الصغيرة جداً
              throw Exception("File too small ($fileSize bytes). Download likely failed.");
         }
 
@@ -128,12 +136,12 @@ class DownloadManager {
         final finalFile = File(savePath);
         await finalFile.writeAsBytes(encrypted.bytes);
         
-        await tempFile.delete(); // حذف الملف غير المشفر
+        await tempFile.delete(); 
       } else {
         throw Exception("Temp file missing after download");
       }
 
-      // 7. حفظ البيانات في Hive
+      // حفظ البيانات في Hive
       var downloadsBox = await Hive.openBox('downloads_box');
       await downloadsBox.put(lessonId, {
         'id': lessonId,
@@ -151,7 +159,10 @@ class DownloadManager {
     } catch (e, stack) {
       if (e is DioException) {
           FirebaseCrashlytics.instance.log("🌐 URL: ${e.requestOptions.uri}");
-          FirebaseCrashlytics.instance.log("🔢 Status: ${e.response?.statusCode}");
+          if(e.response != null) {
+            FirebaseCrashlytics.instance.log("🔢 Status: ${e.response?.statusCode}");
+            FirebaseCrashlytics.instance.log("📄 Response: ${e.response?.data}");
+          }
       }
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed: $lessonId');
       onError(e.toString());
