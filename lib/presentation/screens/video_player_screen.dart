@@ -1,59 +1,130 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
-import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:screen_protector/screen_protector.dart'; // ✅ للحماية
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_colors.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  final Map<String, String> streams; 
+  final Map<String, String> streams; // الجودات المتاحة
   final String title;
 
-  const VideoPlayerScreen({super.key, required this.streams, required this.title});
+  const VideoPlayerScreen({
+    super.key, 
+    required this.streams, 
+    required this.title
+  });
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindingObserver {
   late VideoPlayerController _videoPlayerController;
   ChewieController? _chewieController;
-  bool _isError = false;
   
+  // إدارة الجودة
   String _currentQuality = "";
   List<String> _sortedQualities = [];
+  bool _isError = false;
 
+  // العلامة المائية
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
-  String _userIdText = "User ID"; 
+  String _watermarkText = "";
+
+  // مراقبة تسجيل الشاشة
+  Timer? _screenRecordingTimer;
+
+  // ✅ هيدر المتصفح (نفس المستخدم في كود الجافا لحل مشكلة جوجل)
+  final Map<String, String> _headers = {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile; rv:100.0) Gecko/100.0 Firefox/100.0',
+    'Accept': '*/*',
+  };
 
   @override
   void initState() {
     super.initState();
-    
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    WidgetsBinding.instance.addObserver(this);
 
-    _getUserId();
+    // 1. إعدادات الشاشة والحماية
+    _setupScreenProtection();
+    
+    // 2. جلب بيانات المستخدم
+    _loadUserData();
+
+    // 3. بدء تحريك العلامة المائية
     _startWatermarkAnimation();
+
+    // 4. تهيئة المشغل
     _parseQualities();
   }
 
-  void _getUserId() {
+  /// 🛡️ إعداد الحماية (Android & iOS)
+  Future<void> _setupScreenProtection() async {
+    // إجبار الوضع الأفقي
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    
+    // إبقاء الشاشة مضيئة
+    await WakelockPlus.enable();
+
+    // تفعيل الحماية (شاشة سوداء عند محاولة التصوير/التسجيل)
+    // هذا يعوض FLAG_SECURE في Android و isCaptured في iOS
+    await ScreenProtector.protectDataLeakageOn(); 
+    await ScreenProtector.preventScreenshotOn();
+
+    // مراقبة دورية للتسجيل (كطبقة أمان إضافية)
+    _screenRecordingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      final isRecording = await ScreenProtector.isRecording();
+      if (isRecording) {
+        _handleScreenRecordingDetected();
+      }
+    });
+  }
+
+  void _handleScreenRecordingDetected() {
+    // إيقاف الفيديو فوراً
+    _videoPlayerController.pause();
+    
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text("⚠️ تنبيه أمني", style: TextStyle(color: Colors.red)),
+          content: const Text("تم اكتشاف تسجيل للشاشة. يمنع تسجيل المحتوى."),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // إغلاق الحوار
+                Navigator.pop(context); // الخروج من الفيديو
+              },
+              child: const Text("خروج"),
+            )
+          ],
+        ),
+      );
+    }
+  }
+
+  void _loadUserData() {
     try {
       if (Hive.isBoxOpen('auth_box')) {
         var box = Hive.box('auth_box');
         setState(() {
-          _userIdText = box.get('phone') ?? box.get('username') ?? box.get('user_id') ?? 'Student';
+          _watermarkText = box.get('phone') ?? box.get('username') ?? 'User';
         });
       }
-    } catch (e) {}
+    } catch (_) {}
   }
 
   void _startWatermarkAnimation() {
@@ -61,6 +132,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) {
         setState(() {
           final random = Random();
+          // حركة عشوائية تغطي الشاشة (نفس منطق الجافا تقريباً)
           double x = (random.nextDouble() * 1.6) - 0.8;
           double y = (random.nextDouble() * 1.6) - 0.8;
           _watermarkAlignment = Alignment(x, y);
@@ -75,6 +147,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return;
     }
 
+    // ترتيب الجودات
     _sortedQualities = widget.streams.keys.toList();
     _sortedQualities.sort((a, b) {
       int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
@@ -82,12 +155,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return valA.compareTo(valB);
     });
 
-    _currentQuality = _sortedQualities.contains("720p") ? "720p" : _sortedQualities.last;
-    
-    _initializePlayer(widget.streams[_currentQuality]!);
+    // اختيار جودة تلقائية (720 أو الأقل)
+    _currentQuality = _sortedQualities.contains("720p") 
+        ? "720p" 
+        : (_sortedQualities.isNotEmpty ? _sortedQualities.last : "");
+
+    if (_currentQuality.isNotEmpty) {
+      _initializePlayer(widget.streams[_currentQuality]!);
+    }
   }
 
   Future<void> _initializePlayer(String url) async {
+    // حفظ الموقع الحالي عند تغيير الجودة
     Duration currentPos = Duration.zero;
     if (_chewieController != null && _videoPlayerController.value.isInitialized) {
       currentPos = _videoPlayerController.value.position;
@@ -96,14 +175,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     try {
-      // ✅ التعديل هنا: إضافة الهيدرز لإصلاح مشكلة التشغيل
+      // ✅ السر هنا: تمرير الهيدرز ليقبل يوتيوب الاتصال
       _videoPlayerController = VideoPlayerController.networkUrl(
         Uri.parse(url),
-        httpHeaders: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Referer': 'https://www.youtube.com/',
-          'Accept': '*/*',
-        },
+        httpHeaders: _headers, 
+        // formatHint: VideoFormat.hls, // يمكن تفعيلها إذا لزم الأمر
       );
 
       await _videoPlayerController.initialize();
@@ -117,15 +193,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           videoPlayerController: _videoPlayerController,
           autoPlay: true,
           looping: false,
-          allowFullScreen: true,
+          allowFullScreen: true, // مسموح لأننا نتحكم في التوجيه
           showControls: true,
+          allowedScreenSleep: false,
+          
+          // تخصيص الألوان لتشبه التطبيق
           materialProgressColors: ChewieProgressColors(
             playedColor: AppColors.accentYellow,
             handleColor: AppColors.accentYellow,
-            backgroundColor: Colors.grey,
+            backgroundColor: Colors.grey.withOpacity(0.5),
             bufferedColor: Colors.white24,
           ),
-          playbackSpeeds: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+          
+          // خيارات السرعة (نفس الجافا)
+          playbackSpeeds: [0.5, 1.0, 1.25, 1.5, 2.0],
+          
+          // قائمة الإعدادات المخصصة (للجودة)
           additionalOptions: (context) {
             return <OptionItem>[
               OptionItem(
@@ -138,14 +221,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ];
           },
+          
           errorBuilder: (context, errorMessage) {
-            FirebaseCrashlytics.instance.log("Player Err: $errorMessage");
-            return const Center(child: Text("Playback Error", style: TextStyle(color: Colors.white)));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error, color: Colors.white, size: 40),
+                  const SizedBox(height: 10),
+                  Text("Playback Error\n$errorMessage", 
+                    textAlign: TextAlign.center, 
+                    style: const TextStyle(color: Colors.white)
+                  ),
+                ],
+              ),
+            );
           },
         );
       });
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Init Error: $url');
+    } catch (e) {
+      debugPrint("❌ Init Error: $e");
       setState(() => _isError = true);
     }
   }
@@ -153,15 +248,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _showQualitySheet() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.backgroundSecondary,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) {
-        return Container(
-          padding: const EdgeInsets.all(16),
+        return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text("Select Quality", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text("Select Quality", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              const Divider(color: Colors.white24),
               ..._sortedQualities.reversed.map((q) => ListTile(
                 title: Text(q, style: TextStyle(color: q == _currentQuality ? AppColors.accentYellow : Colors.white)),
                 trailing: q == _currentQuality ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
@@ -170,7 +268,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   if (q != _currentQuality) {
                     setState(() {
                       _currentQuality = q;
-                      _chewieController = null; 
+                      _chewieController = null; // إظهار اللودينج
                     });
                     _initializePlayer(widget.streams[q]!);
                   }
@@ -185,10 +283,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    
+    // تنظيف الموارد
     _watermarkTimer?.cancel();
+    _screenRecordingTimer?.cancel();
     _videoPlayerController.dispose();
     _chewieController?.dispose();
+    
+    // إزالة الحماية وإعادة التوجيه للوضع العمودي
+    ScreenProtector.protectDataLeakageOff();
+    ScreenProtector.preventScreenshotOff();
+    WakelockPlus.disable();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    
     super.dispose();
   }
 
@@ -198,58 +306,72 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
+          // 1. المشغل
           Center(
             child: _isError
-                ? const Text("Error loading video", style: TextStyle(color: AppColors.error))
-                : _chewieController != null && _chewieController!.videoPlayerController.value.isInitialized
+                ? const Text("Failed to load video. Check connection.", style: TextStyle(color: AppColors.error))
+                : (_chewieController != null && _chewieController!.videoPlayerController.value.isInitialized)
                     ? Chewie(controller: _chewieController!)
                     : const CircularProgressIndicator(color: AppColors.accentYellow),
           ),
+
+          // 2. العلامة المائية المتحركة
           if (!_isError)
             AnimatedAlign(
-              duration: const Duration(seconds: 2),
+              duration: const Duration(seconds: 2), // حركة ناعمة
               curve: Curves.easeInOut,
               alignment: _watermarkAlignment,
               child: IgnorePointer(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withOpacity(0.3), // خلفية نصف شفافة
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    _userIdText,
+                    _watermarkText,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.4),
+                      color: Colors.white.withOpacity(0.3), // نص شفاف
                       fontWeight: FontWeight.bold,
-                      fontSize: 14,
+                      fontSize: 12, // حجم مناسب
+                      decoration: TextDecoration.none,
                     ),
                   ),
                 ),
               ),
             ),
+
+          // 3. زر الرجوع والعنوان (مخصص)
           Positioned(
             top: 20,
             left: 20,
             child: SafeArea(
-              child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-                  child: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 28,
-            left: 70,
-            child: SafeArea(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(4)),
-                child: Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 12)),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 20),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(color: Colors.white, fontSize: 12, decoration: TextDecoration.none),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
