@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ استيراد Crashlytics
-import 'package:hive_flutter/hive_flutter.dart'; // ✅ استيراد Hive لجلب بيانات المستخدم
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_colors.dart';
 
 class YoutubePlayerScreen extends StatefulWidget {
@@ -28,7 +28,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
   // متغيرات العلامة المائية
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
-  String _userIdText = "User ID"; 
+  String _userIdText = ""; // سنضع فيه رقم الهاتف
 
   @override
   void initState() {
@@ -40,11 +40,11 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
       DeviceOrientation.landscapeRight,
     ]);
 
-    // ✅ 2. جلب معرف المستخدم وبدء التحريك
+    // ✅ 2. جلب رقم الهاتف وبدء التحريك
     _getUserId();
     _startWatermarkAnimation();
 
-    // ✅ 3. إعداد المشغل مع تسجيل الأخطاء
+    // ✅ 3. إعداد المشغل
     try {
       _controller = YoutubePlayerController(
         initialVideoId: widget.videoId,
@@ -55,44 +55,43 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
           forceHD: false,
           isLive: false,
           loop: false,
+          // تعطيل زر ملء الشاشة لمنع التعارض مع العلامة المائية
+          disableDragSeek: false, 
         ),
-      )..addListener(_playerListener); // الاستماع للأخطاء
+      )..addListener(_playerListener);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Youtube Player Init Error');
     }
   }
 
-  // مستمع لاكتشاف أخطاء التشغيل
   void _playerListener() {
     if (_controller.value.hasError) {
       FirebaseCrashlytics.instance.log("Youtube Player Error: ${_controller.value.errorCode}");
     }
   }
 
-  // دالة جلب معرف المستخدم من Hive
+  // ✅ تعديل: جلب رقم الهاتف فقط
   void _getUserId() {
     try {
       if (Hive.isBoxOpen('auth_box')) {
         var box = Hive.box('auth_box');
-        // نستخدم الاسم أو رقم الهاتف أو المعرف
         setState(() {
-          _userIdText = box.get('username') ?? box.get('phone') ?? box.get('user_id') ?? 'Student';
+          // الأولوية لرقم الهاتف، ثم الاسم، ثم المعرف
+          _userIdText = box.get('phone') ?? box.get('username') ?? box.get('user_id') ?? 'Student';
         });
       }
     } catch (e) {
-      // تجاهل الخطأ في حالة عدم فتح الصندوق
+      // تجاهل الخطأ
     }
   }
 
-  // ✅ 4. منطق تحريك العلامة المائية (تتحرك وتثبت قليلاً)
   void _startWatermarkAnimation() {
-    // كل 4 ثواني نغير المكان
     _watermarkTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (mounted) {
         setState(() {
-          // توليد محاذاة عشوائية بين -0.8 و 0.8 لتجنب الحواف القصوى
           final random = Random();
-          double x = (random.nextDouble() * 1.6) - 0.8;
+          // توليد موقع عشوائي (تم توسيع النطاق قليلاً لتغطية الشاشة بشكل أفضل)
+          double x = (random.nextDouble() * 1.8) - 0.9;
           double y = (random.nextDouble() * 1.6) - 0.8;
           _watermarkAlignment = Alignment(x, y);
         });
@@ -108,7 +107,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
 
   @override
   void dispose() {
-    _watermarkTimer?.cancel(); // إيقاف التايمر
+    _watermarkTimer?.cancel();
     _controller.removeListener(_playerListener);
     _controller.dispose();
     
@@ -119,87 +118,97 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return YoutubePlayerBuilder(
-      player: YoutubePlayer(
-        controller: _controller,
-        showVideoProgressIndicator: true,
-        progressIndicatorColor: AppColors.accentYellow,
-        progressColors: const ProgressBarColors(
-          playedColor: AppColors.accentYellow,
-          handleColor: AppColors.accentYellow,
-        ),
-      ),
-      builder: (context, player) {
-        return Scaffold(
-          backgroundColor: Colors.black,
-          // نستخدم Stack لوضع العلامة المائية فوق الفيديو
-          body: Stack(
-            children: [
-              // 1. الفيديو في المنتصف
-              Center(child: player),
+    // ✅ تم إزالة YoutubePlayerBuilder واستخدام Scaffold مباشرة
+    // لأننا أجبرنا الشاشة على الوضع الأفقي، فالصفحة كلها تعتبر "ملء شاشة"
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // 1. مشغل الفيديو
+          Center(
+            child: YoutubePlayer(
+              controller: _controller,
+              showVideoProgressIndicator: true,
+              progressIndicatorColor: AppColors.accentYellow,
+              progressColors: const ProgressBarColors(
+                playedColor: AppColors.accentYellow,
+                handleColor: AppColors.accentYellow,
+              ),
+              // ✅ تخصيص أزرار التحكم لإزالة زر "ملء الشاشة" القياسي
+              bottomActions: [
+                const CurrentPosition(),
+                const SizedBox(width: 10),
+                const ProgressBar(isExpanded: true),
+                const SizedBox(width: 10),
+                const RemainingDuration(),
+                const PlaybackSpeedButton(),
+                // تم إزالة FullScreenButton() لضمان بقاء الواجهة كما هي
+              ],
+            ),
+          ),
 
-              // 2. العلامة المائية المتحركة
-              AnimatedAlign(
-                duration: const Duration(seconds: 2), // مدة الحركة (تتحرك ببطء)
-                curve: Curves.easeInOut,
-                alignment: _watermarkAlignment,
-                child: IgnorePointer( // لكي لا تمنع اللمس على الفيديو
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          // 2. العلامة المائية المتحركة (تم تقليل الحجم)
+          AnimatedAlign(
+            duration: const Duration(seconds: 2),
+            curve: Curves.easeInOut,
+            alignment: _watermarkAlignment,
+            child: IgnorePointer(
+              child: Container(
+                // ✅ تقليل الـ Padding (الارتفاع)
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  _userIdText,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.4),
+                    fontWeight: FontWeight.bold,
+                    // ✅ تقليل حجم الخط
+                    fontSize: 11, 
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // 3. زر الرجوع والعنوان
+          Positioned(
+            top: 20,
+            left: 20,
+            child: SafeArea(
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 20),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.3), // خلفية نصف شفافة
-                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      _userIdText,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5), // نص نصف شفاف
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
+                      widget.title,
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ),
-                ),
+                ],
               ),
-
-              // 3. زر الرجوع والعنوان (مخصص ليظهر فوق الفيديو في وضع ملء الشاشة)
-              Positioned(
-                top: 20,
-                left: 20,
-                child: SafeArea(
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          widget.title,
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
