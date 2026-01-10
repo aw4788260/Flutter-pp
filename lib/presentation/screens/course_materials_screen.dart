@@ -10,8 +10,8 @@ class CourseMaterialsScreen extends StatefulWidget {
   final String courseId;
   final String courseCode;
   final String courseTitle;
-  final String? instructorName; // ✅ أضفنا اسم المدرس للعرض في التصميم
-  final List<dynamic>? preLoadedSubjects; // ✅ البيانات المحملة مسبقاً (اختياري)
+  final String? instructorName; // ✅ استقبال اسم المدرس
+  final List<dynamic>? preLoadedSubjects; // ✅ استقبال المواد المحملة مسبقاً
 
   const CourseMaterialsScreen({
     super.key,
@@ -34,12 +34,12 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ 1. استخدام البيانات الممررة (إذا وجدت) لتسريع الفتح
+    // ✅ 1. استخدام البيانات الممررة (إذا وجدت) لتسريع الفتح وتقليل طلبات السيرفر
     if (widget.preLoadedSubjects != null && widget.preLoadedSubjects!.isNotEmpty) {
       _ownedSubjects = widget.preLoadedSubjects!;
       _loading = false;
     } else {
-      // ✅ 2. وإلا نقوم بجلبها من السيرفر
+      // ✅ 2. وإلا نقوم بجلبها من السيرفر (للحالات النادرة)
       _fetchSubjects();
     }
   }
@@ -77,7 +77,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // اسم المدرس الافتراضي إذا لم يتم تمريره
+    // ✅ استخدام اسم المدرس الممرر من الصفحة السابقة (Init Data)
     final String displayInstructor = widget.instructorName ?? "Instructor";
 
     return Scaffold(
@@ -85,7 +85,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ✅ Header (نفس تصميمك بالضبط)
+            // ✅ Header
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
@@ -109,7 +109,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.courseTitle.toUpperCase(), // ✅ البيانات الحقيقية
+                          widget.courseTitle.toUpperCase(),
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -167,13 +167,12 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                             mainAxisSpacing: 16,
                             childAspectRatio: 1.0,
                           ),
-                          itemCount: _ownedSubjects.length, // ✅ العدد الحقيقي
+                          itemCount: _ownedSubjects.length,
                           itemBuilder: (context, index) {
-                            final subject = _ownedSubjects[index]; // ✅ المادة الحقيقية
+                            final subject = _ownedSubjects[index];
                             
                             return GestureDetector(
                               onTap: () {
-                                // الانتقال لصفحة تفاصيل المادة (شباتر/امتحانات)
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -214,7 +213,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
 
                                     // اسم المادة
                                     Text(
-                                      subject['title'].toString().toUpperCase(), // ✅ العنوان الحقيقي
+                                      subject['title'].toString().toUpperCase(),
                                       maxLines: 3,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -234,8 +233,9 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
+                                              // ✅ عرض اسم المدرس هنا بشكل صحيح
                                               Text(
-                                                displayInstructor.toUpperCase(), // ✅ اسم المدرس الحقيقي
+                                                displayInstructor.toUpperCase(),
                                                 style: TextStyle(
                                                   fontSize: 9,
                                                   fontWeight: FontWeight.bold,
