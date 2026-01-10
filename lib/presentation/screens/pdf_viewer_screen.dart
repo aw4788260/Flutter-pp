@@ -7,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ استيراد Crashlytics
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 
@@ -29,68 +29,106 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   int _currentPage = 0;
   bool _isReady = false;
   
-  // نص العلامة المائية
-  String _watermarkText = 'User ID';
+  String _watermarkText = '';
 
   @override
   void initState() {
     super.initState();
-    _loadPdf();
     _initWatermarkText();
+    _loadPdf();
   }
 
-  // تهيئة نص العلامة المائية فقط (بدون حركة)
   void _initWatermarkText() {
+    String phone = '';
     if (AppState().userData != null) {
-      final user = AppState().userData!;
-      _watermarkText = "${user['username'] ?? 'User'} - ${user['phone'] ?? ''}";
-    } else {
+      phone = AppState().userData!['phone'] ?? '';
+    } 
+    if (phone.isEmpty) {
        try {
          if(Hive.isBoxOpen('auth_box')) {
            var box = Hive.box('auth_box');
-           _watermarkText = "${box.get('username') ?? 'User'} - ${box.get('phone') ?? ''}";
+           phone = box.get('phone') ?? '';
          }
        } catch(_) {}
     }
+    setState(() {
+      _watermarkText = phone.isNotEmpty ? phone : 'User';
+    });
   }
 
   Future<void> _loadPdf() async {
     try {
-      var box = await Hive.openBox('auth_box');
-      final userId = box.get('user_id');
-      final deviceId = box.get('device_id');
-
-      // 1. طلب الملف من الـ API
-      final dio = Dio();
-      final response = await dio.get(
-        'https://courses.aw478260.dpdns.org/api/secure/get-pdf',
-        queryParameters: {'pdfId': widget.pdfId},
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: {
-            'x-user-id': userId,
-            'x-device-id': deviceId,
-            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
-          },
-        ),
-      );
-
-      // 2. حفظ الملف مؤقتاً
-      final bytes = response.data as Uint8List;
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/${widget.pdfId}.pdf');
-      await file.writeAsBytes(bytes, flush: true);
-
-      if (mounted) {
-        setState(() {
-          _localPath = file.path;
-          _loading = false;
-        });
+      // 1. تحديد مسار التخزين الدائم (الكاش)
+      final dir = await getApplicationDocumentsDirectory();
+      // إنشاء مجلد خاص للكاش لتنظيمه
+      final cacheDir = Directory('${dir.path}/cached_pdfs');
+      if (!await cacheDir.exists()) {
+        await cacheDir.create(recursive: true);
       }
+
+      final file = File('${cacheDir.path}/${widget.pdfId}.pdf');
+      bool useCachedFile = false;
+
+      // 2. التحقق من وجود الملف وصلاحيته (10 أيام)
+      if (await file.exists()) {
+        final lastModified = await file.lastModified();
+        final difference = DateTime.now().difference(lastModified);
+
+        if (difference.inDays < 10) {
+          useCachedFile = true; // الملف صالح، نستخدمه
+        } else {
+          // الملف قديم، سيتم تحميله وتحديثه
+          await file.delete(); 
+        }
+      }
+
+      if (useCachedFile) {
+        // ✅ الفتح من الكاش
+        if (mounted) {
+          setState(() {
+            _localPath = file.path;
+            _loading = false;
+          });
+        }
+      } else {
+        // ⬇️ التحميل من السيرفر (غير موجود أو منتهي الصلاحية)
+        await _downloadAndSavePdf(file);
+      }
+
     } catch (e, stack) {
-      // ✅ تسجيل خطأ التحميل
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF Download Failed: ${widget.pdfId}');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF Load Failed: ${widget.pdfId}');
       if (mounted) setState(() { _error = "Failed to load PDF. Check connection."; _loading = false; });
+    }
+  }
+
+  Future<void> _downloadAndSavePdf(File targetFile) async {
+    var box = await Hive.openBox('auth_box');
+    final userId = box.get('user_id');
+    final deviceId = box.get('device_id');
+
+    final dio = Dio();
+    final response = await dio.get(
+      'https://courses.aw478260.dpdns.org/api/secure/get-pdf',
+      queryParameters: {'pdfId': widget.pdfId},
+      options: Options(
+        responseType: ResponseType.bytes,
+        headers: {
+          'x-user-id': userId,
+          'x-device-id': deviceId,
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        },
+      ),
+    );
+
+    // كتابة الملف (سيتم تحديث تاريخ التعديل تلقائياً)
+    final bytes = response.data as Uint8List;
+    await targetFile.writeAsBytes(bytes, flush: true);
+
+    if (mounted) {
+      setState(() {
+        _localPath = targetFile.path;
+        _loading = false;
+      });
     }
   }
 
@@ -109,11 +147,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // 1. عارض الـ PDF
           PDFView(
             filePath: _localPath,
             enableSwipe: true,
-            swipeHorizontal: false, // التمرير العمودي
+            swipeHorizontal: false,
             autoSpacing: false,
             pageFling: false,
             backgroundColor: AppColors.backgroundPrimary,
@@ -129,13 +166,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             },
           ),
 
-          // 2. العلامة المائية الثابتة (3 مرات فقط)
+          // العلامة المائية (رقم الهاتف فقط)
           IgnorePointer(
             child: SizedBox(
               width: double.infinity,
               height: double.infinity,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly, // توزيع المسافات بالتساوي
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _buildWatermarkItem(),
                   _buildWatermarkItem(),
@@ -145,7 +182,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // 3. عداد الصفحات
           if (_isReady)
             Positioned(
               bottom: 20, right: 20,
@@ -166,13 +202,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // عنصر العلامة المائية الواحد
   Widget _buildWatermarkItem() {
     return Transform.rotate(
-      angle: -0.3, // ميلان النص
+      angle: -0.3,
       child: Center(
         child: Opacity(
-          opacity: 0.15, // شفافية خفيفة
+          opacity: 0.15,
           child: Text(
             _watermarkText,
             textAlign: TextAlign.center,
