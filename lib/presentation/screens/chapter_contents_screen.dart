@@ -21,7 +21,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   String activeTab = 'videos'; // videos | pdfs
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
-  // --- دوال التشغيل والتحميل (تمت إعادتها لتعمل مع البيانات الحقيقية) ---
+  // --- دوال التشغيل والتحميل ---
   Future<void> _playVideo(Map<String, dynamic> video) async {
     showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
 
@@ -62,7 +62,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  void _startDownload(String videoId, String videoTitle) {
+  // دالة تحميل الفيديو
+  void _startVideoDownload(String videoId, String videoTitle) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
     DownloadManager().startDownload(
       lessonId: videoId,
@@ -76,9 +77,27 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
+  // ✅ دالة جديدة لتحميل الـ PDF
+  void _startPdfDownload(String pdfId, String pdfTitle) {
+     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
+     
+     // ملاحظة: تأكد أن DownloadManager يدعم تحميل ملفات PDF عبر دالة startDownload أو دالة مخصصة
+     // هنا نستخدم نفس الدالة الافتراضية مع تمرير المعاملات المناسبة (قد تحتاج لتعديل DownloadManager لتمييز نوع الملف)
+     DownloadManager().startDownload(
+      lessonId: pdfId, // نستخدم نفس المعامل للـ ID
+      videoTitle: pdfTitle, // والاسم
+      courseName: "PDFs", // تصنيف مختلف
+      subjectName: "Subject Content",
+      chapterName: widget.chapter['title'],
+      // fileType: 'pdf', // ⚠️ إذا كان DownloadManager يدعم هذا، أضفه
+      onProgress: (p) {},
+      onComplete: () { if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success)); },
+      onError: (e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error)); },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // استخراج البيانات من الـ Map بدلاً من الموديل
     final videos = (widget.chapter['videos'] as List? ?? []).cast<Map<String, dynamic>>();
     final pdfs = (widget.chapter['pdfs'] as List? ?? []).cast<Map<String, dynamic>>();
 
@@ -87,7 +106,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header (نفس تصميمك)
+            // Header
             Container(
               color: AppColors.backgroundPrimary.withOpacity(0.95),
               child: Column(
@@ -284,7 +303,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: _buildActionButton(
                       "Download", 
                       AppColors.textSecondary, 
-                      () => _startDownload(video['id'].toString(), video['title']),
+                      () => _startVideoDownload(video['id'].toString(), video['title']),
                     ),
                   ),
                 ],
@@ -306,6 +325,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       itemCount: pdfs.length,
       itemBuilder: (context, index) {
         final pdf = pdfs[index];
+        final String pdfId = pdf['id'].toString();
+        
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
@@ -359,12 +380,38 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                 ),
               ),
               const Divider(height: 1, color: Colors.white10),
+              
+              // ✅ أزرار الإجراءات للـ PDF (فتح + تحميل)
               Row(
                 children: [
                   Expanded(
                     child: _buildActionButton("Open File", AppColors.accentYellow, () {
-                       Navigator.push(context, MaterialPageRoute(builder: (_) => PdfViewerScreen(pdfId: pdf['id'].toString(), title: pdf['title'])));
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => PdfViewerScreen(pdfId: pdfId, title: pdf['title'])));
                     }),
+                  ),
+                  Container(width: 1, height: 48, color: Colors.white10),
+                  
+                  // زر التحميل مع تحديث الحالة
+                  Expanded(
+                    child: ValueListenableBuilder(
+                      valueListenable: Hive.box('downloads_box').listenable(),
+                      builder: (context, Box box, widget) {
+                        bool isDownloaded = DownloadManager().isFileDownloaded(pdfId);
+                        bool isDownloading = DownloadManager().isFileDownloading(pdfId);
+
+                        if (isDownloaded) {
+                          return _buildStatusButton("SAVED", AppColors.success, LucideIcons.checkCircle);
+                        } else if (isDownloading) {
+                          return _buildStatusButton("LOADING...", AppColors.accentYellow, LucideIcons.loader);
+                        } else {
+                          return _buildActionButton(
+                            "Download", 
+                            AppColors.textSecondary, 
+                            () => _startPdfDownload(pdfId, pdf['title']),
+                          );
+                        }
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -393,6 +440,30 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ✅ زر لعرض الحالة (مثل: تم التحميل أو جاري التحميل)
+  Widget _buildStatusButton(String label, Color color, IconData icon) {
+    return Container(
+      height: 48,
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
