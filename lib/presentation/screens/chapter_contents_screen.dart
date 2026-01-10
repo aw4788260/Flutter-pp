@@ -6,7 +6,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/download_manager.dart';
 import 'video_player_screen.dart';
-import 'youtube_player_screen.dart'; // ✅ تأكد من وجود هذا الملف
+import 'youtube_player_screen.dart';
 import 'pdf_viewer_screen.dart';
 
 class ChapterContentsScreen extends StatefulWidget {
@@ -22,7 +22,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   String activeTab = 'videos';
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
-  // --- 1. منطق اختيار المشغل (Player Selection) ---
+  // ===========================================================================
+  // 1. منطق المشاهدة (Watch Logic) واختيار المشغل
+  // ===========================================================================
+
   void _showPlayerSelectionDialog(Map<String, dynamic> video) {
     showModalBottomSheet(
       context: context,
@@ -47,11 +50,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
               const SizedBox(height: 24),
               
-              // Player 1: المشغل الأساسي
-              _buildPlayerOption(
+              // خيار المشغل الداخلي
+              _buildOptionTile(
                 icon: LucideIcons.playCircle,
                 title: "Internal Player",
-                subtitle: "Best for internet speed control",
+                subtitle: "Best for multi-quality streaming",
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayVideo(video, useYoutube: false);
@@ -60,8 +63,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               
               const SizedBox(height: 16),
 
-              // Player 2: مشغل يوتيوب
-              _buildPlayerOption(
+              // خيار مشغل يوتيوب
+              _buildOptionTile(
                 icon: LucideIcons.youtube,
                 title: "YouTube Player",
                 subtitle: "Standard YouTube experience",
@@ -77,135 +80,110 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  Widget _buildPlayerOption({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundPrimary,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.accentYellow, size: 32),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 18),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // دالة جلب البيانات والتوجيه للمشغل المناسب
   Future<void> _fetchAndPlayVideo(Map<String, dynamic> video, {required bool useYoutube}) async {
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
+    // إظهار مؤشر التحميل
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+    );
 
     try {
       var box = await Hive.openBox('auth_box');
+      
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-video-id',
         queryParameters: {'lessonId': video['id'].toString()},
         options: Options(headers: {
           'x-user-id': box.get('user_id'),
           'x-device-id': box.get('device_id'),
-          'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ التعديل المطلوب
+          // ✅ إرسال السر من متغيرات البيئة كما طلبت
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context); // إغلاق التحميل
 
       if (res.statusCode == 200) {
         final data = res.data;
-        
-        if (useYoutube) {
-          // التوجيه لمشغل اليوتيوب
-          String? youtubeId = data['youtubeId']; 
-          
-          if (youtubeId == null && data['url'] != null) {
-             try {
-               final uri = Uri.parse(data['url']);
-               if (uri.host.contains('youtube')) {
-                 youtubeId = uri.queryParameters['v'];
-               } else if (uri.host.contains('youtu.be')) {
-                 youtubeId = uri.pathSegments.last;
-               }
-             } catch (_) {}
-          }
+        // استخدام العنوان من قاعدة البيانات إن وجد، وإلا العنوان المحلي
+        final String videoTitle = data['db_video_title'] ?? video['title'];
 
-          if (youtubeId != null && mounted) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => YoutubePlayerScreen(videoId: youtubeId)));
+        if (useYoutube) {
+          // --- تشغيل يوتيوب ---
+          String? youtubeId = data['youtube_video_id'];
+          
+          if (youtubeId != null && youtubeId.isNotEmpty) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => YoutubePlayerScreen(videoId: youtubeId, title: videoTitle),
+              ),
+            );
           } else {
-             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Not a YouTube video"), backgroundColor: AppColors.error));
+            _showErrorSnackBar("Not a YouTube video or ID missing.");
           }
 
         } else {
-          // التوجيه للمشغل الداخلي
+          // --- تشغيل داخلي (ExoPlayer/Chewie) ---
+          // تحويل قائمة الجودات من الـ API إلى Map يدعمها VideoPlayerScreen
           Map<String, String> qualities = {};
+          
           if (data['availableQualities'] != null) {
-            for (var q in data['availableQualities']) qualities["${q['quality']}p"] = q['url'];
+            for (var q in data['availableQualities']) {
+              if (q['url'] != null) {
+                qualities["${q['quality']}p"] = q['url'];
+              }
+            }
           }
-          if (qualities.isEmpty && data['url'] != null) qualities["Auto"] = data['url'];
 
-          if (qualities.isNotEmpty && mounted) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerScreen(streams: qualities, title: data['db_video_title'] ?? video['title'])));
+          // إذا لم توجد جودات، نستخدم الرابط الاحتياطي
+          if (qualities.isEmpty && data['url'] != null) {
+            qualities["Auto"] = data['url'];
+          }
+
+          if (qualities.isNotEmpty) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => VideoPlayerScreen(streams: qualities, title: videoTitle),
+              ),
+            );
           } else {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No playable stream found."), backgroundColor: AppColors.error));
+            _showErrorSnackBar("No playable stream found.");
           }
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.data['message'] ?? "Access Denied"), backgroundColor: AppColors.error));
+        _showErrorSnackBar(res.data['message'] ?? "Access Denied");
       }
     } catch (e, stack) {
       if (mounted) Navigator.pop(context);
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chapter Play Video Failed');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Connection Error"), backgroundColor: AppColors.error));
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Play Video Error');
+      _showErrorSnackBar("Connection Error: Please check internet");
     }
   }
 
-  // --- 2. منطق التحميل باختيار الجودة (Quality Selection Download) ---
+  // ===========================================================================
+  // 2. منطق التحميل (Download Logic) واختيار الجودة
+  // ===========================================================================
+
   Future<void> _prepareVideoDownload(String videoId, String videoTitle) async {
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+    );
 
     try {
       var box = await Hive.openBox('auth_box');
-      // نجلب بيانات الفيديو أولاً لمعرفة الجودات
+      
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-video-id',
         queryParameters: {'lessonId': videoId},
         options: Options(headers: {
           'x-user-id': box.get('user_id'),
           'x-device-id': box.get('device_id'),
-          'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ التعديل المطلوب
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
 
@@ -219,15 +197,15 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           // عرض نافذة اختيار الجودة
           _showQualitySelectionDialog(videoId, videoTitle, qualities);
         } else if (data['url'] != null) {
-          // إذا رابط واحد فقط، ابدأ التحميل مباشرة
+          // إذا كان رابط واحد فقط، ابدأ التحميل مباشرة
           _startVideoDownload(videoId, videoTitle, data['url']);
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No download links available"), backgroundColor: AppColors.error));
+          _showErrorSnackBar("No download links available");
         }
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to fetch download info"), backgroundColor: AppColors.error));
+      _showErrorSnackBar("Failed to fetch download info");
     }
   }
 
@@ -235,7 +213,9 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.backgroundSecondary,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) {
         return Padding(
           padding: const EdgeInsets.all(24.0),
@@ -243,19 +223,27 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                "SELECT QUALITY",
-                style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                "SELECT DOWNLOAD QUALITY",
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
               ),
               const SizedBox(height: 16),
               ...qualities.map((q) {
                 return ListTile(
                   leading: const Icon(LucideIcons.download, color: AppColors.accentYellow),
-                  title: Text("${q['quality']}p", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  title: Text(
+                    "${q['quality']}p", 
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
                   trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
                   onTap: () {
                     Navigator.pop(context);
-                    // تمرير الرابط المختار لبدء التحميل
-                    _startVideoDownload(videoId, title, q['url']); 
+                    // بدء التحميل بالرابط المختار
+                    _startVideoDownload(videoId, title, q['url']);
                   },
                 );
               }),
@@ -266,7 +254,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  void _startVideoDownload(String videoId, String videoTitle, [String? specificUrl]) {
+  void _startVideoDownload(String videoId, String videoTitle, [String? downloadUrl]) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
     
     DownloadManager().startDownload(
@@ -274,14 +262,19 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       videoTitle: videoTitle,
       courseName: "My Courses",
       subjectName: "Subject Content",
-      chapterName: widget.chapter['title'],
-      // downloadUrl: specificUrl, // قم بتفعيل هذا إذا كان DownloadManager يدعمه
+      chapterName: widget.chapter['title'] ?? "Chapter",
+      downloadUrl: downloadUrl, // تمرير الرابط المباشر
       onProgress: (p) {},
-      onComplete: () { if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Completed!"), backgroundColor: AppColors.success)); },
-      onError: (e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error)); },
+      onComplete: () {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Completed!"), backgroundColor: AppColors.success));
+      },
+      onError: (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error));
+      },
     );
   }
 
+  // تحميل ملفات PDF
   void _startPdfDownload(String pdfId, String pdfTitle) {
      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
      DownloadManager().startDownload(
@@ -289,12 +282,20 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       videoTitle: pdfTitle, 
       courseName: "PDFs", 
       subjectName: "Subject Content",
-      chapterName: widget.chapter['title'],
+      chapterName: widget.chapter['title'] ?? "Chapter",
       onProgress: (p) {},
-      onComplete: () { if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success)); },
-      onError: (e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error)); },
+      onComplete: () {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success));
+      },
+      onError: (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error));
+      },
     );
   }
+
+  // ===========================================================================
+  // UI Building Methods
+  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {
@@ -335,22 +336,42 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                             children: [
                               Text(
                                 widget.chapter['title'].toString().toUpperCase(),
-                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary, overflow: TextOverflow.ellipsis, letterSpacing: -0.5),
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textPrimary,
+                                  overflow: TextOverflow.ellipsis,
+                                  letterSpacing: -0.5,
+                                ),
                                 maxLines: 1,
                               ),
                               const SizedBox(height: 4),
-                              const Text("MATERIALS EXPLORER", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 2.0)),
+                              const Text(
+                                "MATERIALS EXPLORER",
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.accentYellow,
+                                  letterSpacing: 2.0,
+                                ),
+                              ),
                             ],
                           ),
                         ),
                       ],
                     ),
                   ),
+                  
+                  // Tabs
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
                     child: Container(
                       padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(color: AppColors.backgroundSecondary, borderRadius: BorderRadius.circular(50), border: Border.all(color: Colors.white.withOpacity(0.05))),
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundSecondary,
+                        borderRadius: BorderRadius.circular(50),
+                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                      ),
                       child: Row(
                         children: [
                           _buildTab("Videos", 'videos'),
@@ -363,8 +384,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
             ),
 
+            // Content List
             Expanded(
-              child: activeTab == 'videos' ? _buildVideosList(videos) : _buildPdfsList(pdfs),
+              child: activeTab == 'videos'
+                  ? _buildVideosList(videos)
+                  : _buildPdfsList(pdfs),
             ),
           ],
         ),
@@ -388,13 +412,19 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           child: Text(
             title.toUpperCase(),
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isActive ? AppColors.accentYellow : AppColors.textSecondary, letterSpacing: 1.5),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: isActive ? AppColors.accentYellow : AppColors.textSecondary,
+              letterSpacing: 1.5,
+            ),
           ),
         ),
       ),
     );
   }
 
+  // --- قائمة الفيديوهات ---
   Widget _buildVideosList(List<Map<String, dynamic>> videos) {
     if (videos.isEmpty) return _buildEmptyState(LucideIcons.monitorPlay, "No video lessons");
     
@@ -403,10 +433,16 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       itemCount: videos.length,
       itemBuilder: (context, index) {
         final video = videos[index];
+        final String videoId = video['id'].toString();
+        
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(color: AppColors.backgroundSecondary, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.05)), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)]),
-          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSecondary,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
+          ),
           child: Column(
             children: [
               Padding(
@@ -415,7 +451,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                   children: [
                     Container(
                       width: 40, height: 40,
-                      decoration: BoxDecoration(color: AppColors.backgroundPrimary, borderRadius: BorderRadius.circular(12), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)]),
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundPrimary,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
+                      ),
                       child: const Icon(LucideIcons.play, color: AppColors.accentOrange, size: 18),
                     ),
                     const SizedBox(width: 16),
@@ -423,9 +463,16 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(video['title'].toString().toUpperCase(), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary, letterSpacing: -0.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(
+                            video['title'].toString().toUpperCase(),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                          ),
                           const SizedBox(height: 4),
-                          Text("SESSION", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.7), letterSpacing: 1.5)),
+                          Text(
+                            "SESSION",
+                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.7)),
+                          ),
                         ],
                       ),
                     ),
@@ -439,15 +486,23 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: _buildActionButton(
                       "Watch Now", 
                       AppColors.accentYellow, 
-                      () => _showPlayerSelectionDialog(video), 
+                      () => _showPlayerSelectionDialog(video), // ✅ فتح قائمة المشغلات
                     ),
                   ),
                   Container(width: 1, height: 48, color: Colors.white10),
+                  
+                  // زر التحميل مع تحديث الحالة
                   Expanded(
-                    child: _buildActionButton(
-                      "Download", 
-                      AppColors.textSecondary, 
-                      () => _prepareVideoDownload(video['id'].toString(), video['title']), 
+                    child: ValueListenableBuilder(
+                      valueListenable: Hive.box('downloads_box').listenable(),
+                      builder: (context, Box box, widget) {
+                        bool isDownloaded = DownloadManager().isFileDownloaded(videoId);
+                        bool isDownloading = DownloadManager().isFileDownloading(videoId);
+
+                        if (isDownloaded) return _buildStatusButton("SAVED", AppColors.success, LucideIcons.checkCircle);
+                        else if (isDownloading) return _buildStatusButton("LOADING...", AppColors.accentYellow, LucideIcons.loader);
+                        else return _buildActionButton("Download", AppColors.textSecondary, () => _prepareVideoDownload(videoId, video['title']));
+                      },
                     ),
                   ),
                 ],
@@ -459,6 +514,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
+  // --- قائمة ملفات PDF ---
   Widget _buildPdfsList(List<Map<String, dynamic>> pdfs) {
     if (pdfs.isEmpty) return _buildEmptyState(LucideIcons.fileText, "No PDF files");
 
@@ -471,8 +527,12 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(color: AppColors.backgroundSecondary, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.05)), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)]),
-          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSecondary,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
+          ),
           child: Column(
             children: [
               Padding(
@@ -481,7 +541,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                   children: [
                     Container(
                       width: 40, height: 40,
-                      decoration: BoxDecoration(color: AppColors.backgroundPrimary, borderRadius: BorderRadius.circular(12), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)]),
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundPrimary,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
+                      ),
                       child: const Icon(LucideIcons.fileText, color: AppColors.accentYellow, size: 18),
                     ),
                     const SizedBox(width: 16),
@@ -529,6 +593,39 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
+  // --- Widgets مساعدة ---
+
+  Widget _buildOptionTile({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundPrimary,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.accentYellow, size: 32),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10)),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionButton(String label, Color color, VoidCallback onTap) {
     return Material(
       color: Colors.transparent,
@@ -569,5 +666,9 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         ],
       ),
     );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: AppColors.error));
   }
 }
