@@ -13,7 +13,7 @@ class MyCoursesScreen extends StatefulWidget {
 }
 
 class _MyCoursesScreenState extends State<MyCoursesScreen> {
-  String _view = 'library'; 
+  String _view = 'library'; // library | market
   String _searchTerm = '';
 
   @override
@@ -24,7 +24,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     return _buildLibraryView();
   }
 
-  // --- 1. واجهة المكتبة ---
+  // --- 1. واجهة المكتبة (تعتمد على myLibrary الجاهزة من السيرفر) ---
   Widget _buildLibraryView() {
     final libraryItems = AppState().myLibrary;
 
@@ -112,14 +112,13 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       itemBuilder: (context, index) {
                         final item = libraryItems[index];
                         
-                        final String title = item['title'] ?? 'Unknown Course';
+                        final String title = item['title'] ?? 'Unknown';
                         final String instructor = item['instructor'] ?? 'Instructor';
                         final String code = item['code'] ?? '';
                         final String id = item['id'].toString();
-                        
                         final bool isPartial = item['type'] == 'subject_group';
-                        
-                        // ✅ استخراج قائمة المواد إذا كانت متوفرة
+
+                        // تجهيز قائمة المواد لتمريرها للشاشة التالية لتسريع الفتح
                         List<dynamic>? subjectsToPass;
                         if (item['owned_subjects'] is List) {
                           subjectsToPass = item['owned_subjects'];
@@ -134,7 +133,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   courseId: id,
                                   courseTitle: title,
                                   courseCode: code,
-                                  preLoadedSubjects: subjectsToPass, // ✅ تمرير البيانات
+                                  preLoadedSubjects: subjectsToPass, // ✅ تمرير المواد الجاهزة
                                 ),
                               ),
                             );
@@ -147,8 +146,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               borderRadius: BorderRadius.circular(24),
                               border: Border.all(
                                 color: isPartial 
-                                    ? AppColors.accentOrange.withOpacity(0.3) 
-                                    : Colors.white.withOpacity(0.05)
+                                  ? AppColors.accentOrange.withOpacity(0.3) 
+                                  : Colors.white.withOpacity(0.05)
                               ),
                               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
                             ),
@@ -228,7 +227,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 2. واجهة المتجر ---
+  // --- 2. واجهة المتجر (تعرض كل الكورسات) ---
   Widget _buildMarketView() {
     final availableCourses = AppState().allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
@@ -370,7 +369,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                // ✅ التصحيح: عرض السعر الحقيقي بدلاً من $COURSE
                                 "${course.fullPrice.toInt()} EGP", 
                                 style: const TextStyle(
                                   color: AppColors.accentYellow,
