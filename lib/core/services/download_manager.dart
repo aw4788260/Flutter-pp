@@ -125,9 +125,16 @@ class DownloadManager {
         },
       );
 
-      // 6. تشفير الملف
+      // 6. التحقق من سلامة الملف وتشفيره (الجزئية المعدلة)
       final tempFile = File(tempPath);
       if (await tempFile.exists()) {
+        // ✅ إضافة شرط التحقق من الحجم (لتجنب ملفات الخطأ الصغيرة)
+        final fileSize = await tempFile.length();
+        if (fileSize < 1024 * 500) { // أقل من 500 كيلوبايت يعتبر تالفاً
+          await tempFile.delete();
+          throw Exception("Download failed: File corrupted or too small ($fileSize bytes)");
+        }
+
         final bytes = await tempFile.readAsBytes();
         
         final encrypted = EncryptionHelper.encrypter.encryptBytes(
