@@ -30,45 +30,38 @@ jobs:
       - name: Generate App Icons
         run: flutter pub run flutter_launcher_icons
         
-      # ✅ هذه هي الخطوة الجديدة المعدلة: تقوم بفك التشفير ثم اختبار الملف وكلمة السر فوراً
       - name: Create and Verify Keystore
         env:
           DATA: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           KEYSTORE_DATA: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          # نحتاج تمرير كلمة السر والاسم المستعار هنا لأجل أمر keytool
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          # 1. فك تشفير الملفات (مع حذف المسافات الزائدة لضمان سلامة الكود)
           echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
           echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
 
-          # 2. طباعة حجم الملف للتأكد من أنه ليس فارغاً
           echo "=== Checking keystore file size ==="
           ls -lh android/app/upload-keystore.jks
 
-          # 3. محاولة فتح الملف باستخدام keytool للتأكد من صحة كلمة المرور وسلامة الملف
-          # إذا فشل هذا الأمر، سيتوقف السكربت هنا وسنعرف أن المشكلة في كلمة السر أو التشفير
           echo "=== Verifying Keystore Integrity & Password ==="
           keytool -list -v \
             -keystore android/app/upload-keystore.jks \
             -storepass "$STORE_PASSWORD" \
             -alias "$KEY_ALIAS"
 
-      - name: Build APK
+      - name: Build APK (Split per ABI)
         env:
-          # تمرير الأسرار لعملية البناء الفعلية
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          # ✅ تم إضافة السر الجديد هنا
           APP_SECRET: ${{ secrets.APP_SECRET }}
         run: |
-          # ✅ تمرير السر عبر dart-define
-          flutter build apk --release --dart-define=APP_SECRET="$APP_SECRET"
+          # ✅ إضافة --split-per-abi لإنتاج 3 نسخ منفصلة وتقليل الحجم
+          flutter build apk --release --split-per-abi --dart-define=APP_SECRET="$APP_SECRET"
 
-      - name: Upload APK
+      - name: Upload Split APKs
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: release-apks
+          # ✅ تعديل المسار لرفع جميع ملفات APK الناتجة عن التقسيم
+          path: build/app/outputs/flutter-apk/app-*-release.apk
