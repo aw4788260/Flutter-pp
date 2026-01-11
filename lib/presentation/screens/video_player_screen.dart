@@ -6,9 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:screen_protector/screen_protector.dart'; // ✅ للحماية
+import 'package:screen_protector/screen_protector.dart'; 
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ تأكد من وجود الاستيراد
 import '../../core/constants/app_colors.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -42,7 +43,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
   // مراقبة تسجيل الشاشة
   Timer? _screenRecordingTimer;
 
-  // ✅ هيدر المتصفح (نفس المستخدم في كود الجافا لحل مشكلة جوجل)
+  // ✅ هيدر المتصفح
   final Map<String, String> _headers = {
     'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile; rv:100.0) Gecko/100.0 Firefox/100.0',
     'Accept': '*/*',
@@ -51,50 +52,40 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
   @override
   void initState() {
     super.initState();
+    FirebaseCrashlytics.instance.log("🎬 VideoPlayerScreen: initState started"); // 📝 LOG
     WidgetsBinding.instance.addObserver(this);
 
-    // 1. إعدادات الشاشة والحماية
     _setupScreenProtection();
-    
-    // 2. جلب بيانات المستخدم
     _loadUserData();
-
-    // 3. بدء تحريك العلامة المائية
     _startWatermarkAnimation();
-
-    // 4. تهيئة المشغل
     _parseQualities();
   }
 
-  /// 🛡️ إعداد الحماية (Android & iOS)
+  /// 🛡️ إعداد الحماية
   Future<void> _setupScreenProtection() async {
-    // إجبار الوضع الأفقي
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    
-    // إبقاء الشاشة مضيئة
-    await WakelockPlus.enable();
+    try {
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      await WakelockPlus.enable();
+      await ScreenProtector.protectDataLeakageOn(); 
+      await ScreenProtector.preventScreenshotOn();
 
-    // تفعيل الحماية (شاشة سوداء عند محاولة التصوير/التسجيل)
-    // هذا يعوض FLAG_SECURE في Android و isCaptured في iOS
-    await ScreenProtector.protectDataLeakageOn(); 
-    await ScreenProtector.preventScreenshotOn();
-
-    // مراقبة دورية للتسجيل (كطبقة أمان إضافية)
-    _screenRecordingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      final isRecording = await ScreenProtector.isRecording();
-      if (isRecording) {
-        _handleScreenRecordingDetected();
-      }
-    });
+      _screenRecordingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+        final isRecording = await ScreenProtector.isRecording();
+        if (isRecording) {
+          _handleScreenRecordingDetected();
+        }
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Screen Protection Init Failed');
+    }
   }
 
   void _handleScreenRecordingDetected() {
-    // إيقاف الفيديو فوراً
+    FirebaseCrashlytics.instance.log("⚠️ Screen Recording Detected!");
     _videoPlayerController.pause();
-    
     if (mounted) {
       showDialog(
         context: context,
@@ -105,8 +96,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context); // إغلاق الحوار
-                Navigator.pop(context); // الخروج من الفيديو
+                Navigator.pop(context);
+                Navigator.pop(context);
               },
               child: const Text("خروج"),
             )
@@ -124,7 +115,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
           _watermarkText = box.get('phone') ?? box.get('username') ?? 'User';
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      FirebaseCrashlytics.instance.log("⚠️ Failed to load user data for watermark: $e");
+    }
   }
 
   void _startWatermarkAnimation() {
@@ -132,7 +125,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
       if (mounted) {
         setState(() {
           final random = Random();
-          // حركة عشوائية تغطي الشاشة (نفس منطق الجافا تقريباً)
           double x = (random.nextDouble() * 1.6) - 0.8;
           double y = (random.nextDouble() * 1.6) - 0.8;
           _watermarkAlignment = Alignment(x, y);
@@ -142,12 +134,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
   }
 
   void _parseQualities() {
+    FirebaseCrashlytics.instance.log("🎬 Parsing qualities: ${widget.streams.keys}"); // 📝 LOG
+    
     if (widget.streams.isEmpty) {
+      FirebaseCrashlytics.instance.recordError(Exception("No streams provided"), null, reason: 'Empty Streams Map');
       setState(() => _isError = true);
       return;
     }
 
-    // ترتيب الجودات
     _sortedQualities = widget.streams.keys.toList();
     _sortedQualities.sort((a, b) {
       int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
@@ -155,34 +149,61 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
       return valA.compareTo(valB);
     });
 
-    // اختيار جودة تلقائية (720 أو الأقل)
     _currentQuality = _sortedQualities.contains("720p") 
         ? "720p" 
         : (_sortedQualities.isNotEmpty ? _sortedQualities.last : "");
 
     if (_currentQuality.isNotEmpty) {
+      FirebaseCrashlytics.instance.log("🎬 Selected initial quality: $_currentQuality");
       _initializePlayer(widget.streams[_currentQuality]!);
     }
   }
 
+  // ✅ دالة جديدة لمراقبة أخطاء الكنترولر الداخلية
+  void _videoListener() {
+    if (_videoPlayerController.value.hasError) {
+      final error = _videoPlayerController.value.errorDescription;
+      FirebaseCrashlytics.instance.log("🚨 INTERNAL PLAYER ERROR: $error");
+      FirebaseCrashlytics.instance.recordError(Exception(error), null, reason: 'VideoController Error Listener');
+      
+      // يمكنك هنا إظهار رسالة خطأ للمستخدم إذا لزم الأمر
+      if (!_isError && mounted) {
+        setState(() => _isError = true);
+      }
+    }
+  }
+
   Future<void> _initializePlayer(String url) async {
-    // حفظ الموقع الحالي عند تغيير الجودة
+    FirebaseCrashlytics.instance.log("🎬 _initializePlayer started. URL: $url"); // 📝 LOG
+
+    // حفظ الموقع الحالي
     Duration currentPos = Duration.zero;
-    if (_chewieController != null && _videoPlayerController.value.isInitialized) {
-      currentPos = _videoPlayerController.value.position;
-      _chewieController!.dispose();
-      await _videoPlayerController.dispose();
+    if (_chewieController != null) { // && _videoPlayerController.value.isInitialized (تم إزالته لتجنب أخطاء الفحص على كنترولر تالف)
+      try {
+        currentPos = _videoPlayerController.value.position;
+        _videoPlayerController.removeListener(_videoListener); // إزالة المستمع القديم
+        _chewieController!.dispose();
+        await _videoPlayerController.dispose();
+        FirebaseCrashlytics.instance.log("🎬 Old controller disposed.");
+      } catch (e) {
+        FirebaseCrashlytics.instance.log("⚠️ Error disposing old controller: $e");
+      }
     }
 
     try {
-      // ✅ السر هنا: تمرير الهيدرز ليقبل يوتيوب الاتصال
+      FirebaseCrashlytics.instance.log("🎬 Creating VideoPlayerController.networkUrl...");
+      
       _videoPlayerController = VideoPlayerController.networkUrl(
         Uri.parse(url),
         httpHeaders: _headers, 
-        // formatHint: VideoFormat.hls, // يمكن تفعيلها إذا لزم الأمر
       );
 
+      // ✅ إضافة المستمع فوراً لالتقاط أخطاء التهيئة
+      _videoPlayerController.addListener(_videoListener);
+
+      FirebaseCrashlytics.instance.log("🎬 Calling initialize()...");
       await _videoPlayerController.initialize();
+      FirebaseCrashlytics.instance.log("✅ Initialize successful.");
       
       if (currentPos > Duration.zero) {
         await _videoPlayerController.seekTo(currentPos);
@@ -193,11 +214,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
           videoPlayerController: _videoPlayerController,
           autoPlay: true,
           looping: false,
-          allowFullScreen: true, // مسموح لأننا نتحكم في التوجيه
+          allowFullScreen: true,
           showControls: true,
           allowedScreenSleep: false,
           
-          // تخصيص الألوان لتشبه التطبيق
           materialProgressColors: ChewieProgressColors(
             playedColor: AppColors.accentYellow,
             handleColor: AppColors.accentYellow,
@@ -205,10 +225,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
             bufferedColor: Colors.white24,
           ),
           
-          // خيارات السرعة (نفس الجافا)
           playbackSpeeds: [0.5, 1.0, 1.25, 1.5, 2.0],
           
-          // قائمة الإعدادات المخصصة (للجودة)
           additionalOptions: (context) {
             return <OptionItem>[
               OptionItem(
@@ -223,6 +241,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
           },
           
           errorBuilder: (context, errorMessage) {
+            FirebaseCrashlytics.instance.log("🚨 Chewie Error Builder: $errorMessage");
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -239,9 +258,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
           },
         );
       });
-    } catch (e) {
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Video Player Init Failed: $url');
       debugPrint("❌ Init Error: $e");
-      setState(() => _isError = true);
+      if (mounted) setState(() => _isError = true);
     }
   }
 
@@ -266,9 +286,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
                 onTap: () {
                   Navigator.pop(ctx);
                   if (q != _currentQuality) {
+                    FirebaseCrashlytics.instance.log("🎬 Switching quality to: $q");
                     setState(() {
                       _currentQuality = q;
-                      _chewieController = null; // إظهار اللودينج
+                      _chewieController = null;
                     });
                     _initializePlayer(widget.streams[q]!);
                   }
@@ -283,15 +304,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
 
   @override
   void dispose() {
+    FirebaseCrashlytics.instance.log("🎬 VideoPlayerScreen: dispose");
     WidgetsBinding.instance.removeObserver(this);
     
-    // تنظيف الموارد
     _watermarkTimer?.cancel();
     _screenRecordingTimer?.cancel();
-    _videoPlayerController.dispose();
-    _chewieController?.dispose();
     
-    // إزالة الحماية وإعادة التوجيه للوضع العمودي
+    try {
+      _videoPlayerController.removeListener(_videoListener);
+      _videoPlayerController.dispose();
+      _chewieController?.dispose();
+    } catch (e) {
+      FirebaseCrashlytics.instance.log("⚠️ Error disposing player controllers: $e");
+    }
+    
     ScreenProtector.protectDataLeakageOff();
     ScreenProtector.preventScreenshotOff();
     WakelockPlus.disable();
@@ -318,22 +344,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
           // 2. العلامة المائية المتحركة
           if (!_isError)
             AnimatedAlign(
-              duration: const Duration(seconds: 2), // حركة ناعمة
+              duration: const Duration(seconds: 2), 
               curve: Curves.easeInOut,
               alignment: _watermarkAlignment,
               child: IgnorePointer(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3), // خلفية نصف شفافة
+                    color: Colors.black.withOpacity(0.3), 
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     _watermarkText,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.3), // نص شفاف
+                      color: Colors.white.withOpacity(0.3), 
                       fontWeight: FontWeight.bold,
-                      fontSize: 12, // حجم مناسب
+                      fontSize: 12, 
                       decoration: TextDecoration.none,
                     ),
                   ),
@@ -341,7 +367,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
               ),
             ),
 
-          // 3. زر الرجوع والعنوان (مخصص)
+          // 3. زر الرجوع والعنوان
           Positioned(
             top: 20,
             left: 20,
