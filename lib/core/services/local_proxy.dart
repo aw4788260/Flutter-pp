@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:math';
+import 'dart:typed_data'; // ✅ تمت إضافة هذا السطر لحل مشكلة Uint8List
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
@@ -125,8 +125,10 @@ class LocalProxyService {
 
       // ✅ 3. إعداد مفك التشفير (بدون Padding)
       // نستخدم padding: null لأننا سنفك أجزاء عشوائية، والحشو موجود فقط في آخر الملف
-      // ملاحظة: نفترض أن EncryptionHelper.key متاح. إذا لم يكن، يجب إضافته في ملف EncryptionHelper
-      final key = encrypt.Key(EncryptionHelper.encrypter.algo.key!.bytes); // محاولة استخراج المفتاح
+      
+      // ✅ تصحيح: استخدام EncryptionHelper.key مباشرة بدلاً من محاولة استخراجه من الـ algo
+      final key = EncryptionHelper.key; 
+      
       final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.cbc, padding: null));
 
       int currentPos = alignedStart;
