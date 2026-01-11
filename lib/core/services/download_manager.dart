@@ -1,10 +1,11 @@
 import 'dart:io';
-import 'dart:async'; // للإدارة المتزامنة
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-// ❌ تم حذف استيراد FFmpeg نهائياً
+
+// ❌ تم حذف استيراد مكتبة FFmpeg نهائياً لحل مشكلة الانهيار
 import '../utils/encryption_helper.dart';
 
 class DownloadManager {
@@ -46,6 +47,7 @@ class DownloadManager {
         throw Exception("User authentication missing");
       }
 
+      // الحصول على السر من متغيرات البيئة
       const String appSecret = String.fromEnvironment(
         'APP_SECRET',
         defaultValue: 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only',
@@ -53,7 +55,7 @@ class DownloadManager {
 
       String? finalUrl = downloadUrl;
 
-      // 1. جلب الرابط تلقائياً
+      // 1. جلب الرابط تلقائياً إذا لم يتم توفيره
       if (finalUrl == null) {
         final endpoint = isPdf ? '/api/secure/get-pdf' : '/api/secure/get-video-id';
         final queryParam = isPdf ? {'pdfId': lessonId} : {'lessonId': lessonId};
@@ -110,20 +112,21 @@ class DownloadManager {
       final dir = Directory('${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter');
       if (!await dir.exists()) await dir.create(recursive: true);
 
-      final tempPath = '${dir.path}/$lessonId.temp'; // الملف المؤقت النهائي
-      final savePath = '${dir.path}/$lessonId.enc';  // الملف المشفر النهائي
+      final tempPath = '${dir.path}/$lessonId.temp'; // الملف الخام (غير المشفر)
+      final savePath = '${dir.path}/$lessonId.enc';  // الملف النهائي (المشفر)
 
       File tempFile = File(tempPath);
       if (await tempFile.exists()) await tempFile.delete();
 
-      // 3. منطق التحميل الجديد (بدون FFmpeg)
+      // 3. التحميل (HLS باستخدام الدمج اليدوي، أو Dio للملفات العادية)
       bool isHls = !isPdf && (finalUrl.contains('.m3u8') || finalUrl.contains('.m3u'));
 
       if (isHls) {
-        // ✅ استخدام دالة الدمج اليدوي بدلاً من FFmpeg
+        // ✅ استخدام دالة الدمج اليدوي (بديل FFmpeg)
+        // هذه الدالة ستقوم بتحميل الفيديو وتجميعه ووضعه في tempPath
         await _downloadAndMergeHls(finalUrl!, tempPath, onProgress);
       } else {
-        // التحميل المباشر (MP4/PDF)
+        // التحميل المباشر (MP4 أو PDF)
         Options downloadOptions = Options();
         if (finalUrl.contains(_baseUrl) || isPdf) {
            downloadOptions = Options(headers: {
@@ -143,23 +146,29 @@ class DownloadManager {
         );
       }
 
-      // 4. التحقق من سلامة الملف وتشفيره
+      // 4. ✅✅✅ مرحلة التشفير (لم يتم حذفها) ✅✅✅
+      // الكود هنا يأخذ الملف الناتج من الخطوة السابقة (tempPath) ويشفره
       if (await tempFile.exists()) {
         final fileSize = await tempFile.length();
-        int minSize = isPdf ? 1024 * 10 : 1024 * 100; // تقليل الحد الأدنى قليلاً للتأكيد
+        int minSize = isPdf ? 1024 * 10 : 1024 * 100; // 10KB للـ PDF و 100KB للفيديو
         
         if (fileSize < minSize) { 
           await tempFile.delete();
           throw Exception("Download failed: File is too small or corrupted ($fileSize bytes)");
         }
 
-        // قراءة الملف وتشفيره
+        // قراءة البايتات
         final bytes = await tempFile.readAsBytes();
+        
+        // تشفير البايتات باستخدام مفتاحك الخاص (EncryptionHelper)
         final encrypted = EncryptionHelper.encrypter.encryptBytes(bytes, iv: EncryptionHelper.iv);
         
+        // حفظ الملف المشفر (.enc)
         final finalFile = File(savePath);
         await finalFile.writeAsBytes(encrypted.bytes);
-        await tempFile.delete(); // تنظيف الملف المؤقت
+        
+        // حذف الملف المؤقت غير المشفر للأمان
+        await tempFile.delete(); 
       } else {
         throw Exception("Temp file not found after download process");
       }
@@ -191,23 +200,25 @@ class DownloadManager {
     }
   }
 
-  // 🔥🔥🔥 الدالة السحرية الجديدة لدمج الفيديو يدوياً 🔥🔥🔥
+  // 🔥 دالة دمج ملفات HLS (.ts) يدوياً بدون FFmpeg 🔥
   Future<void> _downloadAndMergeHls(String m3u8Url, String outputPath, Function(double) onProgress) async {
     try {
-      // 1. تحميل ملف القائمة (Playlist)
+      // 1. تحميل ملف القائمة (Playlist) لمعرفة أجزاء الفيديو
       final response = await _dio.get(m3u8Url);
       final content = response.data.toString();
       final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
 
-      // 2. استخراج روابط ملفات الـ .ts
+      // 2. استخراج روابط ملفات الـ .ts من داخل الملف النصي
       List<String> tsUrls = [];
       final lines = content.split('\n');
       for (var line in lines) {
         line = line.trim();
+        // تجاهل التعليقات والأسطر الفارغة
         if (line.isNotEmpty && !line.startsWith('#')) {
           if (line.startsWith('http')) {
             tsUrls.add(line);
           } else {
+            // تجميع الرابط النسبي مع الرابط الأساسي
             tsUrls.add(baseUrl + line);
           }
         }
@@ -215,32 +226,32 @@ class DownloadManager {
 
       if (tsUrls.isEmpty) throw Exception("No TS segments found in M3U8");
 
-      // 3. تحميل الأجزاء ودمجها مباشرة
+      // 3. إنشاء الملف المؤقت وبدء الكتابة فيه
       final outputFile = File(outputPath);
-      // فتح الملف في وضع "الإضافة" (Append)
+      // استخدام Sink للكتابة المباشرة (Append) لتوفير الرام
       final sink = outputFile.openWrite(mode: FileMode.writeOnlyAppend);
 
       int totalSegments = tsUrls.length;
       int downloadedSegments = 0;
 
       for (String url in tsUrls) {
-        // تحميل الجزء كـ Bytes
+        // تحميل كل جزء (chunk) كبيانات خام (Bytes)
         final rs = await _dio.get<List<int>>(
           url,
           options: Options(responseType: ResponseType.bytes),
         );
         
         if (rs.data != null) {
-          // كتابة البايتات مباشرة في نهاية الملف المجمع
+          // إضافة بيانات الجزء مباشرة في نهاية الملف المجمع
           sink.add(rs.data!);
         }
 
         downloadedSegments++;
-        // تحديث النسبة المئوية
+        // تحديث شريط التقدم
         onProgress(downloadedSegments / totalSegments);
       }
 
-      // إغلاق الملف وحفظ التغييرات
+      // إغلاق الملف وحفظه بعد انتهاء دمج كل الأجزاء
       await sink.flush();
       await sink.close();
 
