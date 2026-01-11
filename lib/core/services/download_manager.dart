@@ -1,12 +1,10 @@
 import 'dart:io';
+import 'dart:async'; // للإدارة المتزامنة
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-
-// ✅ التعديل: الاستيراد من المكتبة الجديدة والمحدثة
-import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
+// ❌ تم حذف استيراد FFmpeg نهائياً
 import '../utils/encryption_helper.dart';
 
 class DownloadManager {
@@ -24,18 +22,18 @@ class DownloadManager {
     return Hive.box('downloads_box').containsKey(id);
   }
 
-  /// دالة بدء عملية التحميل (تدعم الفيديو HLS/MP4 و ملفات PDF)
+  /// دالة بدء عملية التحميل
   Future<void> startDownload({
     required String lessonId,
     required String videoTitle,
     required String courseName,
     required String subjectName,
     required String chapterName,
-    String? downloadUrl, 
+    String? downloadUrl,
     required Function(double) onProgress,
     required Function() onComplete,
     required Function(String) onError,
-    bool isPdf = false, // تحديد نوع الملف
+    bool isPdf = false,
   }) async {
     _activeDownloads.add(lessonId);
 
@@ -48,15 +46,14 @@ class DownloadManager {
         throw Exception("User authentication missing");
       }
 
-      // الحصول على السر من متغيرات البيئة مع قيمة افتراضية للأمان
       const String appSecret = String.fromEnvironment(
-        'APP_SECRET', 
-        defaultValue: 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only' 
+        'APP_SECRET',
+        defaultValue: 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only',
       );
 
       String? finalUrl = downloadUrl;
 
-      // 1. جلب الرابط تلقائياً إذا لم يتم توفيره بناءً على نوع المحتوى
+      // 1. جلب الرابط تلقائياً
       if (finalUrl == null) {
         final endpoint = isPdf ? '/api/secure/get-pdf' : '/api/secure/get-video-id';
         final queryParam = isPdf ? {'pdfId': lessonId} : {'lessonId': lessonId};
@@ -104,7 +101,7 @@ class DownloadManager {
         throw Exception("No valid download link found");
       }
 
-      // 2. تجهيز المسارات (دعم العربية وتنظيف الرموز)
+      // 2. تجهيز المسارات
       final appDir = await getApplicationDocumentsDirectory();
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -113,36 +110,20 @@ class DownloadManager {
       final dir = Directory('${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter');
       if (!await dir.exists()) await dir.create(recursive: true);
 
-      final tempPath = '${dir.path}/$lessonId.temp';
-      final savePath = '${dir.path}/$lessonId.enc';
+      final tempPath = '${dir.path}/$lessonId.temp'; // الملف المؤقت النهائي
+      final savePath = '${dir.path}/$lessonId.enc';  // الملف المشفر النهائي
 
       File tempFile = File(tempPath);
       if (await tempFile.exists()) await tempFile.delete();
 
-      // 3. التحميل (HLS للفيديو فقط، Dio للـ MP4 و PDF)
+      // 3. منطق التحميل الجديد (بدون FFmpeg)
       bool isHls = !isPdf && (finalUrl.contains('.m3u8') || finalUrl.contains('.m3u'));
 
       if (isHls) {
-        // --- تحميل وتحويل HLS باستخدام FFmpeg ---
-        String userAgent = 'Mozilla/5.0 (Linux; Android 10; Mobile; rv:100.0) Gecko/100.0 Firefox/100.0';
-        // إجبار الصيغة على mp4 لضمان عمل التشفير لاحقاً
-        final command = '-y -user_agent "$userAgent" -i "$finalUrl" -c copy -bsf:a aac_adtstoasc -f mp4 "$tempPath"';
-        
-        onProgress(0.1); 
-        
-        final session = await FFmpegKit.execute(command);
-        final returnCode = await session.getReturnCode();
-
-        if (!ReturnCode.isSuccess(returnCode)) {
-           final failStackTrace = await session.getFailStackTrace();
-           final logs = await session.getLogs();
-           String logMsg = logs.map((l) => l.getMessage()).join("\n");
-           FirebaseCrashlytics.instance.log("FFmpeg Error: $logMsg");
-           throw Exception("FFmpeg failed to process video: $failStackTrace");
-        }
-        onProgress(0.9);
+        // ✅ استخدام دالة الدمج اليدوي بدلاً من FFmpeg
+        await _downloadAndMergeHls(finalUrl!, tempPath, onProgress);
       } else {
-        // --- تحميل مباشر باستخدام Dio (MP4 أو PDF) ---
+        // التحميل المباشر (MP4/PDF)
         Options downloadOptions = Options();
         if (finalUrl.contains(_baseUrl) || isPdf) {
            downloadOptions = Options(headers: {
@@ -165,26 +146,25 @@ class DownloadManager {
       // 4. التحقق من سلامة الملف وتشفيره
       if (await tempFile.exists()) {
         final fileSize = await tempFile.length();
-        
-        // حد أدنى مختلف: 10KB للـ PDF و 500KB للفيديو
-        int minSize = isPdf ? 1024 * 10 : 1024 * 500; 
+        int minSize = isPdf ? 1024 * 10 : 1024 * 100; // تقليل الحد الأدنى قليلاً للتأكيد
         
         if (fileSize < minSize) { 
           await tempFile.delete();
           throw Exception("Download failed: File is too small or corrupted ($fileSize bytes)");
         }
 
+        // قراءة الملف وتشفيره
         final bytes = await tempFile.readAsBytes();
         final encrypted = EncryptionHelper.encrypter.encryptBytes(bytes, iv: EncryptionHelper.iv);
         
         final finalFile = File(savePath);
         await finalFile.writeAsBytes(encrypted.bytes);
-        await tempFile.delete(); // حذف الملف المؤقت غير المشفر
+        await tempFile.delete(); // تنظيف الملف المؤقت
       } else {
         throw Exception("Temp file not found after download process");
       }
 
-      // 5. حفظ البيانات في Hive للاستخدام أوفلاين
+      // 5. حفظ البيانات في Hive
       var downloadsBox = await Hive.openBox('downloads_box');
       await downloadsBox.put(lessonId, {
         'id': lessonId,
@@ -203,15 +183,69 @@ class DownloadManager {
     } catch (e, stack) {
       if (e is DioException) {
           FirebaseCrashlytics.instance.log("🌐 Dio URL: ${e.requestOptions.uri}");
-          if(e.response != null) {
-            FirebaseCrashlytics.instance.log("🔢 Status: ${e.response?.statusCode}");
-            FirebaseCrashlytics.instance.log("📄 Body: ${e.response?.data}");
-          }
       }
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed: $lessonId (Is PDF: $isPdf)');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed: $lessonId');
       onError(e.toString());
     } finally {
       _activeDownloads.remove(lessonId);
+    }
+  }
+
+  // 🔥🔥🔥 الدالة السحرية الجديدة لدمج الفيديو يدوياً 🔥🔥🔥
+  Future<void> _downloadAndMergeHls(String m3u8Url, String outputPath, Function(double) onProgress) async {
+    try {
+      // 1. تحميل ملف القائمة (Playlist)
+      final response = await _dio.get(m3u8Url);
+      final content = response.data.toString();
+      final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+
+      // 2. استخراج روابط ملفات الـ .ts
+      List<String> tsUrls = [];
+      final lines = content.split('\n');
+      for (var line in lines) {
+        line = line.trim();
+        if (line.isNotEmpty && !line.startsWith('#')) {
+          if (line.startsWith('http')) {
+            tsUrls.add(line);
+          } else {
+            tsUrls.add(baseUrl + line);
+          }
+        }
+      }
+
+      if (tsUrls.isEmpty) throw Exception("No TS segments found in M3U8");
+
+      // 3. تحميل الأجزاء ودمجها مباشرة
+      final outputFile = File(outputPath);
+      // فتح الملف في وضع "الإضافة" (Append)
+      final sink = outputFile.openWrite(mode: FileMode.writeOnlyAppend);
+
+      int totalSegments = tsUrls.length;
+      int downloadedSegments = 0;
+
+      for (String url in tsUrls) {
+        // تحميل الجزء كـ Bytes
+        final rs = await _dio.get<List<int>>(
+          url,
+          options: Options(responseType: ResponseType.bytes),
+        );
+        
+        if (rs.data != null) {
+          // كتابة البايتات مباشرة في نهاية الملف المجمع
+          sink.add(rs.data!);
+        }
+
+        downloadedSegments++;
+        // تحديث النسبة المئوية
+        onProgress(downloadedSegments / totalSegments);
+      }
+
+      // إغلاق الملف وحفظ التغييرات
+      await sink.flush();
+      await sink.close();
+
+    } catch (e) {
+      throw Exception("Manual HLS Merge Failed: $e");
     }
   }
 }
