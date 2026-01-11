@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -9,7 +8,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:screen_protector/screen_protector.dart'; 
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ تأكد من وجود الاستيراد
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
 import '../../core/constants/app_colors.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -30,29 +29,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
   late VideoPlayerController _videoPlayerController;
   ChewieController? _chewieController;
   
-  // إدارة الجودة
   String _currentQuality = "";
   List<String> _sortedQualities = [];
   bool _isError = false;
+  String _errorMessage = "";
 
   // العلامة المائية
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
 
-  // مراقبة تسجيل الشاشة
   Timer? _screenRecordingTimer;
 
-  // ✅ هيدر المتصفح
-  final Map<String, String> _headers = {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile; rv:100.0) Gecko/100.0 Firefox/100.0',
-    'Accept': '*/*',
-  };
+  // ❌❌❌ تم حذف الهيدرز المزيفة لأنها كانت تسبب المشكلة ❌❌❌
+  // سيرفرات جوجل تفضل التعامل مع ExoPlayer مباشرة بدون User-Agent خاص بمتصفحات الويب
 
   @override
   void initState() {
     super.initState();
-    FirebaseCrashlytics.instance.log("🎬 VideoPlayerScreen: initState started"); // 📝 LOG
+    FirebaseCrashlytics.instance.log("🎬 VideoPlayerScreen: initState started");
     WidgetsBinding.instance.addObserver(this);
 
     _setupScreenProtection();
@@ -61,7 +56,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
     _parseQualities();
   }
 
-  /// 🛡️ إعداد الحماية
   Future<void> _setupScreenProtection() async {
     try {
       await SystemChrome.setPreferredOrientations([
@@ -84,7 +78,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
   }
 
   void _handleScreenRecordingDetected() {
-    FirebaseCrashlytics.instance.log("⚠️ Screen Recording Detected!");
     _videoPlayerController.pause();
     if (mounted) {
       showDialog(
@@ -115,9 +108,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
           _watermarkText = box.get('phone') ?? box.get('username') ?? 'User';
         });
       }
-    } catch (e) {
-      FirebaseCrashlytics.instance.log("⚠️ Failed to load user data for watermark: $e");
-    }
+    } catch (_) {}
   }
 
   void _startWatermarkAnimation() {
@@ -134,76 +125,77 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
   }
 
   void _parseQualities() {
-    FirebaseCrashlytics.instance.log("🎬 Parsing qualities: ${widget.streams.keys}"); // 📝 LOG
-    
     if (widget.streams.isEmpty) {
-      FirebaseCrashlytics.instance.recordError(Exception("No streams provided"), null, reason: 'Empty Streams Map');
-      setState(() => _isError = true);
+      setState(() {
+        _isError = true;
+        _errorMessage = "No video sources available";
+      });
       return;
     }
 
     _sortedQualities = widget.streams.keys.toList();
+    // ترتيب الجودات
     _sortedQualities.sort((a, b) {
       int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       int valB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       return valA.compareTo(valB);
     });
 
-    _currentQuality = _sortedQualities.contains("720p") 
-        ? "720p" 
-        : (_sortedQualities.isNotEmpty ? _sortedQualities.last : "");
+    // اختيار جودة متوسطة افتراضياً
+    _currentQuality = _sortedQualities.contains("480p") 
+        ? "480p" 
+        : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
 
     if (_currentQuality.isNotEmpty) {
-      FirebaseCrashlytics.instance.log("🎬 Selected initial quality: $_currentQuality");
       _initializePlayer(widget.streams[_currentQuality]!);
     }
   }
 
-  // ✅ دالة جديدة لمراقبة أخطاء الكنترولر الداخلية
   void _videoListener() {
     if (_videoPlayerController.value.hasError) {
-      final error = _videoPlayerController.value.errorDescription;
-      FirebaseCrashlytics.instance.log("🚨 INTERNAL PLAYER ERROR: $error");
-      FirebaseCrashlytics.instance.recordError(Exception(error), null, reason: 'VideoController Error Listener');
+      final error = _videoPlayerController.value.errorDescription ?? "Unknown error";
+      FirebaseCrashlytics.instance.log("🚨 PLAYER ERROR: $error");
       
-      // يمكنك هنا إظهار رسالة خطأ للمستخدم إذا لزم الأمر
       if (!_isError && mounted) {
-        setState(() => _isError = true);
+        setState(() {
+          _isError = true;
+          // رسالة خطأ واضحة
+          _errorMessage = "Unable to play video. Link might be expired.";
+        });
       }
     }
   }
 
   Future<void> _initializePlayer(String url) async {
-    FirebaseCrashlytics.instance.log("🎬 _initializePlayer started. URL: $url"); // 📝 LOG
+    FirebaseCrashlytics.instance.log("🎬 Init Player: $url");
 
-    // حفظ الموقع الحالي
+    // تنظيف المشغل القديم
     Duration currentPos = Duration.zero;
-    if (_chewieController != null) { // && _videoPlayerController.value.isInitialized (تم إزالته لتجنب أخطاء الفحص على كنترولر تالف)
+    if (_chewieController != null) {
       try {
         currentPos = _videoPlayerController.value.position;
-        _videoPlayerController.removeListener(_videoListener); // إزالة المستمع القديم
+        _videoPlayerController.removeListener(_videoListener);
         _chewieController!.dispose();
         await _videoPlayerController.dispose();
-        FirebaseCrashlytics.instance.log("🎬 Old controller disposed.");
-      } catch (e) {
-        FirebaseCrashlytics.instance.log("⚠️ Error disposing old controller: $e");
-      }
+      } catch (_) {}
     }
 
     try {
-      FirebaseCrashlytics.instance.log("🎬 Creating VideoPlayerController.networkUrl...");
+      // ✅✅✅ التعديل هنا: إزالة httpHeaders تماماً ✅✅✅
+      // هذا يجعل المشغل يستخدم الهوية الافتراضية للأندرويد (ExoPlayer)
+      // وهي الهوية التي يقبلها يوتيوب بدون مشاكل.
       
       _videoPlayerController = VideoPlayerController.networkUrl(
         Uri.parse(url),
-        httpHeaders: _headers, 
+        // تم حذف httpHeaders: _headers
+        
+        // تلميح التنسيق يساعد المشغل على الفهم أسرع
+        formatHint: VideoFormat.hls, 
       );
 
-      // ✅ إضافة المستمع فوراً لالتقاط أخطاء التهيئة
       _videoPlayerController.addListener(_videoListener);
 
-      FirebaseCrashlytics.instance.log("🎬 Calling initialize()...");
       await _videoPlayerController.initialize();
-      FirebaseCrashlytics.instance.log("✅ Initialize successful.");
       
       if (currentPos > Duration.zero) {
         await _videoPlayerController.seekTo(currentPos);
@@ -241,17 +233,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
           },
           
           errorBuilder: (context, errorMessage) {
-            FirebaseCrashlytics.instance.log("🚨 Chewie Error Builder: $errorMessage");
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error, color: Colors.white, size: 40),
+                  const Icon(Icons.warning_amber_rounded, color: AppColors.accentOrange, size: 40),
                   const SizedBox(height: 10),
-                  Text("Playback Error\n$errorMessage", 
+                  Text(
+                    _errorMessage.isNotEmpty ? _errorMessage : "Stream Error", 
                     textAlign: TextAlign.center, 
                     style: const TextStyle(color: Colors.white)
                   ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                        setState(() => _isError = false);
+                        _initializePlayer(url);
+                    }, 
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
+                    child: const Text("Retry", style: TextStyle(color: Colors.black)),
+                  )
                 ],
               ),
             );
@@ -259,9 +260,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
         );
       });
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Video Player Init Failed: $url');
-      debugPrint("❌ Init Error: $e");
-      if (mounted) setState(() => _isError = true);
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Init Failed: $url');
+      if (mounted) {
+        setState(() {
+          _isError = true;
+          _errorMessage = "Failed to load video.";
+        });
+      }
     }
   }
 
@@ -286,10 +291,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
                 onTap: () {
                   Navigator.pop(ctx);
                   if (q != _currentQuality) {
-                    FirebaseCrashlytics.instance.log("🎬 Switching quality to: $q");
                     setState(() {
                       _currentQuality = q;
                       _chewieController = null;
+                      _isError = false; 
                     });
                     _initializePlayer(widget.streams[q]!);
                   }
@@ -304,9 +309,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
 
   @override
   void dispose() {
-    FirebaseCrashlytics.instance.log("🎬 VideoPlayerScreen: dispose");
     WidgetsBinding.instance.removeObserver(this);
-    
     _watermarkTimer?.cancel();
     _screenRecordingTimer?.cancel();
     
@@ -314,9 +317,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
       _videoPlayerController.removeListener(_videoListener);
       _videoPlayerController.dispose();
       _chewieController?.dispose();
-    } catch (e) {
-      FirebaseCrashlytics.instance.log("⚠️ Error disposing player controllers: $e");
-    }
+    } catch (_) {}
     
     ScreenProtector.protectDataLeakageOff();
     ScreenProtector.preventScreenshotOff();
@@ -335,13 +336,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
           // 1. المشغل
           Center(
             child: _isError
-                ? const Text("Failed to load video. Check connection.", style: TextStyle(color: AppColors.error))
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                      const SizedBox(height: 16),
+                      Text(_errorMessage, style: const TextStyle(color: Colors.white)),
+                    ],
+                  )
                 : (_chewieController != null && _chewieController!.videoPlayerController.value.isInitialized)
                     ? Chewie(controller: _chewieController!)
                     : const CircularProgressIndicator(color: AppColors.accentYellow),
           ),
 
-          // 2. العلامة المائية المتحركة
+          // 2. العلامة المائية
           if (!_isError)
             AnimatedAlign(
               duration: const Duration(seconds: 2), 
@@ -367,7 +375,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
               ),
             ),
 
-          // 3. زر الرجوع والعنوان
+          // 3. زر الرجوع
           Positioned(
             top: 20,
             left: 20,
