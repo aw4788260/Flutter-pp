@@ -32,7 +32,7 @@ dependencies:
   screen_protector: ^1.4.13     # لحماية الشاشة (منع التصوير/لقطات الشاشة)
   media_kit: ^1.1.10
   media_kit_video: ^1.2.4
-  media_kit_libs_video_h265: ^1.0.4
+  media_kit_libs_video: ^1.0.4
   
 
   # Security & Privacy
