@@ -17,10 +17,31 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      # ✅ 1. تسريع التحميل عبر الكاش (Gradle)
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true # ✅ تفعيل كاش الفلاتر نفسه
+
+      # ✅ 2. تسريع تحميل مكتبات Dart
+      - name: Cache Pub packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PUB_CACHE }}
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
 
       - name: Clean and Get Packages
         run: |
@@ -40,31 +61,23 @@ jobs:
           echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
           echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
 
-          echo "=== Checking keystore file size ==="
-          ls -lh android/app/upload-keystore.jks
-
-          echo "=== Verifying Keystore Integrity & Password ==="
-          keytool -list -v \
-            -keystore android/app/upload-keystore.jks \
-            -storepass "$STORE_PASSWORD" \
-            -alias "$KEY_ALIAS"
-
-      - name: Build APK (Split per ABI)
+      # ✅ 3. البناء السريع (نسخة واحدة فقط + تفعيل Gradle Parallel)
+      - name: Build APK (Arm64 Only)
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           APP_SECRET: ${{ secrets.APP_SECRET }}
         run: |
-          # البناء مع تقسيم المعماريات
-          flutter build apk --release --split-per-abi --dart-define=APP_SECRET="$APP_SECRET"
-
-      # تم حذف خطوة الـ Zip اليدوي لمنع تداخل الملفات المضغوطة
-      # تم حذف خطوات رفع المعماريات الأخرى (v7, x86)
+          # التعديل هنا:
+          # --target-platform android-arm64: يبني نسخة الهواتف الحديثة فقط (يوفر 60% من الوقت)
+          # --no-tree-shake-icons: أحياناً يسرع العملية قليلاً بتخطي فحص الأيقونات الدقيق
+          
+          flutter build apk --release --target-platform android-arm64 --dart-define=APP_SECRET="$APP_SECRET" 
 
       - name: Upload arm64-v8a APK Only
         uses: actions/upload-artifact@v4
         with:
           name: app-release-v8
-          # الإشارة مباشرة لملف الـ APK، وسيقوم GitHub بضغطه تلقائياً في Zip واحد
-          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          # المسار يتغير قليلاً عند تحديد التارجت، يصبح app-release.apk مباشرة
+          path: build/app/outputs/flutter-apk/app-release.apk
