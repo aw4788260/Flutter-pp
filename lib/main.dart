@@ -3,31 +3,27 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
-import 'package:hive_flutter/hive_flutter.dart'; // ✅ إضافة استيراد Hive
+// import 'firebase_options.dart'; // ❌ تم إيقافه كما طلبت للاعتماد على google-services.json مباشرة
 import 'core/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
 
 void main() async {
   runZonedGuarded<Future<void>>(() async {
-    // 1. ضمان استقرار إطارات العمل
     WidgetsFlutterBinding.ensureInitialized();
 
-    // 2. تفعيل وضع الحماية (منع لقطات الشاشة وتسجيل الفيديو)
+    // 1. تفعيل وضع الحماية (منع لقطات الشاشة وتسجيل الفيديو)
     await _enableSecureMode();
 
-    // 3. ✅ تهيئة Hive وفتح الصناديق الأساسية هنا (لحل مشكلة الشاشة السوداء)
-    await Hive.initFlutter();
-    await Hive.openBox('auth_box');    // لتخزين بيانات تسجيل الدخول والجلسة
-    await Hive.openBox('app_cache');   // لتخزين بيانات Init Data للعمل أوفلاين
-    await Hive.openBox('downloads_box'); // لإدارة الملفات المحملة
-
-    // 4. تهيئة Firebase
+    // 2. تهيئة Firebase
+    // نتحقق أولاً إذا كان التطبيق مهيأً مسبقاً لتجنب أخطاء DuplicateApp
     if (Firebase.apps.isEmpty) {
-      // الاعتماد على ملفات الإعدادات التلقائية (google-services.json)
+      // التهيئة بدون options تجعل التطبيق يقرأ الإعدادات تلقائياً من ملف:
+      // android/app/google-services.json (للأندرويد)
+      // ios/Runner/GoogleService-Info.plist (للايفون)
       await Firebase.initializeApp();
     }
 
-    // 5. تفعيل تسجيل الأخطاء القاتلة في Crashlytics
+    // 3. تفعيل تسجيل الأخطاء القاتلة في Crashlytics
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
     // تشغيل التطبيق
