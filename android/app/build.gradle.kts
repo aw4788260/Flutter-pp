@@ -64,5 +64,6 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-crashlytics")
+implementation("com.google.firebase:firebase-crashlytics-ndk:18.6.0")
     implementation("androidx.multidex:multidex:2.0.1")
 }
