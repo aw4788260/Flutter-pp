@@ -2,9 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:firebase_core/firebase_core.dart'; // ضروري للتهيئة
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart'; // ✅ ضروري لوضع الحماية
+import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart'; 
@@ -27,15 +27,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   final Dio _dio = Dio();
   final String _baseUrl = 'https://courses.aw478260.dpdns.org'; 
-  String _loadingText = "LOADING SYSTEM";
+  
+  String _loadingText = "SYSTEM STARTING...";
 
   @override
   void initState() {
     super.initState();
-    // ⚠️ ملاحظة: لا نستدعي FirebaseCrashlytics هنا لأنه يسبب كراش قبل التهيئة
-    // تم نقله داخل _initializeApp
 
-    // 1. إعدادات الأنيميشن
     _bounceController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -54,42 +52,83 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
     );
 
-    // 2. بدء عملية التهيئة
     _initializeApp();
   }
 
   Future<void> _initializeApp() async {
+    // نستخدم StringBuffer لتجميع النص الخام بسرعة وكفاءة
+    StringBuffer rawErrorLog = StringBuffer();
+    rawErrorLog.writeln("=== STARTING INIT LOG ===");
+
     try {
-      // ✅ 1. تهيئة فايربيز أولاً (حجر الأساس)
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp();
+      WidgetsFlutterBinding.ensureInitialized();
+
+      // -----------------------------------------------------------
+      // 1. Hive Setup
+      // -----------------------------------------------------------
+      if (mounted) setState(() => _loadingText = "LOADING DATABASE...");
+      try {
+        await Hive.initFlutter();
+        await Hive.openBox('auth_box');
+        await Hive.openBox('downloads_box');
+        await Hive.openBox('app_cache');
+        rawErrorLog.writeln("[✓] Hive Initialized");
+      } catch (e, stack) {
+        rawErrorLog.writeln("\n[!] HIVE ERROR:");
+        rawErrorLog.writeln("Err: $e");
+        rawErrorLog.writeln("Stack: $stack\n----------------");
       }
 
-      // الآن يمكننا التسجيل بأمان لأن فايربيز يعمل
-      FirebaseCrashlytics.instance.log("App Started - Splash Screen Init");
+      // -----------------------------------------------------------
+      // 2. Firebase Setup (التركيز هنا)
+      // -----------------------------------------------------------
+      if (mounted) setState(() => _loadingText = "CONNECTING SERVICES...");
+      try {
+        if (Firebase.apps.isEmpty) {
+          await Firebase.initializeApp();
+          rawErrorLog.writeln("[✓] Firebase.initializeApp Success");
+        } else {
+          rawErrorLog.writeln("[i] Firebase was already initialized");
+        }
+        
+        // محاولة اختبار Crashlytics
+        FirebaseCrashlytics.instance.log("Splash Screen Loaded");
+        rawErrorLog.writeln("[✓] Crashlytics Connected");
+        
+      } catch (e, stack) {
+        // 🔥🔥🔥 هنا سيتم طباعة اللوج الخام لخطأ الفايربيز 🔥🔥🔥
+        rawErrorLog.writeln("\n[!!!!!!] FIREBASE FATAL ERROR [!!!!!!]");
+        rawErrorLog.writeln("Error Object: $e");
+        rawErrorLog.writeln("Runtime Type: ${e.runtimeType}");
+        rawErrorLog.writeln("StackTrace:\n$stack");
+        rawErrorLog.writeln("--------------------------------------\n");
+      }
 
-      // ✅ 2. تفعيل وضع الحماية (منع لقطات الشاشة)
+      // -----------------------------------------------------------
+      // 3. Secure Mode
+      // -----------------------------------------------------------
       try {
         await FlutterWindowManagerPlus.addFlags(FlutterWindowManagerPlus.FLAG_SECURE);
-      } catch (e) {
-        debugPrint("Secure Mode Error: $e"); // لا نوقف التطبيق بسبب هذا الخطأ
+        rawErrorLog.writeln("[✓] Secure Mode Enabled");
+      } catch (e, stack) {
+        rawErrorLog.writeln("\n[!] SECURE MODE ERROR:");
+        rawErrorLog.writeln("Err: $e");
+        // rawErrorLog.writeln("Stack: $stack"); // اختياري لتقليل الزحمة
       }
 
-      // ✅ 3. فتح صناديق التخزين
-      await Hive.initFlutter();
-      var authBox = await Hive.openBox('auth_box');
-      await Hive.openBox('downloads_box');
-      var cacheBox = await Hive.openBox('app_cache');
+      // -----------------------------------------------------------
+      // 4. Server Connection
+      // -----------------------------------------------------------
+      if (mounted) setState(() => _loadingText = "CONNECTING TO SERVER...");
       
-      String? userId = authBox.get('user_id');
-      String? deviceId = authBox.get('device_id');
+      String? userId;
+      String? deviceId;
+      try {
+        var authBox = Hive.box('auth_box');
+        userId = authBox.get('user_id');
+        deviceId = authBox.get('device_id');
+      } catch (_) {}
 
-      // محاكاة وقت التحميل
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (mounted) setState(() => _loadingText = "CONNECTING...");
-
-      // ✅ 4. محاولة الاتصال بالسيرفر
       final response = await _dio.get(
         '$_baseUrl/api/public/get-app-init-data',
         options: Options(
@@ -103,66 +142,75 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       );
 
       if (response.statusCode == 200 && response.data['success'] == true) {
-        // نجاح الاتصال
-        await cacheBox.put('init_data', response.data);
+        rawErrorLog.writeln("[✓] Server Connected (200 OK)");
+        
+        try {
+           var cacheBox = Hive.box('app_cache');
+           await cacheBox.put('init_data', response.data);
+        } catch (_) {} 
+        
         AppState().updateFromInitData(response.data);
 
         bool isLoggedIn = response.data['isLoggedIn'] ?? false;
-        if (userId != null && !isLoggedIn) {
-          await authBox.clear();
-        }
-
         if (mounted) _navigateToNextScreen(isLoggedIn);
         
       } else {
-        FirebaseCrashlytics.instance.log("Server Response Failure: ${response.statusCode}");
-        throw Exception("Server returned non-success");
+        throw Exception("Server Error Code: ${response.statusCode}");
       }
 
     } catch (e, stack) {
-      // ✅ التعامل مع الأخطاء
-      debugPrint("Initialization Error: $e");
+      // 🛑 الخطأ الرئيسي الذي يوقف التطبيق
+      rawErrorLog.writeln("\n[!!!!!!] MAIN CRASH [!!!!!!]");
+      rawErrorLog.writeln("Error: $e");
+      rawErrorLog.writeln("Stack: $stack");
       
-      try {
-        // محاولة تسجيل الخطأ في Crashlytics (داخل try تحسباً لفشل الاتصال)
-        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Fatal App Initialization Error', fatal: true);
-      } catch (_) {}
-      
-      // ❌ في حالة الفشل: نحاول تحميل البيانات المحفوظة
+      debugPrint("Full Error Log:\n$rawErrorLog");
+
       if (mounted) {
-        setState(() => _loadingText = "CHECKING CACHE...");
-        await _tryLoadOfflineData();
+        setState(() => _loadingText = "FAILED.");
+        // تمرير اللوج الكامل للدالة
+        await _tryLoadOfflineData(fullRawLog: rawErrorLog.toString());
       }
     }
   }
 
-  Future<void> _tryLoadOfflineData() async {
+  Future<void> _tryLoadOfflineData({required String fullRawLog}) async {
+    StringBuffer updatedLog = StringBuffer(fullRawLog);
+    
     try {
-      var cacheBox = await Hive.openBox('app_cache');
+      if (!Hive.isBoxOpen('app_cache')) {
+         try {
+           await Hive.initFlutter();
+           await Hive.openBox('app_cache');
+         } catch (e) {
+            updatedLog.writeln("\n[!] Offline Storage Failed: $e");
+            if (mounted) _showErrorDialog(updatedLog.toString());
+            return;
+         }
+      }
+      
+      var cacheBox = Hive.box('app_cache');
       var cachedData = cacheBox.get('init_data');
 
       if (cachedData != null) {
-        // ✅ وجدنا بيانات محفوظة!
         AppState().updateFromInitData(cachedData);
-        
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("No Internet Connection. Loaded Offline Mode."),
-              backgroundColor: AppColors.accentOrange,
-              duration: Duration(seconds: 3),
-            ),
-          );
-          
-          _navigateToNextScreen(true);
+           // حتى لو نجحنا في الدخول أوفلاين، سنعرض اللوج إذا كان هناك خطأ في الفايربيز
+           // يمكنك إزالة هذا الشرط لاحقاً إذا أردت الدخول بصمت
+           if (fullRawLog.contains("FIREBASE FATAL ERROR")) {
+             _showErrorDialog(updatedLog.toString(), isWarning: true);
+           } else {
+             _navigateToNextScreen(true);
+           }
         }
       } else {
-        FirebaseCrashlytics.instance.log("Offline Load Failed: No Cached Data.");
-        if (mounted) _showRetryDialog();
+        updatedLog.writeln("\n[X] No Offline Data Found.");
+        if (mounted) _showErrorDialog(updatedLog.toString());
       }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Offline Cache Loading Failed', fatal: false);
-      if (mounted) _showRetryDialog();
+      updatedLog.writeln("\n[!] Critical Offline Error: $e");
+      updatedLog.writeln("Stack: $stack");
+      if (mounted) _showErrorDialog(updatedLog.toString());
     }
   }
 
@@ -174,25 +222,75 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     );
   }
 
-  void _showRetryDialog() {
+  void _showErrorDialog(String logContent, {bool isWarning = false}) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.backgroundSecondary,
-        title: const Text("Connection Error", style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text(
-          "Could not connect to server and no offline data found.\nPlease check your internet connection.",
-          style: TextStyle(color: AppColors.textSecondary),
+        title: Text(
+          isWarning ? "Warning (Logs)" : "Critical Error", 
+          style: TextStyle(color: isWarning ? Colors.orange : Colors.red),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isWarning 
+                  ? "App loaded offline, but errors occurred:" 
+                  : "Please share this screen with the developer:",
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              
+              // 🖥️ منطقة عرض اللوج (تشبه التيرمينال)
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    border: Border.all(color: Colors.grey.withOpacity(0.5)),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText( // جعل النص قابلاً للنسخ
+                      logContent,
+                      style: const TextStyle(
+                        color: Colors.greenAccent, // لون الهاكرز :)
+                        fontFamily: 'monospace', 
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
-              setState(() => _loadingText = "RETRYING...");
-              _initializeApp();
+               // نسخ اللوج للحافظة (اختياري، يتطلب Clipboard)
+               // Clipboard.setData(ClipboardData(text: logContent));
             },
-            child: const Text("RETRY", style: TextStyle(color: AppColors.accentYellow)),
+            child: const Text("COPY", style: TextStyle(color: Colors.blue)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              if (isWarning) {
+                 _navigateToNextScreen(true); // إكمال الدخول رغم التحذير
+              } else {
+                 setState(() => _loadingText = "RETRYING...");
+                 _initializeApp();
+              }
+            },
+            child: Text(
+              isWarning ? "CONTINUE" : "RETRY", 
+              style: const TextStyle(color: AppColors.accentYellow),
+            ),
           ),
         ],
       ),
