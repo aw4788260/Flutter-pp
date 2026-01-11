@@ -98,11 +98,14 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         if (mounted) _navigateToNextScreen(isLoggedIn);
         
       } else {
+        // تسجيل خطأ غير قاتل عند فشل الاستجابة المنطقية من السيرفر
+        FirebaseCrashlytics.instance.log("Server Response Failure: ${response.statusCode}");
         throw Exception("Server returned non-success");
       }
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      // ✅ تسجيل الخطأ القاتل/الرئيسي الذي أدى لتوقف عملية التهيئة
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Fatal App Initialization Error', fatal: true);
       
       // ❌ في حالة الفشل (انقطاع نت أو خطأ سيرفر): نحاول تحميل البيانات المحفوظة
       if (mounted) {
@@ -136,10 +139,14 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           _navigateToNextScreen(true);
         }
       } else {
+        // ✅ تسجيل خطأ غير قاتل: لا يوجد إنترنت ولا يوجد كاش
+        FirebaseCrashlytics.instance.log("Offline Load Failed: No Cached Data found.");
         // ❌ لا توجد بيانات محفوظة ولا إنترنت -> إظهار زر إعادة المحاولة
         if (mounted) _showRetryDialog();
       }
-    } catch (e) {
+    } catch (e, stack) {
+      // ✅ تسجيل أي خطأ غير متوقع أثناء محاولة قراءة الكاش
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Offline Cache Loading Failed', fatal: false);
       if (mounted) _showRetryDialog();
     }
   }
