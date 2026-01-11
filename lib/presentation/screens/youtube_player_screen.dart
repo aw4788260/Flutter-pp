@@ -55,6 +55,8 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
           forceHD: false,
           isLive: false,
           loop: false,
+          // ✅ تم التعديل: إيقاف الترجمة التلقائية
+          enableCaption: false, 
           // تعطيل زر ملء الشاشة لمنع التعارض مع العلامة المائية
           disableDragSeek: false, 
         ),
@@ -147,25 +149,27 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
             ),
           ),
 
-          // 2. العلامة المائية المتحركة (تم تقليل الحجم)
+          // 2. العلامة المائية المتحركة
           AnimatedAlign(
             duration: const Duration(seconds: 2),
             curve: Curves.easeInOut,
             alignment: _watermarkAlignment,
             child: IgnorePointer(
               child: Container(
-                // ✅ تقليل الـ Padding (الارتفاع)
+                // ✅ الحفاظ على نفس الحجم (Padding صغير)
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
+                  // ✅ تم التعديل: زيادة التباين للخلفية لتصبح أوضح (كانت 0.3)
+                  color: Colors.black.withOpacity(0.6), 
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   _userIdText,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.4),
+                    // ✅ تم التعديل: جعل النص أبيض شبه ناصع (كان 0.4)
+                    color: Colors.white.withOpacity(0.9), 
                     fontWeight: FontWeight.bold,
-                    // ✅ تقليل حجم الخط
+                    // ✅ الحفاظ على نفس حجم الخط
                     fontSize: 11, 
                   ),
                 ),
