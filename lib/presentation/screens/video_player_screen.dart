@@ -1,26 +1,28 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math'; // ضروري للعلامة المائية
+import 'dart:math'; // مهم للعلامة المائية
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';       // ✅ محرك التشغيل الجديد
-import 'package:media_kit_video/media_kit_video.dart'; // ✅ واجهة العرض
+import 'package:flutter/services.dart';
+// ✅ استيراد مكتبات المشغل الجديد
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:screen_protector/screen_protector.dart'; 
+import 'package:screen_protector/screen_protector.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:path_provider/path_provider.dart'; 
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
+import 'package:path_provider/path_provider.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/utils/encryption_helper.dart'; 
+import '../../core/utils/encryption_helper.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final Map<String, String> streams; // الجودات المتاحة
   final String title;
 
   const VideoPlayerScreen({
-    super.key, 
-    required this.streams, 
-    required this.title
+    super.key,
+    required this.streams,
+    required this.title,
   });
 
   @override
@@ -31,14 +33,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // ✅ متغيرات MediaKit
   late final Player _player;
   late final VideoController _controller;
-  
+
   String _currentQuality = "";
   List<String> _sortedQualities = [];
-  
+
   // حالات التحميل والخطأ
   bool _isError = false;
   String _errorMessage = "";
-  bool _isDecrypting = false; 
+  bool _isDecrypting = false;
   File? _tempDecryptedFile;
 
   // العلامة المائية
@@ -48,7 +50,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Timer? _screenRecordingTimer;
 
-  // ✅ الهيدر السحري: لضمان قبول يوتيوب للاتصال
+  // ✅ الهيدر السحري: لضمان قبول يوتيوب للاتصال (ExoPlayer Identity)
   final Map<String, String> _nativeHeaders = {
     'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
   };
@@ -58,20 +60,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
     FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Started");
 
-    // 1. إنشاء المشغل والتحكم
+    // 1. إنشاء المشغل (Player)
     _player = Player();
-    
-    _controller = VideoController(_player, configuration: const VideoControllerConfiguration(
-      enableHardwareAcceleration: true, // تفعيل تسريع الهاردوير
-      androidAttachSurfaceAfterVideoOutput: true, // حل مشاكل الشاشة السوداء
-    ));
 
-    // 2. تسجيل الأخطاء القادمة من المشغل
+    // 2. إعداد وحدة التحكم بالعرض (VideoController)
+    _controller = VideoController(
+      _player,
+      configuration: const VideoControllerConfiguration(
+        enableHardwareAcceleration: true, // تفعيل تسريع الهاردوير للأداء العالي
+        androidAttachSurfaceAfterVideoOutput: true, // حل لمشاكل الشاشة السوداء في بعض أجهزة سامسونج/شاومي
+      ),
+    );
+
+    // 3. الاستماع للأخطاء وتسجيلها
     _player.stream.error.listen((error) {
-      FirebaseCrashlytics.instance.log("🚨 MediaKit Error: $error");
-      // تسجيل استثناء غير قاتل في Crashlytics للمتابعة
-      FirebaseCrashlytics.instance.recordError(Exception(error), null, reason: 'MediaKit Stream Error');
-      
+      FirebaseCrashlytics.instance.log("🚨 MediaKit Stream Error: $error");
+      FirebaseCrashlytics.instance.recordError(
+          Exception(error), null,
+          reason: 'MediaKit Playback Error');
+
       if (mounted) {
         setState(() {
           _isError = true;
@@ -80,7 +87,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
     });
 
-    // 3. الإعدادات الأخرى
+    // 4. الاستماع لانتهاء الفيديو (اختياري)
+    _player.stream.completed.listen((completed) {
+      if (completed) {
+        FirebaseCrashlytics.instance.log("✅ Video Completed");
+      }
+    });
+
+    // بدء الوظائف الأخرى
     _setupScreenProtection();
     _loadUserData();
     _startWatermarkAnimation();
@@ -89,14 +103,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _setupScreenProtection() async {
     try {
+      // إجبار الوضع الأفقي
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
+      
+      // منع إغلاق الشاشة
       await WakelockPlus.enable();
-      await ScreenProtector.protectDataLeakageOn(); 
+      
+      // تفعيل حماية المحتوى (شاشة سوداء عند التسجيل)
+      await ScreenProtector.protectDataLeakageOn();
       await ScreenProtector.preventScreenshotOn();
 
+      // مراقب إضافي
       _screenRecordingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
         final isRecording = await ScreenProtector.isRecording();
         if (isRecording) {
@@ -120,8 +140,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context);
+                Navigator.pop(context); // إغلاق الحوار
+                Navigator.pop(context); // الخروج من الشاشة
               },
               child: const Text("Exit"),
             )
@@ -139,7 +159,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           _watermarkText = box.get('phone') ?? box.get('username') ?? 'User';
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      FirebaseCrashlytics.instance.log("⚠️ Hive Load Error: $e");
+    }
   }
 
   void _startWatermarkAnimation() {
@@ -147,6 +169,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) {
         setState(() {
           final random = Random();
+          // توليد إحداثيات عشوائية للمحاذاة (-1.0 إلى 1.0)
           double x = (random.nextDouble() * 1.6) - 0.8;
           double y = (random.nextDouble() * 1.6) - 0.8;
           _watermarkAlignment = Alignment(x, y);
@@ -161,18 +184,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _isError = true;
         _errorMessage = "No video sources available";
       });
+      FirebaseCrashlytics.instance.log("❌ Error: No streams provided");
       return;
     }
 
     _sortedQualities = widget.streams.keys.toList();
+    // ترتيب الجودات (الأرقام)
     _sortedQualities.sort((a, b) {
       int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       int valB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       return valA.compareTo(valB);
     });
 
-    _currentQuality = _sortedQualities.contains("480p") 
-        ? "480p" 
+    // اختيار جودة افتراضية (480p أو الأقل لضمان العمل السريع)
+    _currentQuality = _sortedQualities.contains("480p")
+        ? "480p"
         : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
 
     if (_currentQuality.isNotEmpty) {
@@ -182,42 +208,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _playVideo(String url) async {
     try {
-      FirebaseCrashlytics.instance.log("🎬 Loading Video: $url");
+      FirebaseCrashlytics.instance.log("🎬 Loading Video URL: $url");
 
       // ============================================================
       // 1️⃣ السيناريو الأول: ملف أوفلاين (مشفر)
       // ============================================================
       if (!url.startsWith('http')) {
-        setState(() => _isDecrypting = true); 
+        setState(() => _isDecrypting = true);
 
         final encryptedFile = File(url);
         if (await encryptedFile.exists()) {
           final tempDir = await getTemporaryDirectory();
+          // اسم ملف فريد لتجنب التضارب
           final tempPath = '${tempDir.path}/play_${DateTime.now().millisecondsSinceEpoch}.mp4';
-          
+
           FirebaseCrashlytics.instance.log("🔓 Decrypting file to: $tempPath");
-          _tempDecryptedFile = await EncryptionHelper.decryptFile(encryptedFile, tempPath);
           
-          // ✅ تشغيل الملف المحلي
+          // فك التشفير باستخدام دالتك المساعدة
+          _tempDecryptedFile = await EncryptionHelper.decryptFile(encryptedFile, tempPath);
+
+          // ✅ تشغيل الملف المحلي بـ MediaKit
           await _player.open(Media(_tempDecryptedFile!.path));
         } else {
           throw Exception("Offline file missing at path: $url");
         }
-        
+
         setState(() => _isDecrypting = false);
-      } 
+      }
       // ============================================================
       // 2️⃣ السيناريو الثاني: أونلاين (يوتيوب HLS)
       // ============================================================
       else {
-        // ✅ تشغيل الرابط مع تمرير الهيدرز لخداع السيرفر
+        // ✅ MediaKit يقبل الهيدرز في كائن Media مباشرة
         await _player.open(Media(
           url,
-          httpHeaders: _nativeHeaders, 
+          httpHeaders: _nativeHeaders, // الهيدر الذي يخدع يوتيوب
         ));
       }
       
-      _player.play();
+      // بدء التشغيل
+      await _player.play();
 
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'MediaKit Load Failed: $url');
@@ -235,17 +265,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(padding: EdgeInsets.all(16), child: Text("Select Quality", style: TextStyle(color: Colors.white, fontSize: 18))),
+            const Padding(
+              padding: EdgeInsets.all(16), 
+              child: Text("Select Quality", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))
+            ),
+            const Divider(color: Colors.white24),
             ..._sortedQualities.reversed.map((q) => ListTile(
               title: Text(q, style: TextStyle(color: q == _currentQuality ? AppColors.accentYellow : Colors.white)),
+              trailing: q == _currentQuality ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
               onTap: () {
                 Navigator.pop(ctx);
                 if (q != _currentQuality) {
-                  setState(() { _currentQuality = q; _isError = false; });
+                  setState(() {
+                    _currentQuality = q;
+                    _isError = false;
+                  });
                   _playVideo(widget.streams[q]!);
                 }
               },
@@ -260,22 +299,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void dispose() {
     _watermarkTimer?.cancel();
     _screenRecordingTimer?.cancel();
-    
-    // ✅ إيقاف وتنظيف المشغل (مهم جداً لتحرير الذاكرة)
+
+    // ✅ تنظيف MediaKit (مهم جداً لتحرير الذاكرة)
     _player.dispose();
 
-    // حذف الملف المؤقت عند الخروج
+    // حذف الملف المؤقت (تنظيف الكاش)
     if (_tempDecryptedFile != null) {
       try {
         if (_tempDecryptedFile!.existsSync()) _tempDecryptedFile!.deleteSync();
-      } catch (_) {}
+      } catch (e) {
+        FirebaseCrashlytics.instance.log("⚠️ Failed to delete temp file: $e");
+      }
     }
-    
+
+    // إيقاف الحماية وإعادة التوجيه
     ScreenProtector.protectDataLeakageOff();
     ScreenProtector.preventScreenshotOff();
     WakelockPlus.disable();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    
+
     super.dispose();
   }
 
@@ -293,13 +335,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     children: [
                       const Icon(Icons.error_outline, color: AppColors.error, size: 48),
                       const SizedBox(height: 16),
-                      Text(_errorMessage, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
+                      Text(
+                        _errorMessage, 
+                        style: const TextStyle(color: Colors.white),
+                        textAlign: TextAlign.center,
+                      ),
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: () {
-                           setState(() => _isError = false);
-                           _playVideo(widget.streams[_currentQuality]!);
-                        }, 
+                          setState(() => _isError = false);
+                          _playVideo(widget.streams[_currentQuality]!);
+                        },
                         style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
                         child: const Text("Retry", style: TextStyle(color: Colors.black)),
                       )
@@ -311,12 +357,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         children: const [
                           CircularProgressIndicator(color: AppColors.accentYellow),
                           SizedBox(height: 16),
-                          Text("Preparing Video...", style: TextStyle(color: Colors.white70)),
+                          Text("Preparing Offline Video...", style: TextStyle(color: Colors.white70)),
                         ],
                       )
+                    // ✅ واجهة العرض الخاصة بـ MediaKit
                     : Video(
                         controller: _controller,
-                        // استخدام واجهة التحكم الجاهزة والجميلة (تشبه يوتيوب/نتفليكس)
+                        // MaterialVideoControls توفر واجهة جاهزة وجميلة (شريط تمرير، صوت، تكبير)
                         controls: MaterialVideoControls, 
                       ),
           ),
@@ -324,22 +371,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           // 2. العلامة المائية المتحركة
           if (!_isError && !_isDecrypting)
             AnimatedAlign(
-              duration: const Duration(seconds: 2), 
+              duration: const Duration(seconds: 2),
               curve: Curves.easeInOut,
               alignment: _watermarkAlignment,
               child: IgnorePointer(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3), 
+                    color: Colors.black.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     _watermarkText,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.3), 
+                      color: Colors.white.withOpacity(0.4),
                       fontWeight: FontWeight.bold,
-                      fontSize: 12, 
+                      fontSize: 12,
                       decoration: TextDecoration.none,
                     ),
                   ),
@@ -347,7 +394,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ),
 
-          // 3. زر الرجوع والعنوان
+          // 3. زر الرجوع والعنوان (Custom UI Overlay)
           Positioned(
             top: 20,
             left: 20,
