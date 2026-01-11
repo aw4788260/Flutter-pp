@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
+import 'package:media_kit/media_kit.dart'; // ✅ (1) إضافة استيراد MediaKit
 // import 'firebase_options.dart'; // ❌ تم إيقافه كما طلبت للاعتماد على google-services.json مباشرة
 import 'core/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
@@ -10,6 +11,9 @@ import 'presentation/screens/splash_screen.dart';
 void main() async {
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // ✅ (2) تهيئة MediaKit (ضروري جداً قبل التشغيل)
+    MediaKit.ensureInitialized();
 
     // 1. تفعيل وضع الحماية (منع لقطات الشاشة وتسجيل الفيديو)
     await _enableSecureMode();
