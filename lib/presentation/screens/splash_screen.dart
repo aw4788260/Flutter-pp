@@ -24,7 +24,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   final Dio _dio = Dio();
   final String _baseUrl = 'https://courses.aw478260.dpdns.org'; 
-  String _loadingText = "LOADING SYSTEM";
+  String _loadingText = "LOADING SYSTEM"; // متغير لتغيير النص حسب الحالة
 
   @override
   void initState() {
@@ -56,20 +56,21 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   Future<void> _initializeApp() async {
     try {
-      // فتح صناديق التخزين الأساسية
+      // فتح صناديق التخزين
       await Hive.initFlutter();
       var authBox = await Hive.openBox('auth_box');
       await Hive.openBox('downloads_box');
-      var cacheBox = await Hive.openBox('app_cache'); // صندوق الكاش للبيانات
+      var cacheBox = await Hive.openBox('app_cache'); // ✅ صندوق الكاش للبيانات
       
       String? userId = authBox.get('user_id');
       String? deviceId = authBox.get('device_id');
 
-      // لضمان ظهور شعار التطبيق لفترة كافية
-      await Future.delayed(const Duration(seconds: 1));
-      if (mounted) setState(() => _loadingText = "CONNECTING...");
+      // محاكاة وقت التحميل
+      await Future.delayed(const Duration(seconds: 2));
 
-      // محاولة الاتصال بالسيرفر لجلب أحدث البيانات
+      setState(() => _loadingText = "CONNECTING...");
+
+      // محاولة الاتصال بالسيرفر
       final response = await _dio.get(
         '$_baseUrl/api/public/get-app-init-data',
         options: Options(
@@ -78,22 +79,18 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             'x-device-id': deviceId,
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
-          // تحديد مهلة اتصال قصيرة (6 ثواني) لضمان عدم تعليق المستخدم
-          sendTimeout: const Duration(seconds: 6),
-          receiveTimeout: const Duration(seconds: 6),
+          receiveTimeout: const Duration(seconds: 10),
         ),
       );
 
       if (response.statusCode == 200 && response.data['success'] == true) {
-        // ✅ نجاح الاتصال: تحديث الكاش بالبيانات الجديدة للاستخدام أوفلاين لاحقاً
+        // ✅ نجاح الاتصال: نحفظ البيانات في الكاش للمرات القادمة
         await cacheBox.put('init_data', response.data);
 
-        // تحديث حالة التطبيق العامة
+        // تحديث AppState
         AppState().updateFromInitData(response.data);
 
         bool isLoggedIn = response.data['isLoggedIn'] ?? false;
-        
-        // التحقق من صحة الجلسة: إذا انتهت الجلسة في السيرفر، نمسح البيانات المحلية
         if (userId != null && !isLoggedIn) {
           await authBox.clear();
         }
@@ -101,46 +98,45 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         if (mounted) _navigateToNextScreen(isLoggedIn);
         
       } else {
-        throw Exception("Server Error");
+        throw Exception("Server returned non-success");
       }
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.log("Splash Connection Failed: $e");
+      FirebaseCrashlytics.instance.recordError(e, stack);
       
-      // ❌ في حالة الفشل (أوفلاين أو خطأ سيرفر): محاولة تحميل الكاش المحفوظ
+      // ❌ في حالة الفشل (انقطاع نت أو خطأ سيرفر): نحاول تحميل البيانات المحفوظة
       if (mounted) {
-        setState(() => _loadingText = "OFFLINE MODE...");
+        setState(() => _loadingText = "CHECKING CACHE...");
         await _tryLoadOfflineData();
       }
     }
   }
 
-  // ✅ دالة محاولة التحميل من الذاكرة المحلية (الدعم أوفلاين)
+  // ✅ دالة جديدة لمحاولة التحميل أوفلاين
   Future<void> _tryLoadOfflineData() async {
     try {
       var cacheBox = await Hive.openBox('app_cache');
       var cachedData = cacheBox.get('init_data');
-      var authBox = await Hive.openBox('auth_box');
-      String? userId = authBox.get('user_id');
 
       if (cachedData != null) {
-        // ✅ وجدنا بيانات محفوظة سابقاً!
-        AppState().updateFromInitData(Map<String, dynamic>.from(cachedData));
+        // ✅ وجدنا بيانات محفوظة!
+        AppState().updateFromInitData(cachedData);
         
+        // إشعار المستخدم بأنه في وضع الأوفلاين
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text("No Internet Connection. Using saved offline data."),
-              backgroundColor: Colors.orange,
+              content: Text("No Internet Connection. Loaded Offline Mode."),
+              backgroundColor: AppColors.accentOrange,
               duration: Duration(seconds: 3),
             ),
           );
           
-          // إذا كان مسجل دخول سابقاً ولديه userId، نعتبره مسجل دخول في وضع الأوفلاين
-          _navigateToNextScreen(userId != null);
+          // نفترض أنه مسجل دخول إذا كانت البيانات موجودة
+          _navigateToNextScreen(true);
         }
       } else {
-        // ❌ لا توجد بيانات محفوظة ولا إنترنت
+        // ❌ لا توجد بيانات محفوظة ولا إنترنت -> إظهار زر إعادة المحاولة
         if (mounted) _showRetryDialog();
       }
     } catch (e) {
@@ -164,7 +160,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         backgroundColor: AppColors.backgroundSecondary,
         title: const Text("Connection Error", style: TextStyle(color: AppColors.textPrimary)),
         content: const Text(
-          "Could not connect to the server and no offline data found.\nPlease check your internet connection.",
+          "Could not connect to server and no offline data found.\nPlease check your internet connection.",
           style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
@@ -172,9 +168,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             onPressed: () {
               Navigator.pop(context);
               setState(() => _loadingText = "RETRYING...");
-              _initializeApp(); 
+              _initializeApp(); // إعادة المحاولة
             },
-            child: const Text("RETRY", style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold)),
+            child: const Text("RETRY", style: TextStyle(color: AppColors.accentYellow)),
           ),
         ],
       ),
@@ -201,8 +197,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           children: [
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // اللوجو المتحرك (Bounce)
+                // اللوجو المتحرك
                 AnimatedBuilder(
                   animation: _bounceAnimation,
                   builder: (context, child) {
@@ -217,7 +214,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     fit: BoxFit.contain,
                   ),
                 ),
+                
                 const SizedBox(height: 16),
+
                 const Text(
                   "EMPOWERING YOUR GROWTH",
                   style: TextStyle(
@@ -229,12 +228,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 ),
               ],
             ),
-            
-            // شريط التحميل السفلي
+
             Positioned(
               bottom: 80,
               child: Column(
                 children: [
+                  // شريط التقدم المخصص
                   Container(
                     width: 160,
                     height: 4,
@@ -265,6 +264,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     ),
                   ),
                   const SizedBox(height: 16),
+                  
+                  // النص الديناميكي للحالة
                   Text(
                     _loadingText, 
                     style: TextStyle(
