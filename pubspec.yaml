@@ -30,7 +30,7 @@ dependencies:
   android_id: ^0.4.0
   wakelock_plus: ^1.1.0        # لإبقاء الشاشة تعمل
   screen_protector: ^1.4.13     # لحماية الشاشة (منع التصوير/لقطات الشاشة)
-  ffmpeg_kit_flutter_new_https_gpl: ^2.1.0
+  
 
   # Security & Privacy
   flutter_windowmanager_plus: ^1.0.1 # منع تصوير الشاشة
