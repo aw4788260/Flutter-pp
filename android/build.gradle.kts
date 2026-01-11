@@ -1,25 +1,9 @@
 allprojects {
     repositories {
-        // ✅ ترتيب المستودعات (يفضل وضع البوابة أولاً)
+        // ✅ التغيير هنا أيضاً: تغيير الترتيب
         gradlePluginPortal()
         google()
         mavenCentral()
-    }
-
-    // ✅ الحل الجذري: إجبار Gradle على استخدام نسخة LTS المتاحة
-    configurations.all {
-        resolutionStrategy {
-            eachDependency {
-                // إجبار النظام على استخدام نسخة LTS المستقرة والموجودة فعلياً في Maven Central
-                if (requested.group == "com.arthenica" && 
-                    requested.name.contains("ffmpeg-kit") && 
-                    requested.version == "6.0-3") {
-                    
-                    useVersion("6.0-3.LTS")
-                    because("The non-LTS version 6.0-3 is missing from Maven Central, forcing stable LTS version.")
-                }
-            }
-        }
     }
 }
 
