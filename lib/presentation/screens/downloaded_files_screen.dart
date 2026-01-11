@@ -2,9 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ إضافة الاستيراد
 import '../../core/constants/app_colors.dart';
 import '../../core/services/local_proxy.dart';
-import '../../core/services/download_manager.dart'; // ✅ استدعاء المدير
+import '../../core/services/download_manager.dart'; 
 import 'downloaded_subjects_screen.dart';
 
 class DownloadedFilesScreen extends StatefulWidget {
@@ -20,20 +21,53 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
   @override
   void initState() {
     super.initState();
+    // ✅ تسجيل فتح الشاشة لتتبع مسار المستخدم
+    FirebaseCrashlytics.instance.log("User opened DownloadedFilesScreen");
     _init();
   }
 
   Future<void> _init() async {
-    if (!Hive.isBoxOpen('downloads_box')) {
-      await Hive.openBox('downloads_box');
+    try {
+      // ✅ تسجيل بدء عملية التهيئة
+      FirebaseCrashlytics.instance.log("Initializing Downloads Box and Proxy...");
+
+      if (!Hive.isBoxOpen('downloads_box')) {
+        await Hive.openBox('downloads_box');
+        FirebaseCrashlytics.instance.log("Downloads Box opened successfully");
+      }
+      
+      await _proxy.start();
+      FirebaseCrashlytics.instance.log("Local Proxy Server started successfully");
+
+      if (mounted) setState(() {});
+
+    } catch (e, stack) {
+      // ✅ تسجيل الأخطاء غير القاتلة (Non-fatal)
+      FirebaseCrashlytics.instance.recordError(
+        e, 
+        stack, 
+        reason: 'Error initializing DownloadedFilesScreen',
+        fatal: false // نحدد أنه خطأ غير قاتل حتى لا يغلق التطبيق
+      );
+      
+      // اختيارياً: عرض رسالة للمستخدم
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Warning: Initialization error ($e)"), backgroundColor: AppColors.accentOrange),
+        );
+      }
     }
-    await _proxy.start();
-    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _proxy.stop();
+    try {
+      _proxy.stop();
+      FirebaseCrashlytics.instance.log("Local Proxy stopped successfully");
+    } catch (e, stack) {
+      // ✅ تسجيل خطأ عند الإغلاق (نادر الحدوث لكن وارد)
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error stopping Local Proxy');
+    }
     super.dispose();
   }
 
@@ -123,13 +157,17 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                 valueListenable: Hive.box('downloads_box').listenable(),
                 builder: (context, Box box, _) {
                   final Map<String, int> groupedCourses = {};
-                  for (var key in box.keys) {
-                    final item = box.get(key);
-                    final courseName = item['course'] ?? 'Unknown Course';
-                    groupedCourses[courseName] = (groupedCourses[courseName] ?? 0) + 1;
+                  try {
+                    for (var key in box.keys) {
+                      final item = box.get(key);
+                      final courseName = item['course'] ?? 'Unknown Course';
+                      groupedCourses[courseName] = (groupedCourses[courseName] ?? 0) + 1;
+                    }
+                  } catch (e, stack) {
+                    // ✅ حماية حلقة التكرار وتسجيل الخطأ في حال كانت البيانات في Hive تالفة
+                    FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error parsing downloads box data');
                   }
 
-                  // استخدام ValueListenableBuilder آخر داخلي لمراقبة التقدم
                   return ValueListenableBuilder<Map<String, double>>(
                     valueListenable: DownloadManager.downloadingProgress,
                     builder: (context, progressMap, child) {
@@ -156,7 +194,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // ✅ قسم التحميلات النشطة
+                            // قسم التحميلات النشطة
                             if (progressMap.isNotEmpty) ...[
                               const Padding(
                                 padding: EdgeInsets.only(left: 4, bottom: 12),
