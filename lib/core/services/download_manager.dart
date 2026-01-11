@@ -1,16 +1,19 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:flutter/foundation.dart'; // ✅ ضروري للـ ValueNotifier
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-// ❌ تم حذف استيراد مكتبة FFmpeg نهائياً لحل مشكلة الانهيار
 import '../utils/encryption_helper.dart';
 
 class DownloadManager {
   static final Dio _dio = Dio();
   static final Set<String> _activeDownloads = {};
+
+  // ✅ 1. متغير عام لمراقبة التقدم (Key: LessonId, Value: Percentage 0.0-1.0)
+  static final ValueNotifier<Map<String, double>> downloadingProgress = ValueNotifier({});
 
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
@@ -36,7 +39,15 @@ class DownloadManager {
     required Function(String) onError,
     bool isPdf = false,
   }) async {
+    // تسجيل بداية العملية
+    FirebaseCrashlytics.instance.log("⬇️ Start Download: $videoTitle ($lessonId) - PDF: $isPdf");
+    
     _activeDownloads.add(lessonId);
+    
+    // ✅ تهيئة شريط التقدم بـ 0 عند البدء
+    var currentProgress = Map<String, double>.from(downloadingProgress.value);
+    currentProgress[lessonId] = 0.0;
+    downloadingProgress.value = currentProgress;
 
     try {
       var box = await Hive.openBox('auth_box');
@@ -47,7 +58,6 @@ class DownloadManager {
         throw Exception("User authentication missing");
       }
 
-      // الحصول على السر من متغيرات البيئة
       const String appSecret = String.fromEnvironment(
         'APP_SECRET',
         defaultValue: 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only',
@@ -59,6 +69,8 @@ class DownloadManager {
       if (finalUrl == null) {
         final endpoint = isPdf ? '/api/secure/get-pdf' : '/api/secure/get-video-id';
         final queryParam = isPdf ? {'pdfId': lessonId} : {'lessonId': lessonId};
+
+        FirebaseCrashlytics.instance.log("🔍 Fetching URL from: $endpoint");
 
         final res = await _dio.get(
           '$_baseUrl$endpoint',
@@ -80,11 +92,13 @@ class DownloadManager {
         final data = res.data;
         
         if (isPdf) {
-           finalUrl = data['url'];
+           finalUrl = data['url']; // الرابط المباشر (Signed URL)
            if (finalUrl == null) {
+             // Fallback للباك اند
              finalUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
            }
         } else {
+          // منطق الفيديو (كما هو)
           if (data['youtube_video_id'] != null && (data['availableQualities'] == null || (data['availableQualities'] as List).isEmpty)) {
              throw Exception("YouTube videos cannot be downloaded offline.");
           }
@@ -103,8 +117,11 @@ class DownloadManager {
         throw Exception("No valid download link found");
       }
 
+      FirebaseCrashlytics.instance.log("🔗 Resolved URL: $finalUrl");
+
       // 2. تجهيز المسارات
       final appDir = await getApplicationDocumentsDirectory();
+      // تنظيف الأسماء من الرموز الخاصة
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeChapter = chapterName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -112,63 +129,77 @@ class DownloadManager {
       final dir = Directory('${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter');
       if (!await dir.exists()) await dir.create(recursive: true);
 
-      final tempPath = '${dir.path}/$lessonId.temp'; // الملف الخام (غير المشفر)
-      final savePath = '${dir.path}/$lessonId.enc';  // الملف النهائي (المشفر)
+      final tempPath = '${dir.path}/$lessonId.temp';
+      final savePath = '${dir.path}/$lessonId.enc';
 
       File tempFile = File(tempPath);
       if (await tempFile.exists()) await tempFile.delete();
 
-      // 3. التحميل (HLS باستخدام الدمج اليدوي، أو Dio للملفات العادية)
+      // ✅ دالة داخلية لتحديث الـ Notifier والـ Callback معاً
+      Function(double) internalOnProgress = (p) {
+        // تحديث المتغير العام
+        var prog = Map<String, double>.from(downloadingProgress.value);
+        prog[lessonId] = p;
+        downloadingProgress.value = prog; 
+        
+        // استدعاء الدالة الأصلية
+        onProgress(p); 
+      };
+
+      // 3. التحميل
       bool isHls = !isPdf && (finalUrl.contains('.m3u8') || finalUrl.contains('.m3u'));
 
       if (isHls) {
-        // ✅ استخدام دالة الدمج اليدوي (بديل FFmpeg)
-        // هذه الدالة ستقوم بتحميل الفيديو وتجميعه ووضعه في tempPath
-        await _downloadAndMergeHls(finalUrl!, tempPath, onProgress);
+        await _downloadAndMergeHls(finalUrl!, tempPath, internalOnProgress);
       } else {
-        // التحميل المباشر (MP4 أو PDF)
         Options downloadOptions = Options();
-        if (finalUrl.contains(_baseUrl) || isPdf) {
+        
+        // 🔥🔥🔥 إصلاح مشكلة Access Denied للـ PDF 🔥🔥🔥
+        // المشكلة كانت أننا نرسل Headers الباك اند (x-user-id) لرابط خارجي (Supabase/AWS)
+        // مما يسبب رفض السيرفر الخارجي للطلب (403 Forbidden).
+        // الحل: نرسل الـ Headers فقط إذا كان الرابط تابعاً لسيرفرنا.
+        
+        if (finalUrl.contains(_baseUrl)) {
+           // هذا الرابط تابع للباك اند، يجب إرسال بيانات المصادقة
            downloadOptions = Options(headers: {
               'x-user-id': userId,
               'x-device-id': deviceId,
               'x-app-secret': appSecret,
            });
-        }
+        } 
+        // ⚠️ ملاحظة: إذا كان الرابط خارجي (Signed URL)، لا نرسل Headers إضافية، لأن التوقيع يكفي.
 
         await _dio.download(
           finalUrl,
           tempPath,
           options: downloadOptions,
           onReceiveProgress: (received, total) {
-            if (total != -1) onProgress(received / total);
+            if (total != -1) internalOnProgress(received / total);
           },
         );
       }
 
-      // 4. ✅✅✅ مرحلة التشفير (لم يتم حذفها) ✅✅✅
-      // الكود هنا يأخذ الملف الناتج من الخطوة السابقة (tempPath) ويشفره
+      FirebaseCrashlytics.instance.log("✅ Download Finished. Starting Encryption...");
+
+      // 4. التشفير
       if (await tempFile.exists()) {
         final fileSize = await tempFile.length();
-        int minSize = isPdf ? 1024 * 10 : 1024 * 100; // 10KB للـ PDF و 100KB للفيديو
+        int minSize = isPdf ? 100 : 1024 * 10; // تقليل الحد الأدنى للـ PDF تحسباً للملفات الصغيرة
         
         if (fileSize < minSize) { 
           await tempFile.delete();
-          throw Exception("Download failed: File is too small or corrupted ($fileSize bytes)");
+          throw Exception("Download failed: File is too small ($fileSize bytes)");
         }
 
-        // قراءة البايتات
         final bytes = await tempFile.readAsBytes();
-        
-        // تشفير البايتات باستخدام مفتاحك الخاص (EncryptionHelper)
         final encrypted = EncryptionHelper.encrypter.encryptBytes(bytes, iv: EncryptionHelper.iv);
         
-        // حفظ الملف المشفر (.enc)
         final finalFile = File(savePath);
         await finalFile.writeAsBytes(encrypted.bytes);
         
-        // حذف الملف المؤقت غير المشفر للأمان
         await tempFile.delete(); 
+        FirebaseCrashlytics.instance.log("🔒 Encryption Success: $savePath");
+
       } else {
         throw Exception("Temp file not found after download process");
       }
@@ -191,34 +222,38 @@ class DownloadManager {
 
     } catch (e, stack) {
       if (e is DioException) {
-          FirebaseCrashlytics.instance.log("🌐 Dio URL: ${e.requestOptions.uri}");
+          FirebaseCrashlytics.instance.log("🌐 Dio Error URL: ${e.requestOptions.uri}");
+          FirebaseCrashlytics.instance.log("🌐 Dio Error Status: ${e.response?.statusCode}");
       }
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed: $lessonId');
       onError(e.toString());
     } finally {
       _activeDownloads.remove(lessonId);
+      
+      // ✅ حذف التقدم عند الانتهاء (سواء نجاح أو فشل)
+      var prog = Map<String, double>.from(downloadingProgress.value);
+      prog.remove(lessonId);
+      downloadingProgress.value = prog;
     }
   }
 
-  // 🔥 دالة دمج ملفات HLS (.ts) يدوياً بدون FFmpeg 🔥
+  // 🔥 دالة دمج ملفات HLS
   Future<void> _downloadAndMergeHls(String m3u8Url, String outputPath, Function(double) onProgress) async {
     try {
-      // 1. تحميل ملف القائمة (Playlist) لمعرفة أجزاء الفيديو
+      FirebaseCrashlytics.instance.log("🔄 Starting HLS Merge for: $m3u8Url");
+      
       final response = await _dio.get(m3u8Url);
       final content = response.data.toString();
       final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
 
-      // 2. استخراج روابط ملفات الـ .ts من داخل الملف النصي
       List<String> tsUrls = [];
       final lines = content.split('\n');
       for (var line in lines) {
         line = line.trim();
-        // تجاهل التعليقات والأسطر الفارغة
         if (line.isNotEmpty && !line.startsWith('#')) {
           if (line.startsWith('http')) {
             tsUrls.add(line);
           } else {
-            // تجميع الرابط النسبي مع الرابط الأساسي
             tsUrls.add(baseUrl + line);
           }
         }
@@ -226,34 +261,29 @@ class DownloadManager {
 
       if (tsUrls.isEmpty) throw Exception("No TS segments found in M3U8");
 
-      // 3. إنشاء الملف المؤقت وبدء الكتابة فيه
       final outputFile = File(outputPath);
-      // استخدام Sink للكتابة المباشرة (Append) لتوفير الرام
       final sink = outputFile.openWrite(mode: FileMode.writeOnlyAppend);
 
       int totalSegments = tsUrls.length;
       int downloadedSegments = 0;
 
       for (String url in tsUrls) {
-        // تحميل كل جزء (chunk) كبيانات خام (Bytes)
         final rs = await _dio.get<List<int>>(
           url,
           options: Options(responseType: ResponseType.bytes),
         );
         
         if (rs.data != null) {
-          // إضافة بيانات الجزء مباشرة في نهاية الملف المجمع
           sink.add(rs.data!);
         }
 
         downloadedSegments++;
-        // تحديث شريط التقدم
         onProgress(downloadedSegments / totalSegments);
       }
 
-      // إغلاق الملف وحفظه بعد انتهاء دمج كل الأجزاء
       await sink.flush();
       await sink.close();
+      FirebaseCrashlytics.instance.log("✅ HLS Merge Complete");
 
     } catch (e) {
       throw Exception("Manual HLS Merge Failed: $e");
