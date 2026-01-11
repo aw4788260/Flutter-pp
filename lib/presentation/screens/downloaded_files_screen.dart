@@ -4,7 +4,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/local_proxy.dart';
-import 'downloaded_subjects_screen.dart'; // تأكد من وجود هذا الملف أو استبدله بمسارك الصحيح
+import '../../core/services/download_manager.dart'; // ✅ استدعاء المدير
+import 'downloaded_subjects_screen.dart';
 
 class DownloadedFilesScreen extends StatefulWidget {
   const DownloadedFilesScreen({super.key});
@@ -16,9 +17,6 @@ class DownloadedFilesScreen extends StatefulWidget {
 class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
   final LocalProxyService _proxy = LocalProxyService();
   
-  // قائمة التحميلات النشطة (مستقبلاً يمكن ربطها بـ DownloadManager)
-  List<Map<String, dynamic>> activeDownloads = []; 
-
   @override
   void initState() {
     super.initState();
@@ -26,14 +24,10 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
   }
 
   Future<void> _init() async {
-    // التأكد من فتح الصندوق قبل استخدامه
     if (!Hive.isBoxOpen('downloads_box')) {
       await Hive.openBox('downloads_box');
     }
-    
-    // تشغيل السيرفر المحلي لتشغيل الفيديوهات المشفرة
     await _proxy.start();
-    
     if (mounted) setState(() {});
   }
 
@@ -95,156 +89,187 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                     ],
                   ),
                   
-                  // Active Downloads Badge (Optional)
-                  if (activeDownloads.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSecondary,
-                        borderRadius: BorderRadius.circular(50),
-                        border: Border.all(color: AppColors.accentYellow.withOpacity(0.2)),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
-                      ),
-                      child: const Text(
-                        "QUEUE",
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.accentYellow,
+                  // Active Downloads Badge (Dynamic)
+                  ValueListenableBuilder<Map<String, double>>(
+                    valueListenable: DownloadManager.downloadingProgress,
+                    builder: (context, progressMap, _) {
+                      if (progressMap.isEmpty) return const SizedBox.shrink();
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(50),
+                          border: Border.all(color: AppColors.accentYellow.withOpacity(0.2)),
+                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
                         ),
-                      ),
-                    ),
+                        child: Text(
+                          "${progressMap.length} ACTIVE",
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.accentYellow,
+                          ),
+                        ),
+                      );
+                    }
+                  ),
                 ],
               ),
             ),
 
-            // Content List with Auto-Refresh Logic
+            // Content List
             Expanded(
               child: ValueListenableBuilder(
-                // الاستماع للتغييرات في صندوق التحميلات
                 valueListenable: Hive.box('downloads_box').listenable(),
                 builder: (context, Box box, _) {
-                  // إعادة تجميع الكورسات عند كل تحديث
                   final Map<String, int> groupedCourses = {};
-                  
                   for (var key in box.keys) {
                     final item = box.get(key);
-                    // تجميع حسب اسم الكورس
                     final courseName = item['course'] ?? 'Unknown Course';
                     groupedCourses[courseName] = (groupedCourses[courseName] ?? 0) + 1;
                   }
 
-                  // حالة القائمة الفارغة
-                  if (groupedCourses.isEmpty && activeDownloads.isEmpty) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 80),
-                        child: Text(
-                          "NO STORED FILES",
-                          style: TextStyle(
-                            fontSize: 12, 
-                            fontWeight: FontWeight.bold, 
-                            color: Colors.white24, 
-                            letterSpacing: 2.0
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // قسم التحميلات النشطة (مخصص للعرض حالياً)
-                        if (activeDownloads.isNotEmpty) ...[
-                          const Padding(
-                            padding: EdgeInsets.only(left: 4, bottom: 12),
+                  // استخدام ValueListenableBuilder آخر داخلي لمراقبة التقدم
+                  return ValueListenableBuilder<Map<String, double>>(
+                    valueListenable: DownloadManager.downloadingProgress,
+                    builder: (context, progressMap, child) {
+                      
+                      if (groupedCourses.isEmpty && progressMap.isEmpty) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 80),
                             child: Text(
-                              "ACTIVE DOWNLOADS",
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
+                              "NO STORED FILES",
+                              style: TextStyle(
+                                fontSize: 12, 
+                                fontWeight: FontWeight.bold, 
+                                color: Colors.white24, 
+                                letterSpacing: 2.0
+                              ),
                             ),
                           ),
-                          // هنا يمكنك إضافة كود عرض عناصر التحميل الجاري...
-                        ],
+                        );
+                      }
 
-                        // قسم الكورسات المحملة
-                        if (groupedCourses.isNotEmpty) ...[
-                          if (activeDownloads.isNotEmpty) const SizedBox(height: 24), // مسافة فاصلة إذا وجد تحميل نشط
-                          
-                          ...groupedCourses.entries.map((entry) => GestureDetector(
-                            onTap: () {
-                              // الانتقال لشاشة المواد الخاصة بالكورس
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => DownloadedSubjectsScreen(courseTitle: entry.key),
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // ✅ قسم التحميلات النشطة
+                            if (progressMap.isNotEmpty) ...[
+                              const Padding(
+                                padding: EdgeInsets.only(left: 4, bottom: 12),
+                                child: Text(
+                                  "ACTIVE DOWNLOADS",
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
                                 ),
-                              );
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: AppColors.backgroundSecondary,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.white.withOpacity(0.05)),
-                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                               ),
-                              child: Row(
-                                children: [
-                                  // أيقونة الكتاب
-                                  Container(
-                                    width: 48, height: 48,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.backgroundPrimary,
-                                      borderRadius: BorderRadius.circular(12),
-                                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
-                                    ),
-                                    child: const Icon(LucideIcons.book, color: AppColors.accentOrange, size: 24),
+                              ...progressMap.entries.map((entry) {
+                                final percent = (entry.value * 100).toInt();
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.backgroundSecondary,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: AppColors.accentYellow.withOpacity(0.3)),
                                   ),
-                                  const SizedBox(width: 16),
-                                  
-                                  // تفاصيل الكورس
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          entry.key.toUpperCase(),
-                                          style: const TextStyle(
-                                            fontSize: 15, 
-                                            fontWeight: FontWeight.bold, 
-                                            color: AppColors.textPrimary, 
-                                            letterSpacing: -0.5
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          "${entry.value} FILES DOWNLOADED",
-                                          style: TextStyle(
-                                            fontSize: 9, 
-                                            fontWeight: FontWeight.bold, 
-                                            color: AppColors.textSecondary.withOpacity(0.7), 
-                                            letterSpacing: 1.5
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text("Downloading...", style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                                          Text("$percent%", style: const TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      LinearProgressIndicator(
+                                        value: entry.value,
+                                        backgroundColor: Colors.black26,
+                                        color: AppColors.accentYellow,
+                                        minHeight: 4,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ],
                                   ),
-                                  
-                                  // سهم الانتقال
-                                  Icon(LucideIcons.chevronRight, color: AppColors.textSecondary.withOpacity(0.6), size: 20),
-                                ],
-                              ),
-                            ),
-                          )),
-                        ],
-                      ],
-                    ),
+                                );
+                              }),
+                              const SizedBox(height: 24),
+                            ],
+
+                            // قسم الكورسات المحملة
+                            if (groupedCourses.isNotEmpty) ...[
+                              ...groupedCourses.entries.map((entry) => GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => DownloadedSubjectsScreen(courseTitle: entry.key),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.backgroundSecondary,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 48, height: 48,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.backgroundPrimary,
+                                          borderRadius: BorderRadius.circular(12),
+                                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
+                                        ),
+                                        child: const Icon(LucideIcons.book, color: AppColors.accentOrange, size: 24),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              entry.key.toUpperCase(),
+                                              style: const TextStyle(
+                                                fontSize: 15, 
+                                                fontWeight: FontWeight.bold, 
+                                                color: AppColors.textPrimary, 
+                                                letterSpacing: -0.5
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              "${entry.value} FILES DOWNLOADED",
+                                              style: TextStyle(
+                                                fontSize: 9, 
+                                                fontWeight: FontWeight.bold, 
+                                                color: AppColors.textSecondary.withOpacity(0.7), 
+                                                letterSpacing: 1.5
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Icon(LucideIcons.chevronRight, color: AppColors.textSecondary.withOpacity(0.6), size: 20),
+                                    ],
+                                  ),
+                                ),
+                              )),
+                            ],
+                          ],
+                        ),
+                      );
+                    },
                   );
                 },
               ),
