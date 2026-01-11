@@ -30,57 +30,45 @@ jobs:
       - name: Generate App Icons
         run: flutter pub run flutter_launcher_icons
         
+      # ✅ هذه هي الخطوة الجديدة المعدلة: تقوم بفك التشفير ثم اختبار الملف وكلمة السر فوراً
       - name: Create and Verify Keystore
         env:
           DATA: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           KEYSTORE_DATA: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          # نحتاج تمرير كلمة السر والاسم المستعار هنا لأجل أمر keytool
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
+          # 1. فك تشفير الملفات (مع حذف المسافات الزائدة لضمان سلامة الكود)
           echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
           echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
 
+          # 2. طباعة حجم الملف للتأكد من أنه ليس فارغاً
           echo "=== Checking keystore file size ==="
           ls -lh android/app/upload-keystore.jks
 
+          # 3. محاولة فتح الملف باستخدام keytool للتأكد من صحة كلمة المرور وسلامة الملف
+          # إذا فشل هذا الأمر، سيتوقف السكربت هنا وسنعرف أن المشكلة في كلمة السر أو التشفير
           echo "=== Verifying Keystore Integrity & Password ==="
           keytool -list -v \
             -keystore android/app/upload-keystore.jks \
             -storepass "$STORE_PASSWORD" \
             -alias "$KEY_ALIAS"
 
-      - name: Build APK (Split per ABI)
+      - name: Build APK
         env:
+          # تمرير الأسرار لعملية البناء الفعلية
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          # ✅ تم إضافة السر الجديد هنا
           APP_SECRET: ${{ secrets.APP_SECRET }}
         run: |
-          # البناء مع تقسيم المعماريات لتقليل الحجم
-          flutter build apk --release --split-per-abi --dart-define=APP_SECRET="$APP_SECRET"
+          # ✅ تمرير السر عبر dart-define
+          flutter build apk --release --dart-define=APP_SECRET="$APP_SECRET"
 
-      # ✅ خطوة جديدة لضغط كل نسخة في ملف ZIP منفصل
-      - name: Zip APKs individually
-        run: |
-          cd build/app/outputs/flutter-apk/
-          zip arm64-v8a.zip app-arm64-v8a-release.apk
-          zip armeabi-v7a.zip app-armeabi-v7a-release.apk
-          zip x86_64.zip app-x86_64-release.apk
-
-      - name: Upload arm64-v8a ZIP (Modern Phones)
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-arm64-v8a
-          path: build/app/outputs/flutter-apk/arm64-v8a.zip
-
-      - name: Upload armeabi-v7a ZIP (Old Phones)
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-armeabi-v7a
-          path: build/app/outputs/flutter-apk/armeabi-v7a.zip
-
-      - name: Upload x86_64 ZIP (Emulators)
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-x86_64
-          path: build/app/outputs/flutter-apk/x86_64.zip
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
