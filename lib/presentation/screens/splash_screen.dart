@@ -31,7 +31,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     super.initState();
     FirebaseCrashlytics.instance.log("App Started - Splash Screen");
 
-    // إعدادات الأنيميشن
+    // 1. إعدادات الأنيميشن
     _bounceController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -50,11 +50,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
     );
 
+    // 2. بدء عملية التهيئة
     _initializeApp();
   }
 
   Future<void> _initializeApp() async {
     try {
+      // فتح صناديق التخزين الأساسية
       await Hive.initFlutter();
       var authBox = await Hive.openBox('auth_box');
       await Hive.openBox('downloads_box');
@@ -63,10 +65,11 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       String? userId = authBox.get('user_id');
       String? deviceId = authBox.get('device_id');
 
+      // لضمان ظهور شعار التطبيق لفترة كافية
       await Future.delayed(const Duration(seconds: 1));
       if (mounted) setState(() => _loadingText = "CONNECTING...");
 
-      // محاولة الاتصال بالسيرفر لجلب البيانات المحدثة
+      // محاولة الاتصال بالسيرفر لجلب أحدث البيانات
       final response = await _dio.get(
         '$_baseUrl/api/public/get-app-init-data',
         options: Options(
@@ -75,22 +78,22 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             'x-device-id': deviceId,
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
-          // مهلة قصيرة للتحقق من الاتصال (5 ثواني)
-          sendTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
+          // تحديد مهلة اتصال قصيرة (6 ثواني) لضمان عدم تعليق المستخدم
+          sendTimeout: const Duration(seconds: 6),
+          receiveTimeout: const Duration(seconds: 6),
         ),
       );
 
       if (response.statusCode == 200 && response.data['success'] == true) {
-        // ✅ نجاح الاتصال: تحديث الكاش بالبيانات الجديدة
+        // ✅ نجاح الاتصال: تحديث الكاش بالبيانات الجديدة للاستخدام أوفلاين لاحقاً
         await cacheBox.put('init_data', response.data);
 
-        // تحديث AppState بالبيانات المحدثة
+        // تحديث حالة التطبيق العامة
         AppState().updateFromInitData(response.data);
 
         bool isLoggedIn = response.data['isLoggedIn'] ?? false;
         
-        // أمنياً: إذا كان السيرفر يقول أن الجلسة منتهية، امسح البيانات المحلية
+        // التحقق من صحة الجلسة: إذا انتهت الجلسة في السيرفر، نمسح البيانات المحلية
         if (userId != null && !isLoggedIn) {
           await authBox.clear();
         }
@@ -98,20 +101,21 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         if (mounted) _navigateToNextScreen(isLoggedIn);
         
       } else {
-        throw Exception("Server returned failure");
+        throw Exception("Server Error");
       }
 
     } catch (e, stack) {
-      // ❌ فشل الاتصال (إنترنت ضعيف أو سيرفر): محاولة تحميل الكاش
       FirebaseCrashlytics.instance.log("Splash Connection Failed: $e");
+      
+      // ❌ في حالة الفشل (أوفلاين أو خطأ سيرفر): محاولة تحميل الكاش المحفوظ
       if (mounted) {
-        setState(() => _loadingText = "CHECKING CACHE...");
+        setState(() => _loadingText = "OFFLINE MODE...");
         await _tryLoadOfflineData();
       }
     }
   }
 
-  // ✅ محاولة تحميل البيانات المحفوظة مسبقاً (Offline Support)
+  // ✅ دالة محاولة التحميل من الذاكرة المحلية (الدعم أوفلاين)
   Future<void> _tryLoadOfflineData() async {
     try {
       var cacheBox = await Hive.openBox('app_cache');
@@ -120,24 +124,23 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       String? userId = authBox.get('user_id');
 
       if (cachedData != null) {
-        // ✅ وجدنا بيانات محفوظة!
+        // ✅ وجدنا بيانات محفوظة سابقاً!
         AppState().updateFromInitData(Map<String, dynamic>.from(cachedData));
         
         if (mounted) {
-          // إظهار تنبيه وضع الأوفلاين
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text("No Internet Connection. Running in Offline Mode."),
+              content: Text("No Internet Connection. Using saved offline data."),
               backgroundColor: Colors.orange,
-              duration: Duration(seconds: 4),
+              duration: Duration(seconds: 3),
             ),
           );
           
-          // إذا كان المستخدم يملك بيانات مسجلة محلياً، نعتبره مسجل دخول أوفلاين
+          // إذا كان مسجل دخول سابقاً ولديه userId، نعتبره مسجل دخول في وضع الأوفلاين
           _navigateToNextScreen(userId != null);
         }
       } else {
-        // ❌ لا يوجد كاش ولا إنترنت
+        // ❌ لا توجد بيانات محفوظة ولا إنترنت
         if (mounted) _showRetryDialog();
       }
     } catch (e) {
@@ -159,9 +162,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.backgroundSecondary,
-        title: const Text("Offline", style: TextStyle(color: AppColors.textPrimary)),
+        title: const Text("Connection Error", style: TextStyle(color: AppColors.textPrimary)),
         content: const Text(
-          "Could not connect to the server and no offline data was found. Please check your connection and try again.",
+          "Could not connect to the server and no offline data found.\nPlease check your internet connection.",
           style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
@@ -171,7 +174,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
               setState(() => _loadingText = "RETRYING...");
               _initializeApp(); 
             },
-            child: const Text("RETRY", style: TextStyle(color: AppColors.accentYellow)),
+            child: const Text("RETRY", style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -199,6 +202,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // اللوجو المتحرك (Bounce)
                 AnimatedBuilder(
                   animation: _bounceAnimation,
                   builder: (context, child) {
@@ -225,6 +229,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 ),
               ],
             ),
+            
+            // شريط التحميل السفلي
             Positioned(
               bottom: 80,
               child: Column(
