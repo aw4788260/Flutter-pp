@@ -3,9 +3,11 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-// الاستيراد الصحيح بناءً على الحزمة في pubspec
-import 'package:ffmpeg_kit_flutter_full_gpl/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_full_gpl/return_code.dart';
+
+// ✅ التعديل: الاستيراد من المكتبة الجديدة والمحدثة
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+
 import '../utils/encryption_helper.dart';
 
 class DownloadManager {
@@ -23,7 +25,7 @@ class DownloadManager {
     return Hive.box('downloads_box').containsKey(id);
   }
 
-  /// دالة بدء عملية التحميل (تدعم الفيديو و PDF)
+  /// دالة بدء عملية التحميل (تدعم الفيديو HLS/MP4 و ملفات PDF)
   Future<void> startDownload({
     required String lessonId,
     required String videoTitle,
@@ -34,7 +36,7 @@ class DownloadManager {
     required Function(double) onProgress,
     required Function() onComplete,
     required Function(String) onError,
-    bool isPdf = false, // معامل جديد لتحديد نوع الملف
+    bool isPdf = false, // تحديد نوع الملف
   }) async {
     _activeDownloads.add(lessonId);
 
@@ -47,7 +49,7 @@ class DownloadManager {
         throw Exception("User authentication missing");
       }
 
-      // استخدام قيمة افتراضية للـ Secret لضمان العمل
+      // الحصول على السر من متغيرات البيئة مع قيمة افتراضية للأمان
       const String appSecret = String.fromEnvironment(
         'APP_SECRET', 
         defaultValue: 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only' 
@@ -55,11 +57,9 @@ class DownloadManager {
 
       String? finalUrl = downloadUrl;
 
-      // 1. جلب الرابط تلقائياً إذا لم يتم توفيره
+      // 1. جلب الرابط تلقائياً إذا لم يتم توفيره بناءً على نوع المحتوى
       if (finalUrl == null) {
-        // تحديد نقطة النهاية (Endpoint) بناءً على نوع الملف
         final endpoint = isPdf ? '/api/secure/get-pdf' : '/api/secure/get-video-id';
-        // المعامل المطلوب (pdfId للـ PDF و lessonId للفيديو)
         final queryParam = isPdf ? {'pdfId': lessonId} : {'lessonId': lessonId};
 
         final res = await _dio.get(
@@ -82,19 +82,11 @@ class DownloadManager {
         final data = res.data;
         
         if (isPdf) {
-          // في حالة PDF، الرابط قد يكون مباشراً أو يحتاج لبناء
-          // نفترض هنا أن الـ API يعيد الرابط في حقل 'url' أو يتم استنتاجه
-          // هذا يعتمد على هيكل الرد الخاص بك للـ PDF.
-          // إذا كان الـ API يعيد الملف مباشرة (Binary)، سنحتاج لمنطق مختلف.
-          // هنا نفترض أنه يعيد رابطاً مثل الفيديو.
            finalUrl = data['url'];
-           // إذا كان الـ API يعيد الملف binary مباشرة، يجب استخدام dio.download مع الرابط أعلاه
            if (finalUrl == null) {
-             // fallback: بناء رابط التحميل المباشر
              finalUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
            }
         } else {
-          // منطق الفيديو (كما هو سابقاً)
           if (data['youtube_video_id'] != null && (data['availableQualities'] == null || (data['availableQualities'] as List).isEmpty)) {
              throw Exception("YouTube videos cannot be downloaded offline.");
           }
@@ -113,17 +105,14 @@ class DownloadManager {
         throw Exception("No valid download link found");
       }
 
-      // 2. تجهيز المسارات
+      // 2. تجهيز المسارات (دعم العربية وتنظيف الرموز)
       final appDir = await getApplicationDocumentsDirectory();
-      
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeChapter = chapterName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       
       final dir = Directory('${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter');
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
+      if (!await dir.exists()) await dir.create(recursive: true);
 
       final tempPath = '${dir.path}/$lessonId.temp';
       final savePath = '${dir.path}/$lessonId.enc';
@@ -131,14 +120,13 @@ class DownloadManager {
       File tempFile = File(tempPath);
       if (await tempFile.exists()) await tempFile.delete();
 
-      // 3. التحميل (حسب النوع)
-      
-      // ✅ دعم HLS للفيديو فقط
+      // 3. التحميل (HLS للفيديو فقط، Dio للـ MP4 و PDF)
       bool isHls = !isPdf && (finalUrl.contains('.m3u8') || finalUrl.contains('.m3u'));
 
       if (isHls) {
-        // --- تحميل الفيديو باستخدام FFmpeg ---
+        // --- تحميل وتحويل HLS باستخدام FFmpeg ---
         String userAgent = 'Mozilla/5.0 (Linux; Android 10; Mobile; rv:100.0) Gecko/100.0 Firefox/100.0';
+        // إجبار الصيغة على mp4 لضمان عمل التشفير لاحقاً
         final command = '-y -user_agent "$userAgent" -i "$finalUrl" -c copy -bsf:a aac_adtstoasc -f mp4 "$tempPath"';
         
         onProgress(0.1); 
@@ -150,14 +138,13 @@ class DownloadManager {
            final failStackTrace = await session.getFailStackTrace();
            final logs = await session.getLogs();
            String logMsg = logs.map((l) => l.getMessage()).join("\n");
-           FirebaseCrashlytics.instance.log("FFmpeg Output: $logMsg");
-           throw Exception("FFmpeg failed: $failStackTrace");
+           FirebaseCrashlytics.instance.log("FFmpeg Error: $logMsg");
+           throw Exception("FFmpeg failed to process video: $failStackTrace");
         }
         onProgress(0.9);
       } else {
-        // --- تحميل مباشر (MP4 أو PDF) ---
+        // --- تحميل مباشر باستخدام Dio (MP4 أو PDF) ---
         Options downloadOptions = Options();
-        // إضافة الهيدرز إذا كان الرابط من السيرفر الخاص بنا
         if (finalUrl.contains(_baseUrl) || isPdf) {
            downloadOptions = Options(headers: {
               'x-user-id': userId,
@@ -171,40 +158,34 @@ class DownloadManager {
           tempPath,
           options: downloadOptions,
           onReceiveProgress: (received, total) {
-            if (total != -1) {
-              onProgress(received / total);
-            }
+            if (total != -1) onProgress(received / total);
           },
         );
       }
 
-      // 4. التشفير والحفظ
+      // 4. التحقق من سلامة الملف وتشفيره
       if (await tempFile.exists()) {
         final fileSize = await tempFile.length();
         
-        // ✅ تعديل شرط الحجم: ملفات PDF قد تكون صغيرة (مثلاً 50KB)، الفيديو لا يقل عن 500KB غالباً
-        int minSize = isPdf ? 1024 * 10 : 1024 * 500; // 10KB للـ PDF و 500KB للفيديو
+        // حد أدنى مختلف: 10KB للـ PDF و 500KB للفيديو
+        int minSize = isPdf ? 1024 * 10 : 1024 * 500; 
         
         if (fileSize < minSize) { 
           await tempFile.delete();
-          throw Exception("Download failed: File corrupted or too small ($fileSize bytes)");
+          throw Exception("Download failed: File is too small or corrupted ($fileSize bytes)");
         }
 
         final bytes = await tempFile.readAsBytes();
-        
-        final encrypted = EncryptionHelper.encrypter.encryptBytes(
-          bytes, 
-          iv: EncryptionHelper.iv
-        );
+        final encrypted = EncryptionHelper.encrypter.encryptBytes(bytes, iv: EncryptionHelper.iv);
         
         final finalFile = File(savePath);
         await finalFile.writeAsBytes(encrypted.bytes);
-        await tempFile.delete();
+        await tempFile.delete(); // حذف الملف المؤقت غير المشفر
       } else {
-        throw Exception("Download failed: Temp file not created");
+        throw Exception("Temp file not found after download process");
       }
 
-      // 5. حفظ البيانات في Hive
+      // 5. حفظ البيانات في Hive للاستخدام أوفلاين
       var downloadsBox = await Hive.openBox('downloads_box');
       await downloadsBox.put(lessonId, {
         'id': lessonId,
@@ -213,7 +194,7 @@ class DownloadManager {
         'course': courseName,
         'subject': subjectName,
         'chapter': chapterName,
-        'type': isPdf ? 'pdf' : 'video', // حفظ نوع الملف
+        'type': isPdf ? 'pdf' : 'video',
         'date': DateTime.now().toIso8601String(),
         'size': File(savePath).lengthSync(),
       });
@@ -221,15 +202,14 @@ class DownloadManager {
       onComplete();
 
     } catch (e, stack) {
-      // تسجيل الأخطاء الخام (Raw Logs)
       if (e is DioException) {
-          FirebaseCrashlytics.instance.log("🌐 URL: ${e.requestOptions.uri}");
+          FirebaseCrashlytics.instance.log("🌐 Dio URL: ${e.requestOptions.uri}");
           if(e.response != null) {
             FirebaseCrashlytics.instance.log("🔢 Status: ${e.response?.statusCode}");
-            FirebaseCrashlytics.instance.log("📄 Response: ${e.response?.data}");
+            FirebaseCrashlytics.instance.log("📄 Body: ${e.response?.data}");
           }
       }
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed: $lessonId (PDF: $isPdf)');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed: $lessonId (Is PDF: $isPdf)');
       onError(e.toString());
     } finally {
       _activeDownloads.remove(lessonId);
