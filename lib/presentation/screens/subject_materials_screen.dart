@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ تأكد من الاستيراد
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
 import '../../core/constants/app_colors.dart';
 import 'chapter_contents_screen.dart';
 import 'exam_view_screen.dart';
-import 'exam_result_screen.dart'; // ✅ ضروري للانتقال لصفحة النتائج
+import 'exam_result_screen.dart'; 
 
 class SubjectMaterialsScreen extends StatefulWidget {
   final String subjectId;
@@ -33,7 +33,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ تسجيل الدخول للصفحة
     FirebaseCrashlytics.instance.log("Opened Subject: ${widget.subjectTitle} (${widget.subjectId})");
     _fetchContent();
   }
@@ -61,7 +60,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         });
       }
     } catch (e, stack) {
-      // ✅ تسجيل خطأ الجلب
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Fetching Subject Content Failed');
       if (mounted) setState(() { _error = "Failed to load content."; _loading = false; });
     }
@@ -165,7 +163,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     );
   }
 
-  // --- قائمة الامتحانات (معدلة بالألوان والمنطق الجديد) ---
+  // --- قائمة الامتحانات (معدلة لتتوافق مع الباك اند) ---
   Widget _buildExamsList(List exams) {
     if (exams.isEmpty) return _buildEmptyState(LucideIcons.fileCheck, "No exams available");
 
@@ -176,17 +174,14 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         final exam = exams[index];
         final bool isCompleted = exam['isCompleted'] ?? false;
 
-        // ✅ تحديد اللون والحالة بناءً على الحل
         final Color statusColor = isCompleted ? AppColors.success : AppColors.error;
         final String statusText = isCompleted ? "COMPLETED" : "UNSOLVED";
 
         return GestureDetector(
           onTap: () {
              if (isCompleted) {
-               // ✅ 1. إذا كان محلولاً، اذهب لصفحة النتائج
-               // ملاحظة: يجب أن يعيد الـ API حقلاً مثل 'first_attempt_id' أو 'attempt_id'
-               // إذا لم يكن موجوداً، سيفشل الانتقال.
-               final attemptId = exam['first_attempt_id'] ?? exam['attempt_id']; 
+               // ✅ تم التعديل هنا: قراءة last_attempt_id القادم من الباك اند الجديد
+               final attemptId = exam['last_attempt_id'] ?? exam['first_attempt_id'] ?? exam['attempt_id']; 
                
                if (attemptId != null) {
                  Navigator.push(
@@ -194,22 +189,23 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                    MaterialPageRoute(
                      builder: (_) => ExamResultScreen(
                        attemptId: attemptId.toString(),
-                       examTitle: exam['title'],
+                       examTitle: exam['title'] ?? 'Exam Result',
                      ),
                    ),
                  );
                } else {
+                 // عرض رسالة خطأ واضحة
                  ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(content: Text("Error: Cannot load result (No Attempt ID)."), backgroundColor: AppColors.error)
+                   const SnackBar(content: Text("Error: Cannot load result (No Attempt ID found)."), backgroundColor: AppColors.error)
                  );
                }
              } else {
-               // ✅ 2. إذا كان غير محلول، اذهب لصفحة الامتحان
+               // إذا لم يكن محلولاً، افتح صفحة الامتحان
                Navigator.push(
                  context,
                  MaterialPageRoute(builder: (_) => ExamViewScreen(
                    examId: exam['id'].toString(),
-                   examTitle: exam['title'],
+                   examTitle: exam['title'] ?? 'Exam',
                    isCompleted: isCompleted,
                  )),
                );
@@ -221,7 +217,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
             decoration: BoxDecoration(
               color: AppColors.backgroundSecondary,
               borderRadius: BorderRadius.circular(16),
-              // ✅ إضافة إطار خفيف بلون الحالة
               border: Border.all(color: statusColor.withOpacity(0.3), width: 1),
             ),
             child: Row(
@@ -231,10 +226,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.backgroundPrimary,
                     borderRadius: BorderRadius.circular(12),
-                    // ✅ تغيير لون الحدود الداخلية للأيقونة
                     border: Border.all(color: statusColor.withOpacity(0.5)),
                   ),
-                  // ✅ تغيير الأيقونة حسب الحالة
                   child: Icon(
                     isCompleted ? LucideIcons.checkCircle2 : LucideIcons.fileX, 
                     color: statusColor, 
@@ -247,7 +240,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        exam['title'].toString().toUpperCase(),
+                        (exam['title'] ?? 'Untitled Exam').toString().toUpperCase(),
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -259,7 +252,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                       Row(
                         children: [
                           Text(
-                            "${exam['duration_minutes']} MINS",
+                            "${exam['duration_minutes'] ?? 0} MINS",
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
@@ -268,7 +261,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          // ✅ عرض نص الحالة (Completed/Unsolved)
                           Text(
                             statusText,
                             style: TextStyle(
@@ -283,7 +275,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     ],
                   ),
                 ),
-                // سهم ملون
                 Icon(LucideIcons.chevronRight, size: 20, color: statusColor.withOpacity(0.5)),
               ],
             ),
@@ -301,8 +292,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       itemCount: chapters.length,
       itemBuilder: (context, index) {
         final chapter = chapters[index];
-        final videosCount = (chapter['videos'] as List).length;
-        final pdfsCount = (chapter['pdfs'] as List).length;
+        final videosCount = (chapter['videos'] as List? ?? []).length;
+        final pdfsCount = (chapter['pdfs'] as List? ?? []).length;
 
         return GestureDetector(
           onTap: () => Navigator.push(
@@ -345,7 +336,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        chapter['title'].toString().toUpperCase(),
+                        (chapter['title'] ?? 'Chapter').toString().toUpperCase(),
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -389,7 +380,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       child: GestureDetector(
         onTap: () {
           setState(() => _activeTab = key);
-          // ✅ تسجيل التبديل
           FirebaseCrashlytics.instance.log("Switched tab to: $key");
         },
         child: AnimatedContainer(
