@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/app_state.dart'; // تأكد من وجود هذا الملف
+import '../../core/services/app_state.dart'; 
 import 'login_screen.dart';
 import 'main_wrapper.dart';
 
@@ -23,7 +23,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late Animation<double> _progressAnimation;
 
   final Dio _dio = Dio();
-  // ⚠️ استبدل هذا الرابط برابط الباك اند الحقيقي الخاص بك
   final String _baseUrl = 'https://courses.aw478260.dpdns.org'; 
 
   @override
@@ -31,7 +30,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     super.initState();
     FirebaseCrashlytics.instance.log("App Started - Splash Screen");
 
-    // 1. إعدادات الأنيميشن (نفس التصميم الأصلي)
+    // 1. إعدادات الأنيميشن
     _bounceController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -64,47 +63,106 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       String? userId = box.get('user_id');
       String? deviceId = box.get('device_id');
 
-      // محاكاة وقت التحميل (لإكمال الأنيميشن)
+      // محاكاة وقت التحميل
       await Future.delayed(const Duration(seconds: 2));
 
-      // استدعاء API التهيئة
-      final response = await _dio.get(
-        '$_baseUrl/api/public/get-app-init-data',
-        options: Options(
-          headers: {
-            'x-user-id': userId,
-            'x-device-id': deviceId,
-            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
-          },
-          receiveTimeout: const Duration(seconds: 10),
-        ),
-      );
-
-      if (response.statusCode == 200 && response.data['success'] == true) {
-        // تحديث البيانات في الذاكرة
-        AppState().updateFromInitData(response.data);
-
-        bool isLoggedIn = response.data['isLoggedIn'] ?? false;
-
-        // إذا فشل التحقق من السيرفر، نعتبره خروج
-        if (userId != null && !isLoggedIn) {
-          await box.clear();
-        }
-
+      // ✅ 1. إذا لم يكن هناك مستخدم مسجل مسبقاً، اذهب للدخول فوراً
+      if (userId == null || deviceId == null) {
         if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => isLoggedIn ? const MainWrapper() : const LoginScreen(),
-            ),
-          );
+           Navigator.of(context).pushReplacement(
+             MaterialPageRoute(builder: (_) => const LoginScreen()),
+           );
         }
-      } else {
-        throw Exception("Failed to init data");
+        return;
+      }
+
+      // ✅ 2. محاولة الاتصال بالسيرفر (Online Check)
+      try {
+        final response = await _dio.get(
+          '$_baseUrl/api/public/get-app-init-data',
+          options: Options(
+            headers: {
+              'x-user-id': userId,
+              'x-device-id': deviceId,
+              'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+            },
+            receiveTimeout: const Duration(seconds: 10),
+          ),
+        );
+
+        if (response.statusCode == 200 && response.data['success'] == true) {
+          // ✅ أونلاين: تخزين نسخة جديدة من البيانات للكاش (للاستخدام لاحقاً بدون نت)
+          await box.put('cached_init_data', response.data);
+
+          // تحديث حالة التطبيق (AppState)
+          AppState().updateFromInitData(response.data);
+
+          bool isLoggedIn = response.data['isLoggedIn'] ?? false;
+
+          // إذا رد السيرفر بأن المستخدم "غير مسجل دخول" (تم حظره أو تغيير جهازه)
+          if (!isLoggedIn) {
+            await box.clear(); // مسح البيانات
+            if (mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            }
+            return;
+          }
+
+          // الدخول للصفحة الرئيسية (Online Mode)
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const MainWrapper()),
+            );
+          }
+        } else {
+          throw Exception("Server Error: ${response.statusCode}");
+        }
+
+      } catch (serverError) {
+        // ✅ 3. (Offline Fallback) فشل الاتصال.. استخدام البيانات المخزنة
+        FirebaseCrashlytics.instance.log("Splash Offline Mode: $serverError");
+
+        // هل لدينا بيانات مخزنة من آخر مرة؟
+        final cachedData = box.get('cached_init_data');
+        
+        if (cachedData != null) {
+           // ✅ نعم: استخدم الكاش وادخل وضع الأوفلاين
+           try {
+             AppState().updateFromInitData(Map<String, dynamic>.from(cachedData));
+           } catch (_) {}
+
+           if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(
+               const SnackBar(
+                 content: Text("No Internet. Entering Offline Mode."),
+                 backgroundColor: AppColors.accentOrange,
+                 duration: Duration(seconds: 3),
+               ),
+             );
+             // الدخول للصفحة الرئيسية (Offline Mode)
+             Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const MainWrapper()),
+             );
+           }
+        } else {
+           // ❌ لا: لا يوجد كاش (أول مرة يفتح التطبيق ولا يوجد نت)
+           // نسمح بالدخول المحدود للوصول للتحميلات (إن وجدت في downloads_box)
+           if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+               const SnackBar(content: Text("Offline Mode (Limited Access)"), backgroundColor: Colors.grey),
+             );
+             Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const MainWrapper()),
+             );
+           }
+        }
       }
 
     } catch (e, stack) {
+      // أخطاء قاتلة في النظام (Hive failure, etc)
       FirebaseCrashlytics.instance.recordError(e, stack);
-      // في حالة الخطأ، نذهب لتسجيل الدخول كاحتياط
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
