@@ -1,57 +1,47 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
-// import 'package:firebase_core/firebase_core.dart'; // تعليق مؤقت
-// import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // تعليق مؤقت
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
+// import 'firebase_options.dart'; // ❌ تم إيقافه كما طلبت للاعتماد على google-services.json مباشرة
 import 'core/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
 
-void main() {
+void main() async {
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // 🔥 كود كشف الأخطاء (بدون Firebase) 🔥
-    ErrorWidget.builder = (FlutterErrorDetails details) {
-      return Material(
-        color: Colors.blueGrey.shade900,
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.yellowAccent, size: 60),
-                const SizedBox(height: 20),
-                const Text(
-                  "THE REAL ERROR IS:",
-                  style: TextStyle(color: Colors.yellowAccent, fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                const SizedBox(height: 20),
-                // عرض نص الخطأ الحقيقي
-                Text(
-                  details.exception.toString(),
-                  style: const TextStyle(color: Colors.white, fontSize: 14, fontFamily: 'monospace'),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  "Stack: ${details.stack.toString().split('\n').first}", // السطر الأول فقط من المسار
-                  style: const TextStyle(color: Colors.grey, fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    };
-    // 🔥 نهاية الكود 🔥
+    // 1. تفعيل وضع الحماية (منع لقطات الشاشة وتسجيل الفيديو)
+    await _enableSecureMode();
 
+    // 2. تهيئة Firebase
+    // نتحقق أولاً إذا كان التطبيق مهيأً مسبقاً لتجنب أخطاء DuplicateApp
+    if (Firebase.apps.isEmpty) {
+      // التهيئة بدون options تجعل التطبيق يقرأ الإعدادات تلقائياً من ملف:
+      // android/app/google-services.json (للأندرويد)
+      // ios/Runner/GoogleService-Info.plist (للايفون)
+      await Firebase.initializeApp();
+    }
+
+    // 3. تفعيل تسجيل الأخطاء القاتلة في Crashlytics
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+    // تشغيل التطبيق
     runApp(const EduVantageApp());
-    
   }, (error, stack) {
-    debugPrint("Global Error: $error");
+    // تسجيل الأخطاء غير المتوقعة (Async Errors)
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
   });
+}
+
+/// دالة تفعيل الحماية الأمنية
+Future<void> _enableSecureMode() async {
+  try {
+    // FLAG_SECURE يمنع ظهور محتوى التطبيق في الـ Recent Apps ويمنع لقطات الشاشة
+    await FlutterWindowManagerPlus.addFlags(FlutterWindowManagerPlus.FLAG_SECURE);
+  } catch (e) {
+    debugPrint("Security Mode Error: $e");
+  }
 }
 
 class EduVantageApp extends StatelessWidget {
@@ -61,10 +51,10 @@ class EduVantageApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'EduVantage',
-      theme: AppTheme.darkTheme,
+      title: 'مــــداد', // الاسم الظاهر في التطبيق
+      theme: AppTheme.darkTheme, // الثيم المطابق لـ Gunmetal
       themeMode: ThemeMode.dark,
-      home: const SplashScreen(),
+      home: const SplashScreen(), // نقطة البداية (Splash -> Login -> Home)
     );
   }
 }
