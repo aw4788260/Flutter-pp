@@ -24,26 +24,28 @@ android {
 
     signingConfigs {
         create("release") {
-            // ✅ القراءة من متغيرات البيئة بأسماء مطابقة تماماً للأسرار في الصورة
-            // استخدام .trim() يحل مشكلة الرموز الخاصة والمسافات الخفية
+            // قراءة المتغيرات من البيئة (للأتمتة عبر GitHub Actions)
             keyAlias = System.getenv("KEY_ALIAS")?.trim() ?: ""
             keyPassword = System.getenv("KEY_PASSWORD")?.trim() ?: ""
             storePassword = System.getenv("STORE_PASSWORD")?.trim() ?: "" 
             
-            // الملف يتم إنشاؤه بواسطة الأتمتة داخل مجلد app مباشرة
+            // ملف التوقيع يتم إنشاؤه أثناء البناء
             storeFile = file("upload-keystore.jks")
         }
     }
 
     buildTypes {
         release {
-            // ربط التوقيع بالنسخة النهائية
+            // إعدادات التوقيع
             signingConfig = signingConfigs.getByName("release")
             
+            // إعدادات التصغير والحماية
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+            
+            // رفع رموز التصحيح لـ NDK (لحل مشاكل C++ في Crashlytics)
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
                 nativeSymbolUploadEnabled = true
             }
         }
@@ -57,6 +59,17 @@ configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // ✅✅✅ هذا هو الجزء الجديد والهام جداً لحل مشكلة FFmpeg ✅✅✅
+    packaging {
+        jniLibs {
+            // يمنع تضارب المكتبات المشتركة عند استخدام FFmpeg مع مكتبات أخرى
+            pickFirst("lib/x86/libc++_shared.so")
+            pickFirst("lib/x86_64/libc++_shared.so")
+            pickFirst("lib/armeabi-v7a/libc++_shared.so")
+            pickFirst("lib/arm64-v8a/libc++_shared.so")
+        }
+    }
 }
 
 flutter {
@@ -67,6 +80,8 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-crashlytics")
-implementation("com.google.firebase:firebase-crashlytics-ndk:18.6.0")
+    // مكتبة NDK لالتقاط أخطاء FFmpeg
+    implementation("com.google.firebase:firebase-crashlytics-ndk:18.6.0")
+    
     implementation("androidx.multidex:multidex:2.0.1")
 }
