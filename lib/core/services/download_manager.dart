@@ -5,9 +5,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 // ✅ التعديل: الاستيراد من المكتبة الجديدة والمحدثة
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
-
+import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
 import '../utils/encryption_helper.dart';
 
 class DownloadManager {
