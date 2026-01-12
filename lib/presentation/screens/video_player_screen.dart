@@ -68,12 +68,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     _player = Player();
     
-    // ✅ تم التصحيح: إزالة androidAttachSurfaceAfterVideoOutput
+    // ✅ إعداد الكونترولر
     _controller = VideoController(
       _player,
       configuration: const VideoControllerConfiguration(
         enableHardwareAcceleration: true,
-        // androidAttachSurfaceAfterVideoOutput: true, // ❌ تم الحذف لأنه غير مدعوم في الإصدار المثبت
       ),
     );
 
@@ -110,6 +109,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _enterFullScreenMode() async {
+    // ✅ استخدام immersiveSticky لإخفاء أشرطة النظام بالكامل
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
@@ -223,7 +223,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       String playUrl = url;
       FirebaseCrashlytics.instance.log("🔄 Preparing to play: $url");
 
-      // 1. أوفلاين (استخدام البروكسي)
       if (!url.startsWith('http')) {
         final file = File(url);
         if (!await file.exists()) {
@@ -235,12 +234,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
            throw Exception("Offline file missing");
         }
 
-        // ✅ تحويل المسار لرابط محلي يمر عبر البروكسي
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
         FirebaseCrashlytics.instance.log("🔗 Proxy URL Generated: $playUrl");
       } 
       
-      // 2. أونلاين أو أوفلاين (كلاهما الآن HTTP)
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
       if (startAt != null) {
@@ -275,7 +272,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // دوال عرض القوائم (Settings)
+  // ... (نفس دوال عرض القوائم _showSettingsSheet وغيرها لم تتغير)
   void _showSettingsSheet() {
     showModalBottomSheet(
       context: context,
@@ -367,9 +364,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _watermarkTimer?.cancel();
     _screenRecordingTimer?.cancel();
     
-    // ✅ إيقاف البروكسي
     _proxyService.stop();
-
     _player.dispose();
     
     _exitFullScreenMode();
@@ -389,129 +384,121 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            // 1. المشغل مع تخصيص الأزرار بالكامل
-            Positioned.fill(
-              child: Center(
-                child: _isError
-                    ? Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-                          const SizedBox(height: 16),
-                          Text(_errorMessage, style: const TextStyle(color: Colors.white)),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: () {
-                               FirebaseCrashlytics.instance.log("🔄 User Clicked Retry");
-                               setState(() => _isError = false);
-                               _playVideo(widget.streams[_currentQuality]!);
-                            }, 
-                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
-                            child: const Text("Retry", style: TextStyle(color: Colors.black)),
-                          )
-                        ],
-                      )
-                    : MaterialVideoControlsTheme(
-                        // ✅ هنا يتم تخصيص أماكن الأزرار
-                        normal: MaterialVideoControlsThemeData(
-                          // ✅ تم التصحيح: إزالة brightness لأنه غير مدعوم
-                          // 1. الشريط العلوي (رجوع + عنوان)
-                          topButtonBar: [
-                            const SizedBox(width: 14),
-                            MaterialCustomButton(
+        // ✅ استخدام SafeArea هنا يحل مشكلة الأبعاد غير المضبوطة مع النوتش
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Center(
+                  child: _isError
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                            const SizedBox(height: 16),
+                            Text(_errorMessage, style: const TextStyle(color: Colors.white)),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
                               onPressed: () {
-                                _exitFullScreenMode();
-                                Navigator.pop(context);
-                              },
-                              icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-                            ),
-                            const SizedBox(width: 14),
-                            Text(
-                              widget.title,
-                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
+                                 FirebaseCrashlytics.instance.log("🔄 User Clicked Retry");
+                                 setState(() => _isError = false);
+                                 _playVideo(widget.streams[_currentQuality]!);
+                              }, 
+                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
+                              child: const Text("Retry", style: TextStyle(color: Colors.black)),
+                            )
                           ],
-                          
-                          // 2. شريط المنتصف (تأخير 10 - تشغيل - تقديم 10)
-                          primaryButtonBar: [
-                            const Spacer(flex: 2),
-                            // زر تأخير 10 ثواني
-                            MaterialCustomButton(
-                              onPressed: () => _seekRelative(const Duration(seconds: -10)),
-                              icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
-                            ),
-                            const SizedBox(width: 24),
-                            // زر التشغيل/الإيقاف الافتراضي
-                            const MaterialPlayOrPauseButton(iconSize: 56),
-                            const SizedBox(width: 24),
-                            // زر تقديم 10 ثواني
-                            MaterialCustomButton(
-                              onPressed: () => _seekRelative(const Duration(seconds: 10)),
-                              icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
-                            ),
-                            const Spacer(flex: 2),
-                          ],
+                        )
+                      : MaterialVideoControlsTheme(
+                          normal: MaterialVideoControlsThemeData(
+                            topButtonBar: [
+                              const SizedBox(width: 14),
+                              MaterialCustomButton(
+                                onPressed: () {
+                                  _exitFullScreenMode();
+                                  Navigator.pop(context);
+                                },
+                                icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+                              ),
+                              const SizedBox(width: 14),
+                              Text(
+                                widget.title,
+                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                            
+                            primaryButtonBar: [
+                              const Spacer(flex: 2),
+                              MaterialCustomButton(
+                                onPressed: () => _seekRelative(const Duration(seconds: -10)),
+                                icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
+                              ),
+                              const SizedBox(width: 24),
+                              const MaterialPlayOrPauseButton(iconSize: 56),
+                              const SizedBox(width: 24),
+                              MaterialCustomButton(
+                                onPressed: () => _seekRelative(const Duration(seconds: 10)),
+                                icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
+                              ),
+                              const Spacer(flex: 2),
+                            ],
 
-                          // 3. الشريط السفلي (وقت - سيك بار - وقت كلي - إعدادات)
-                          bottomButtonBar: [
-                            const SizedBox(width: 24),
-                            const MaterialPositionIndicator(), // الوقت الحالي والكلي
-                            const Spacer(),
-                            const MaterialSeekBar(), // شريط التقدم
-                            const Spacer(),
-                            // زر الإعدادات الجديد بجوار شريط التقدم
-                            MaterialCustomButton(
-                              onPressed: _showSettingsSheet,
-                              icon: const Icon(LucideIcons.settings, color: Colors.white),
-                            ),
-                            const SizedBox(width: 24),
-                          ],
-                          
-                          // إخفاء زر ملء الشاشة الافتراضي لأننا بالفعل في ملء الشاشة
-                          automaticallyImplySkipNextButton: false,
-                          automaticallyImplySkipPreviousButton: false,
+                            bottomButtonBar: [
+                              const SizedBox(width: 24),
+                              const MaterialPositionIndicator(),
+                              const Spacer(),
+                              const MaterialSeekBar(),
+                              const Spacer(),
+                              MaterialCustomButton(
+                                onPressed: _showSettingsSheet,
+                                icon: const Icon(LucideIcons.settings, color: Colors.white),
+                              ),
+                              const SizedBox(width: 24),
+                            ],
+                            
+                            automaticallyImplySkipNextButton: false,
+                            automaticallyImplySkipPreviousButton: false,
+                          ),
+                          fullscreen: const MaterialVideoControlsThemeData(
+                            displaySeekBar: true,
+                            automaticallyImplySkipNextButton: false,
+                            automaticallyImplySkipPreviousButton: false,
+                          ),
+                          child: Video(
+                            controller: _controller,
+                            // ✅ إضافة fit: BoxFit.contain لضمان عدم قص الفيديو
+                            fit: BoxFit.contain,
+                          ),
                         ),
-                        fullscreen: const MaterialVideoControlsThemeData(
-                          // نكرر نفس التصميم لوضع الفل سكرين لضمان الثبات
-                          displaySeekBar: true,
-                          automaticallyImplySkipNextButton: false,
-                          automaticallyImplySkipPreviousButton: false,
-                        ),
-                        child: Video(
-                          controller: _controller,
-                        ),
-                      ),
+                ),
               ),
-            ),
 
-            // 2. العلامة المائية (طبقة منفصلة فوق الفيديو دائماً)
-            if (!_isError)
-              AnimatedAlign(
-                duration: const Duration(seconds: 2), 
-                curve: Curves.easeInOut,
-                alignment: _watermarkAlignment,
-                child: IgnorePointer(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.3), 
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _watermarkText,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.4), 
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12, 
-                        decoration: TextDecoration.none,
+              if (!_isError)
+                AnimatedAlign(
+                  duration: const Duration(seconds: 2), 
+                  curve: Curves.easeInOut,
+                  alignment: _watermarkAlignment,
+                  child: IgnorePointer(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.3), 
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _watermarkText,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.4), 
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12, 
+                          decoration: TextDecoration.none,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
