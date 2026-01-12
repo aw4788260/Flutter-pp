@@ -8,13 +8,29 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
   Future<void> init() async {
+    // 1. إعدادات الأيقونة
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
     const InitializationSettings initializationSettings =
         InitializationSettings(android: initializationSettingsAndroid);
 
+    // 2. تهيئة البلاجن
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+    // ✅ 3. إنشاء قناة الإشعارات بشكل صريح (هذا ما يمنع الكراش)
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'downloads_channel', // نفس الـ ID المستخدم في main.dart
+      'Downloads',
+      description: 'Show download progress',
+      importance: Importance.low, // منخفض لمنع الصوت مع كل تحديث
+      showBadge: false,
+    );
+
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
   }
 
   // دالة لإظهار إشعار التقدم
@@ -30,14 +46,15 @@ class NotificationService {
       'downloads_channel',
       'Downloads',
       channelDescription: 'Show download progress',
-      importance: Importance.low, // منخفض لمنع الصوت المزعج مع كل تحديث
+      importance: Importance.low,
       priority: Priority.low,
       onlyAlertOnce: true,
       showProgress: true,
       maxProgress: maxProgress,
       progress: progress,
-      ongoing: true, // يمنع حذف الإشعار أثناء التحميل
+      ongoing: true,
       autoCancel: false,
+      icon: '@mipmap/ic_launcher', // تأكيد الأيقونة
     );
 
     final NotificationDetails platformChannelSpecifics =
@@ -65,6 +82,7 @@ class NotificationService {
       priority: Priority.high,
       ongoing: false,
       autoCancel: true,
+      icon: '@mipmap/ic_launcher',
     );
 
     final NotificationDetails platformChannelSpecifics =
@@ -78,7 +96,6 @@ class NotificationService {
     );
   }
   
-  // دالة لإلغاء الإشعار
   Future<void> cancelNotification(int id) async {
     await flutterLocalNotificationsPlugin.cancel(id);
   }
