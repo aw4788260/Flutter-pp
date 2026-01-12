@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:encrypt/encrypt.dart' as encrypt; 
-import 'package:flutter_background_service/flutter_background_service.dart'; // ✅ استيراد التحكم بالخدمة
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../utils/encryption_helper.dart';
 import 'notification_service.dart';
@@ -21,7 +21,6 @@ class DownloadManager {
 
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
-  // مؤقت لإرسال إشارات الحياة (KeepAlive) للخدمة
   Timer? _keepAliveTimer;
 
   bool isFileDownloading(String id) {
@@ -33,7 +32,6 @@ class DownloadManager {
     return Hive.box('downloads_box').containsKey(id);
   }
 
-  /// دالة مساعدة لاستخراج المدة من الرابط وتحويلها لنص
   String _extractDurationFromUrl(String url) {
     try {
       final regex = RegExp(r'(?:dur%3D|dur=)(\d+(\.\d+)?)');
@@ -52,7 +50,6 @@ class DownloadManager {
     return ""; 
   }
 
-  /// تحويل الثواني إلى تنسيق 00:00
   String _formatDuration(int totalSeconds) {
     final duration = Duration(seconds: totalSeconds);
     final hours = duration.inHours;
@@ -67,41 +64,48 @@ class DownloadManager {
   }
 
   // ---------------------------------------------------------------------------
-  // ✅ دوال التحكم في خدمة الخلفية
+  // إدارة خدمة الخلفية (Background Service)
   // ---------------------------------------------------------------------------
   
   void _startBackgroundService() async {
     final service = FlutterBackgroundService();
     
-    // تشغيل الخدمة إذا لم تكن تعمل
+    // تشغيل الخدمة إذا لم تكن تعمل مسبقاً
     if (!await service.isRunning()) {
       await service.startService();
     }
     
-    // بدء إرسال نبضات "أنا أعمل" للخدمة كل ثانية
-    // هذا يمنع الـ Watchdog في ملف main.dart من قتل الخدمة
+    // إرسال إشارة "أنا أعمل" للخدمة (Watchdog) وتحديث الإشعار الرئيسي للخدمة
     _keepAliveTimer?.cancel();
     _keepAliveTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       service.invoke('keepAlive');
+      
+      // ✅ تحديث إشعار الخدمة الرئيسي (888) ليعكس عدد التحميلات الجارية
+      // هذا الإشعار ضروري للنظام ولكنه الآن مفيد للمستخدم أيضاً
+      NotificationService().showProgressNotification(
+        id: 888, 
+        title: "مــــداد Service",
+        body: "${_activeDownloads.length} file(s) downloading...",
+        progress: 0,
+        maxProgress: 0, // Indeterminate (بدون شريط محدد)
+      );
     });
   }
 
   void _stopBackgroundService() {
     // نوقف الخدمة فقط إذا لم يعد هناك أي تحميل نشط
     if (_activeDownloads.isEmpty) {
-      _keepAliveTimer?.cancel(); // إيقاف النبضات
-      
+      _keepAliveTimer?.cancel();
       final service = FlutterBackgroundService();
-      service.invoke('stopService'); // إرسال أمر الإغلاق للخدمة
+      service.invoke('stopService');
       
-      // إغلاق إشعار التقدم (رقم 888) يدوياً لضمان اختفائه
+      // إلغاء إشعار الخدمة الرئيسي (888) فوراً
       NotificationService().cancelNotification(888);
     }
   }
 
   // ---------------------------------------------------------------------------
 
-  /// دالة بدء عملية التحميل
   Future<void> startDownload({
     required String lessonId,
     required String videoTitle,
@@ -116,11 +120,11 @@ class DownloadManager {
     String quality = "SD",
     String duration = "", 
   }) async {
-    FirebaseCrashlytics.instance.log("⬇️ Start Download: $videoTitle ($lessonId) - PDF: $isPdf");
+    FirebaseCrashlytics.instance.log("⬇️ Start Download: $videoTitle ($lessonId)");
     
     _activeDownloads.add(lessonId);
     
-    // ✅ 1. تشغيل الخدمة عند بدء التحميل
+    // ✅ تشغيل الخدمة لضمان البقاء في الخلفية
     _startBackgroundService();
     
     var currentProgress = Map<String, double>.from(downloadingProgress.value);
@@ -129,10 +133,11 @@ class DownloadManager {
 
     final notifService = NotificationService();
     
-    // ✅ 2. استخدام ID = 888 لدمج هذا الإشعار مع إشعار الخدمة (فيحل محله)
-    const int notificationId = 888;
+    // ✅ إنشاء ID فريد لهذا الملف تحديداً (وليس للخدمة)
+    // هذا يسمح بظهور إشعار منفصل لكل ملف
+    final int notificationId = lessonId.hashCode;
 
-    // إظهار إشعار البدء
+    // إظهار إشعار البدء لهذا الملف
     await notifService.showProgressNotification(
       id: notificationId,
       title: "Downloading: $videoTitle",
@@ -147,55 +152,26 @@ class DownloadManager {
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
       final deviceId = box.get('device_id');
+      const String appSecret = String.fromEnvironment('APP_SECRET', defaultValue: 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only');
 
-      if (userId == null || deviceId == null) {
-        throw Exception("User authentication missing");
-      }
-
-      const String appSecret = String.fromEnvironment(
-        'APP_SECRET',
-        defaultValue: 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only',
-      );
+      if (userId == null) throw Exception("User authentication missing");
 
       String? finalUrl = downloadUrl;
 
-      // 1. جلب الرابط تلقائياً إذا لم يتم توفيره
+      // 1. جلب الرابط
       if (finalUrl == null) {
         if (isPdf) {
            finalUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
         } else {
-          // --- منطق الفيديو ---
-          final endpoint = '/api/secure/get-video-id';
-          final queryParam = {'lessonId': lessonId};
-          final fullApiUrl = '$_baseUrl$endpoint';
-
-          final requestHeaders = {
-            'x-user-id': userId,
-            'x-device-id': deviceId,
-            'x-app-secret': appSecret,
-          };
-
-          FirebaseCrashlytics.instance.log("🚀 API Request: GET $fullApiUrl Params: $queryParam");
-
           final res = await _dio.get(
-            fullApiUrl,
-            queryParameters: queryParam,
-            options: Options(
-              headers: requestHeaders,
-              validateStatus: (status) => status! < 500,
-            ),
+            '$_baseUrl/api/secure/get-video-id',
+            queryParameters: {'lessonId': lessonId},
+            options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret}, validateStatus: (s) => s! < 500),
           );
 
-          if (res.statusCode != 200) {
-            throw Exception(res.data['message'] ?? "Failed to get content info (${res.statusCode})");
-          }
+          if (res.statusCode != 200) throw Exception(res.data['message'] ?? "Failed to get info");
 
           final data = res.data;
-          
-          if (data is! Map) {
-             throw Exception("Unexpected response format for Video info");
-          }
-
           if (data['youtube_video_id'] != null && (data['availableQualities'] == null || (data['availableQualities'] as List).isEmpty)) {
              throw Exception("YouTube videos cannot be downloaded offline.");
           }
@@ -210,21 +186,14 @@ class DownloadManager {
         }
       }
 
-      if (finalUrl == null) {
-        throw Exception("No valid download link found");
-      }
+      if (finalUrl == null) throw Exception("No valid download link found");
 
       if (!isPdf) {
         String extractedDuration = _extractDurationFromUrl(finalUrl);
-        if (extractedDuration.isNotEmpty) {
-          duration = extractedDuration;
-          FirebaseCrashlytics.instance.log("🕒 Duration extracted from URL: $duration");
-        }
+        if (extractedDuration.isNotEmpty) duration = extractedDuration;
       }
 
-      FirebaseCrashlytics.instance.log("🔗 Final URL: $finalUrl");
-
-      // 2. تجهيز المسارات
+      // 2. المسارات
       final appDir = await getApplicationDocumentsDirectory();
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -235,23 +204,20 @@ class DownloadManager {
 
       final tempPath = '${dir.path}/$lessonId.temp';
       final savePath = '${dir.path}/$lessonId.enc';
-
       File tempFile = File(tempPath);
       if (await tempFile.exists()) await tempFile.delete();
 
-      // دالة تحديث التقدم (للتطبيق والإشعارات)
       Function(double) internalOnProgress = (p) {
         var prog = Map<String, double>.from(downloadingProgress.value);
         prog[lessonId] = p;
         downloadingProgress.value = prog; 
         onProgress(p); 
 
-        // ✅ تحديث الإشعار الموحد (888)
+        // ✅ تحديث الإشعار الخاص بهذا الملف فقط
         int percent = (p * 100).toInt();
-        // التحديث كل 2% ليكون الشريط سلساً ولكن لا يضغط على النظام
         if (percent % 2 == 0) {
           notifService.showProgressNotification(
-            id: notificationId, // 888
+            id: notificationId, // ID فريد لهذا الملف
             title: "Downloading: $videoTitle",
             body: "$percent%",
             progress: percent,
@@ -260,61 +226,40 @@ class DownloadManager {
         }
       };
 
-      // 3. التحميل الفعلي للملف
+      // 3. التحميل
       bool isHls = !isPdf && (finalUrl.contains('.m3u8') || finalUrl.contains('.m3u'));
-
       if (isHls) {
-        await _downloadAndMergeHls(finalUrl!, tempPath, internalOnProgress);
+        await _downloadAndMergeHls(finalUrl, tempPath, internalOnProgress);
       } else {
-        Options downloadOptions = Options(
-            responseType: ResponseType.bytes, 
-            headers: {
-              'x-user-id': userId,
-              'x-device-id': deviceId,
-              'x-app-secret': appSecret,
-           }
-        );
-
         await _dio.download(
           finalUrl,
           tempPath,
-          options: downloadOptions,
-          onReceiveProgress: (received, total) {
-            if (total != -1) internalOnProgress(received / total);
-          },
+          options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret}),
+          onReceiveProgress: (r, t) { if (t != -1) internalOnProgress(r / t); },
         );
       }
 
-      // ✅ تغيير حالة الإشعار (888) إلى "جاري التشفير"
+      // التشفير (تحديث الإشعار الخاص بالملف)
       await notifService.showProgressNotification(
         id: notificationId,
         title: "Processing: $videoTitle",
-        body: "Encrypting file...",
+        body: "Encrypting...",
         progress: 0,
-        maxProgress: 0, // Indeterminate
+        maxProgress: 0,
       );
 
-      FirebaseCrashlytics.instance.log("✅ Download Finished. Starting Chunked GCM Encryption...");
-
-      // 4. التشفير (Chunked AES-GCM)
       if (await tempFile.exists()) {
-        final fileSize = await tempFile.length();
-        int minSize = isPdf ? 100 : 1024 * 10; 
-        
-        if (fileSize < minSize) { 
+        if ((await tempFile.length()) < (isPdf ? 100 : 10240)) { 
           await tempFile.delete();
-          throw Exception("Download failed: File is too small ($fileSize bytes)");
+          throw Exception("File too small");
         }
-
         await _encryptFileStream(tempFile, File(savePath));
         await tempFile.delete(); 
-        FirebaseCrashlytics.instance.log("🔒 Encryption Success: $savePath");
-
       } else {
-        throw Exception("Temp file not found after download process");
+        throw Exception("Temp file missing");
       }
 
-      // 5. حفظ البيانات في Hive
+      // الحفظ
       var downloadsBox = await Hive.openBox('downloads_box');
       await downloadsBox.put(lessonId, {
         'id': lessonId,
@@ -330,9 +275,12 @@ class DownloadManager {
         'size': File(savePath).lengthSync(),
       });
 
-      // ✅ 3. إشعار النجاح (بـ ID جديد ومختلف) ليبقى في القائمة
+      // ✅ 1. إلغاء إشعار التقدم لهذا الملف
+      await notifService.cancelNotification(notificationId);
+
+      // ✅ 2. إظهار إشعار النجاح النهائي (بـ ID جديد ليبقى في السجل)
       await notifService.showCompletionNotification(
-        id: DateTime.now().millisecondsSinceEpoch, // ID فريد
+        id: DateTime.now().millisecondsSinceEpoch,
         title: videoTitle,
         isSuccess: true,
       );
@@ -340,18 +288,16 @@ class DownloadManager {
       onComplete();
 
     } catch (e, stack) {
-      if (e is DioException) {
-          FirebaseCrashlytics.instance.log("🌐 Dio Error Status: ${e.response?.statusCode}");
-      }
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Process Failed: $lessonId');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed');
       
-      // ✅ إشعار الفشل (بـ ID جديد ومختلف)
+      // ✅ إلغاء إشعار التقدم وإظهار إشعار الفشل
+      await notifService.cancelNotification(notificationId);
       await notifService.showCompletionNotification(
         id: DateTime.now().millisecondsSinceEpoch,
         title: videoTitle,
         isSuccess: false,
       );
-
+      
       onError(e.toString());
     } finally {
       _activeDownloads.remove(lessonId);
@@ -359,102 +305,48 @@ class DownloadManager {
       prog.remove(lessonId);
       downloadingProgress.value = prog;
       
-      // ✅ 4. إيقاف الخدمة وإخفاء شريط التقدم
+      // ✅ محاولة إيقاف الخدمة إذا لم تعد هناك تحميلات أخرى
       _stopBackgroundService();
     }
   }
 
-  /// ✅ دالة التشفير
   Future<void> _encryptFileStream(File inputFile, File outputFile) async {
-    RandomAccessFile? rafRead;
-    RandomAccessFile? rafWrite;
-
+    await EncryptionHelper.init();
+    var rafRead = await inputFile.open(mode: FileMode.read);
+    var rafWrite = await outputFile.open(mode: FileMode.write);
     try {
-      await EncryptionHelper.init();
-
-      rafRead = await inputFile.open(mode: FileMode.read);
-      rafWrite = await outputFile.open(mode: FileMode.write);
-      
-      final int fileLength = await inputFile.length();
-      int bytesRead = 0;
-      const int chunkSize = EncryptionHelper.CHUNK_SIZE;
-      
-      while (bytesRead < fileLength) {
-        int toRead = min(chunkSize, fileLength - bytesRead);
-        Uint8List chunk = await rafRead.read(toRead);
-        if (chunk.isEmpty) break;
-
-        try {
-          Uint8List encryptedChunk = EncryptionHelper.encryptBlock(chunk);
-          await rafWrite.writeFrom(encryptedChunk);
-        } catch (e, stack) {
-          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Block Encryption Failed');
-          throw e;
-        }
-        
-        bytesRead += chunk.length;
-      }
-      
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Full Encryption Loop Failed');
-      throw Exception("Encryption Loop Failed: $e");
-    } finally {
-      await rafRead?.close();
-      await rafWrite?.flush();
-      await rafWrite?.close();
-    }
+       int len = await inputFile.length();
+       int read = 0;
+       while(read < len) {
+         var chunk = await rafRead.read(min(64*1024, len - read));
+         if(chunk.isEmpty) break;
+         await rafWrite.writeFrom(EncryptionHelper.encryptBlock(chunk));
+         read += chunk.length;
+       }
+    } finally { await rafRead.close(); await rafWrite.flush(); await rafWrite.close(); }
   }
 
-  // 🔥 دالة دمج ملفات HLS
   Future<void> _downloadAndMergeHls(String m3u8Url, String outputPath, Function(double) onProgress) async {
-    try {
-      FirebaseCrashlytics.instance.log("🔄 Starting HLS Merge for: $m3u8Url");
-      
       final response = await _dio.get(m3u8Url);
       final content = response.data.toString();
       final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
-
       List<String> tsUrls = [];
-      final lines = content.split('\n');
-      for (var line in lines) {
+      for (var line in content.split('\n')) {
         line = line.trim();
-        if (line.isNotEmpty && !line.startsWith('#')) {
-          if (line.startsWith('http')) {
-            tsUrls.add(line);
-          } else {
-            tsUrls.add(baseUrl + line);
-          }
-        }
+        if (line.isNotEmpty && !line.startsWith('#')) tsUrls.add(line.startsWith('http') ? line : baseUrl + line);
       }
-
-      if (tsUrls.isEmpty) throw Exception("No TS segments found in M3U8");
-
+      if (tsUrls.isEmpty) throw Exception("No TS segments");
       final outputFile = File(outputPath);
       final sink = outputFile.openWrite(mode: FileMode.writeOnlyAppend);
-
-      int totalSegments = tsUrls.length;
-      int downloadedSegments = 0;
-
+      int total = tsUrls.length;
+      int done = 0;
       for (String url in tsUrls) {
-        final rs = await _dio.get<List<int>>(
-          url,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        
-        if (rs.data != null) {
-          sink.add(rs.data!);
-        }
-
-        downloadedSegments++;
-        onProgress(downloadedSegments / totalSegments);
+        final rs = await _dio.get<List<int>>(url, options: Options(responseType: ResponseType.bytes));
+        if (rs.data != null) sink.add(rs.data!);
+        done++;
+        onProgress(done / total);
       }
-
       await sink.flush();
       await sink.close();
-      FirebaseCrashlytics.instance.log("✅ HLS Merge Complete");
-
-    } catch (e) {
-      throw Exception("Manual HLS Merge Failed: $e");
-    }
   }
 }
