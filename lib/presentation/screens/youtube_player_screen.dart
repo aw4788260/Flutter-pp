@@ -7,6 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/app_state.dart'; // ✅ استيراد AppState للوصول السريع للبيانات
 
 class YoutubePlayerScreen extends StatefulWidget {
   final String videoId;
@@ -34,7 +35,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
   void initState() {
     super.initState();
     
-    // ✅ 1. تفعيل وضع ملء الشاشة الحقيقي (إخفاء شريط الحالة وأزرار التنقل) وتدوير الشاشة
+    // ✅ 1. تفعيل وضع ملء الشاشة الحقيقي
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
@@ -56,9 +57,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
           forceHD: false,
           isLive: false,
           loop: false,
-          // ✅ إيقاف الترجمة التلقائية
           enableCaption: false, 
-          // تعطيل زر ملء الشاشة لمنع التعارض مع العلامة المائية
           disableDragSeek: false, 
         ),
       )..addListener(_playerListener);
@@ -73,19 +72,30 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
     }
   }
 
-  // ✅ جلب رقم الهاتف فقط
+  // ✅ تعديل: جلب رقم الهاتف من AppState أولاً (الأسرع والأدق)
   void _getUserId() {
-    try {
-      if (Hive.isBoxOpen('auth_box')) {
-        var box = Hive.box('auth_box');
-        setState(() {
-          // الأولوية لرقم الهاتف، ثم الاسم، ثم المعرف
-          _userIdText = box.get('phone') ?? box.get('username') ?? box.get('user_id') ?? 'Student';
-        });
-      }
-    } catch (e) {
-      // تجاهل الخطأ
+    String displayText = '';
+    
+    // 1. المحاولة الأولى: من الذاكرة الحية
+    if (AppState().userData != null) {
+      displayText = AppState().userData!['phone'] ?? '';
     }
+
+    // 2. المحاولة الثانية: من التخزين المحلي
+    if (displayText.isEmpty) {
+      try {
+        if (Hive.isBoxOpen('auth_box')) {
+          var box = Hive.box('auth_box');
+          displayText = box.get('phone') ?? box.get('username') ?? '';
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    setState(() {
+      _userIdText = displayText.isNotEmpty ? displayText : 'User';
+    });
   }
 
   void _startWatermarkAnimation() {
@@ -93,7 +103,6 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
       if (mounted) {
         setState(() {
           final random = Random();
-          // توليد موقع عشوائي (تم توسيع النطاق قليلاً لتغطية الشاشة بشكل أفضل)
           double x = (random.nextDouble() * 1.8) - 0.9;
           double y = (random.nextDouble() * 1.6) - 0.8;
           _watermarkAlignment = Alignment(x, y);
@@ -114,17 +123,15 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
     _controller.removeListener(_playerListener);
     _controller.dispose();
     
-    // ✅ التعديل هنا: استعادة وضع النظام اليدوي لمنع تداخل الواجهة في الشاشات الأخرى
+    // ✅ استعادة وضع النظام اليدوي لمنع تداخل الواجهة
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     
-    // إعادة الشاشة للوضع الرأسي
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ استخدام Scaffold مباشرة لأن الشاشة بالكامل هي المشغل
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -139,7 +146,6 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
                 playedColor: AppColors.accentYellow,
                 handleColor: AppColors.accentYellow,
               ),
-              // ✅ تخصيص أزرار التحكم لإزالة زر "ملء الشاشة" القياسي
               bottomActions: [
                 const CurrentPosition(),
                 const SizedBox(width: 10),
@@ -147,7 +153,6 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
                 const SizedBox(width: 10),
                 const RemainingDuration(),
                 const PlaybackSpeedButton(),
-                // تم إزالة FullScreenButton() لأننا بالفعل في وضع ملء الشاشة
               ],
             ),
           ),
@@ -159,21 +164,19 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
             alignment: _watermarkAlignment,
             child: IgnorePointer(
               child: Container(
-                // ✅ الحفاظ على نفس الحجم (Padding صغير)
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  // ✅ زيادة التباين للخلفية لتصبح أوضح
+                  // ✅ تباين عالي (خلفية داكنة)
                   color: Colors.black.withOpacity(0.6), 
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   _userIdText,
                   style: TextStyle(
-                    // ✅ جعل النص أبيض شبه ناصع
+                    // ✅ تباين عالي (نص فاتح)
                     color: Colors.white.withOpacity(0.9), 
                     fontWeight: FontWeight.bold,
-                    // ✅ الحفاظ على نفس حجم الخط
-                    fontSize: 11, 
+                    fontSize: 11, // ✅ الحفاظ على الحجم
                   ),
                 ),
               ),
