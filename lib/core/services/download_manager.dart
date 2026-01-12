@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data'; // ✅ ضروري للتعامل مع البيانات الثنائية
 import 'package:flutter/foundation.dart'; // ✅ ضروري للـ ValueNotifier
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:encrypt/encrypt.dart' as encrypt; // ✅ ضروري للتشفير اليدوي
 
 import '../utils/encryption_helper.dart';
 
@@ -12,7 +14,7 @@ class DownloadManager {
   static final Dio _dio = Dio();
   static final Set<String> _activeDownloads = {};
 
-  // ✅ 1. متغير عام لمراقبة التقدم (Key: LessonId, Value: Percentage 0.0-1.0)
+  // ✅ متغير عام لمراقبة التقدم (Key: LessonId, Value: Percentage 0.0-1.0)
   static final ValueNotifier<Map<String, double>> downloadingProgress = ValueNotifier({});
 
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
@@ -92,9 +94,10 @@ class DownloadManager {
         final data = res.data;
         
         if (isPdf) {
+           // ✅ منطق الـ PDF المحسن
            finalUrl = data['url']; // الرابط المباشر (Signed URL)
            if (finalUrl == null) {
-             // Fallback للباك اند
+             // Fallback للباك اند في حال لم يكن هناك رابط موقع
              finalUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
            }
         } else {
@@ -137,12 +140,9 @@ class DownloadManager {
 
       // ✅ دالة داخلية لتحديث الـ Notifier والـ Callback معاً
       Function(double) internalOnProgress = (p) {
-        // تحديث المتغير العام
         var prog = Map<String, double>.from(downloadingProgress.value);
         prog[lessonId] = p;
         downloadingProgress.value = prog; 
-        
-        // استدعاء الدالة الأصلية
         onProgress(p); 
       };
 
@@ -154,20 +154,17 @@ class DownloadManager {
       } else {
         Options downloadOptions = Options();
         
-        // 🔥🔥🔥 إصلاح مشكلة Access Denied للـ PDF 🔥🔥🔥
-        // المشكلة كانت أننا نرسل Headers الباك اند (x-user-id) لرابط خارجي (Supabase/AWS)
-        // مما يسبب رفض السيرفر الخارجي للطلب (403 Forbidden).
-        // الحل: نرسل الـ Headers فقط إذا كان الرابط تابعاً لسيرفرنا.
+        // 🔥🔥🔥 منطق Headers المطابق للأونلاين 🔥🔥🔥
+        // إذا كان الرابط تابعاً لسيرفرنا (الباك اند)، نرسل التوثيق
+        // إذا كان رابط خارجي (Signed URL من Supabase/AWS)، لا نرسل Headers لأنها ستسبب 403
         
         if (finalUrl.contains(_baseUrl)) {
-           // هذا الرابط تابع للباك اند، يجب إرسال بيانات المصادقة
            downloadOptions = Options(headers: {
               'x-user-id': userId,
               'x-device-id': deviceId,
               'x-app-secret': appSecret,
            });
         } 
-        // ⚠️ ملاحظة: إذا كان الرابط خارجي (Signed URL)، لا نرسل Headers إضافية، لأن التوقيع يكفي.
 
         await _dio.download(
           finalUrl,
@@ -179,23 +176,20 @@ class DownloadManager {
         );
       }
 
-      FirebaseCrashlytics.instance.log("✅ Download Finished. Starting Encryption...");
+      FirebaseCrashlytics.instance.log("✅ Download Finished. Starting Streaming Encryption...");
 
-      // 4. التشفير
+      // 4. التشفير (Stream Based) ✅✅✅ تم التحديث هنا
       if (await tempFile.exists()) {
         final fileSize = await tempFile.length();
-        int minSize = isPdf ? 100 : 1024 * 10; // تقليل الحد الأدنى للـ PDF تحسباً للملفات الصغيرة
+        int minSize = isPdf ? 100 : 1024 * 10; 
         
         if (fileSize < minSize) { 
           await tempFile.delete();
           throw Exception("Download failed: File is too small ($fileSize bytes)");
         }
 
-        final bytes = await tempFile.readAsBytes();
-        final encrypted = EncryptionHelper.encrypter.encryptBytes(bytes, iv: EncryptionHelper.iv);
-        
-        final finalFile = File(savePath);
-        await finalFile.writeAsBytes(encrypted.bytes);
+        // استخدام الدالة الجديدة التي لا تستهلك الرام
+        await _encryptFileStream(tempFile, File(savePath));
         
         await tempFile.delete(); 
         FirebaseCrashlytics.instance.log("🔒 Encryption Success: $savePath");
@@ -230,10 +224,76 @@ class DownloadManager {
     } finally {
       _activeDownloads.remove(lessonId);
       
-      // ✅ حذف التقدم عند الانتهاء (سواء نجاح أو فشل)
+      // ✅ حذف التقدم عند الانتهاء
       var prog = Map<String, double>.from(downloadingProgress.value);
       prog.remove(lessonId);
       downloadingProgress.value = prog;
+    }
+  }
+
+  /// ✅ دالة لتشفير الملفات الكبيرة (PDF/Video) دون استهلاك الذاكرة
+  Future<void> _encryptFileStream(File inputFile, File outputFile) async {
+    try {
+      final rafRead = await inputFile.open(mode: FileMode.read);
+      final rafWrite = await outputFile.open(mode: FileMode.write);
+      
+      final key = EncryptionHelper.key;
+      final iv = EncryptionHelper.iv;
+      
+      // إعداد المشفر بدون Padding (سنتعامل معه يدوياً)
+      final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.cbc, padding: null));
+      
+      // نبدأ بالـ IV الأساسي
+      List<int> previousBlock = iv.bytes;
+      
+      const int bufferSize = 4096 * 16; // 64KB chunks
+      final int fileLength = await inputFile.length();
+      int bytesRead = 0;
+      
+      while (bytesRead < fileLength) {
+        // قراءة قطعة
+        Uint8List chunk = await rafRead.read(bufferSize);
+        if (chunk.isEmpty) break;
+        
+        // معالجة الحشو (PKCS7 Padding) للقطعة الأخيرة فقط
+        bool isLastChunk = (bytesRead + chunk.length) >= fileLength;
+        if (isLastChunk) {
+          final int padLength = 16 - (chunk.length % 16);
+          final paddedChunk = Uint8List(chunk.length + padLength);
+          paddedChunk.setAll(0, chunk);
+          for (int i = 0; i < padLength; i++) {
+            paddedChunk[chunk.length + i] = padLength;
+          }
+          chunk = paddedChunk;
+        } else if (chunk.length % 16 != 0) {
+           // حالة نادرة: إذا قرأنا قطعة ليست من مضاعفات 16 وليست الأخيرة (لا ينبغي أن تحدث مع bufferSize ثابت)
+           // نقوم بتعديل الحجم ليكون من مضاعفات 16 للسلامة
+           int validLen = (chunk.length ~/ 16) * 16;
+           chunk = chunk.sublist(0, validLen);
+           await rafRead.setPosition(bytesRead + validLen); // تصحيح المؤشر
+        }
+
+        // تشفير القطعة باستخدام IV محدث
+        final encryptedChunk = encrypter.encryptBytes(chunk, iv: encrypt.IV(Uint8List.fromList(previousBlock)));
+        
+        // كتابة البيانات
+        await rafWrite.writeFrom(encryptedChunk.bytes);
+        
+        // تحديث الـ IV للدورة القادمة (آخر 16 بايت من المشفر)
+        previousBlock = encryptedChunk.bytes.sublist(encryptedChunk.bytes.length - 16);
+        
+        bytesRead += chunk.length; // ملاحظة: نزيد الطول الأصلي (بدون Padding)
+        
+        // إذا أضفنا Padding، فهذا يعني أننا انتهينا فعلياً
+        if (isLastChunk) break;
+      }
+      
+      await rafRead.close();
+      await rafWrite.flush();
+      await rafWrite.close();
+      
+    } catch (e) {
+      throw Exception("Streaming Encryption Failed: $e");
     }
   }
 
