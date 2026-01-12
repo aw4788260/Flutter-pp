@@ -4,7 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/local_proxy.dart';
 import 'video_player_screen.dart';
-import 'pdf_viewer_screen.dart'; // ✅ استيراد شاشة عرض PDF
+import 'pdf_viewer_screen.dart'; // ✅ تأكد من استيراد شاشة PDF
 
 class DownloadedChapterContentsScreen extends StatefulWidget {
   final String courseTitle;
@@ -45,7 +45,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
       context,
       MaterialPageRoute(
         builder: (_) => PdfViewerScreen(
-          pdfId: key, // ✅ نمرر مفتاح Hive كـ ID للملف
+          pdfId: key,
           title: title,
         ),
       ),
@@ -62,21 +62,17 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
 
   @override
   Widget build(BuildContext context) {
-    // 1. جلب البيانات من Hive
     var box = Hive.box('downloads_box');
     
-    // إعداد القوائم مع حفظ المفتاح (key) داخل العنصر لسهولة الحذف
     List<Map<String, dynamic>> videoItems = [];
     List<Map<String, dynamic>> pdfItems = [];
 
     for (var key in box.keys) {
       final item = box.get(key);
-      // تصفية العناصر الخاصة بالشابتر الحالي
       if (item['course'] == widget.courseTitle && 
           item['subject'] == widget.subjectTitle &&
           item['chapter'] == widget.chapterTitle) {
         
-        // تحويل العنصر إلى Map قابل للتعديل وإضافة المفتاح
         final itemMap = Map<String, dynamic>.from(item);
         itemMap['key'] = key;
 
@@ -216,26 +212,26 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
       itemCount: items.length,
       itemBuilder: (context, index) {
         final item = items[index];
-        final key = item['key']; // المفتاح للحذف
+        final key = item['key'];
         
-        // استخراج البيانات
         final sizeBytes = item['size'] ?? 0;
         final sizeMB = (sizeBytes / (1024 * 1024)).toStringAsFixed(1);
-        final quality = item['quality'] ?? "FILE"; // تغيير افتراضي للـ PDF
         final duration = item['duration'] ?? "--:--";
+        
+        // ✅ تحديد الجودة فقط إذا كان فيديو، وإلا نتركها فارغة أو نعطيها قيمة خاصة
+        final quality = activeTab == 'videos' ? (item['quality'] ?? "SD") : null;
 
         return GestureDetector(
           onTap: () {
              if (activeTab == 'videos') {
                _playOfflineVideo(item);
              } else {
-               // ✅ استدعاء مشغل PDF
                _openOfflinePdf(key.toString(), item['title'] ?? 'Document');
              }
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16), // ✅ زيادة الحشو قليلاً لراحة العين
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppColors.backgroundSecondary,
               borderRadius: BorderRadius.circular(12),
@@ -247,10 +243,9 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
               children: [
                 // 1. الصف العلوي (أيقونة - عنوان - حذف)
                 Row(
-                  // ✅ هذا السطر يضمن توسط العنوان والأيقونة وزر الحذف عمودياً
+                  // ✅ محاذاة في المنتصف عمودياً لضمان توسط العنوان مع الأيقونة
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // الأيقونة
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
@@ -261,10 +256,9 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                     ),
                     const SizedBox(width: 14),
                     
-                    // العنوان
                     Expanded(
                       child: Text(
-                        item['title'].toString(), // إزالة toUpperCase للقراءة الأفضل
+                        item['title'].toString(),
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -276,12 +270,11 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                       ),
                     ),
                     
-                    // زر الحذف
                     GestureDetector(
                       onTap: () => _deleteFile(key.toString()),
                       child: Container(
                         padding: const EdgeInsets.all(8),
-                        color: Colors.transparent, // منطقة لمس أكبر
+                        color: Colors.transparent,
                         child: const Icon(LucideIcons.trash2, size: 18, color: AppColors.error),
                       ),
                     ),
@@ -297,12 +290,16 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                   children: [
                     _buildMetaTag(LucideIcons.hardDrive, "$sizeMB MB"),
                     const SizedBox(width: 16),
+                    
+                    // ✅ عرض تفاصيل إضافية حسب النوع
                     if(activeTab == 'videos') ...[
                       _buildMetaTag(LucideIcons.clock, duration),
                       const SizedBox(width: 16),
-                      _buildMetaTag(LucideIcons.monitor, quality),
+                      // ✅ عرض الجودة فقط للفيديو
+                      if (quality != null) _buildMetaTag(LucideIcons.monitor, quality),
                     ] else ...[
-                       _buildMetaTag(LucideIcons.fileText, "PDF Document"),
+                       // ✅ للملفات: نعرض "PDF" فقط ولا نعرض SD
+                       _buildMetaTag(LucideIcons.fileText, "PDF"),
                     ]
                   ],
                 ),
@@ -316,7 +313,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
 
   Widget _buildMetaTag(IconData icon, String text) {
     return Row(
-      mainAxisSize: MainAxisSize.min, // مهم لعدم أخذ مساحة زائدة
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 12, color: AppColors.textSecondary.withOpacity(0.7)),
         const SizedBox(width: 6),
