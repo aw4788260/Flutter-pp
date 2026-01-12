@@ -45,10 +45,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isError = false;
   String _errorMessage = "";
   
-  // ❌ لم نعد بحاجة لمتغير _isDecrypting لأن البث فوري
-  // bool _isDecrypting = false; 
-  // File? _tempDecryptedFile; ❌ تم الحذف
-
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
@@ -72,11 +68,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     _player = Player();
     
+    // ✅ تم التصحيح: إزالة androidAttachSurfaceAfterVideoOutput
     _controller = VideoController(
       _player,
       configuration: const VideoControllerConfiguration(
         enableHardwareAcceleration: true,
-        androidAttachSurfaceAfterVideoOutput: true,
+        // androidAttachSurfaceAfterVideoOutput: true, // ❌ تم الحذف لأنه غير مدعوم في الإصدار المثبت
       ),
     );
 
@@ -241,8 +238,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         // ✅ تحويل المسار لرابط محلي يمر عبر البروكسي
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
         FirebaseCrashlytics.instance.log("🔗 Proxy URL Generated: $playUrl");
-        
-        // لم نعد نحتاج لانتظار فك التشفير (_isDecrypting)
       } 
       
       // 2. أونلاين أو أوفلاين (كلاهما الآن HTTP)
@@ -418,10 +413,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           )
                         ],
                       )
-                    // ❌ تم حذف حالة التحميل _isDecrypting لأنها لم تعد مطلوبة
                     : MaterialVideoControlsTheme(
                         // ✅ هنا يتم تخصيص أماكن الأزرار
                         normal: MaterialVideoControlsThemeData(
+                          // ✅ تم التصحيح: إزالة brightness لأنه غير مدعوم
                           // 1. الشريط العلوي (رجوع + عنوان)
                           topButtonBar: [
                             const SizedBox(width: 14),
@@ -477,7 +472,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           // إخفاء زر ملء الشاشة الافتراضي لأننا بالفعل في ملء الشاشة
                           automaticallyImplySkipNextButton: false,
                           automaticallyImplySkipPreviousButton: false,
-                          brightness: Brightness.dark,
                         ),
                         fullscreen: const MaterialVideoControlsThemeData(
                           // نكرر نفس التصميم لوضع الفل سكرين لضمان الثبات
@@ -493,7 +487,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ),
 
             // 2. العلامة المائية (طبقة منفصلة فوق الفيديو دائماً)
-            if (!_isError) // إزالة شرط !_isDecrypting
+            if (!_isError)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
                 curve: Curves.easeInOut,
