@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:encrypt/encrypt.dart' as encrypt; 
 
 import '../utils/encryption_helper.dart';
 
@@ -40,6 +41,8 @@ class DownloadManager {
     required Function() onComplete,
     required Function(String) onError,
     bool isPdf = false,
+    String quality = "SD",
+    String duration = "",
   }) async {
     // تسجيل بداية العملية
     FirebaseCrashlytics.instance.log("⬇️ Start Download: $videoTitle ($lessonId) - PDF: $isPdf");
@@ -60,7 +63,7 @@ class DownloadManager {
       final deviceId = box.get('device_id');
 
       if (userId == null || deviceId == null) {
-        throw Exception("User authentication missing");
+        throw Exception("User authentication missing (UserId: $userId, DeviceId: $deviceId)");
       }
 
       const String appSecret = String.fromEnvironment(
@@ -74,34 +77,47 @@ class DownloadManager {
       if (finalUrl == null) {
         final endpoint = isPdf ? '/api/secure/get-pdf' : '/api/secure/get-video-id';
         final queryParam = isPdf ? {'pdfId': lessonId} : {'lessonId': lessonId};
+        final fullApiUrl = '$_baseUrl$endpoint';
 
-        FirebaseCrashlytics.instance.log("🔍 Fetching URL from: $endpoint");
+        final requestHeaders = {
+          'x-user-id': userId,
+          'x-device-id': deviceId,
+          'x-app-secret': appSecret, // تحذير: هذا سيظهر في اللوج، تأكد من أن هذا مقبول أثناء التطوير
+        };
+
+        // ✅ تسجيل بيانات الطلب الأول بالتفصيل
+        FirebaseCrashlytics.instance.log(
+          "🚀 API Request: GET $fullApiUrl\n"
+          "Params: $queryParam\n"
+          "Headers: $requestHeaders"
+        );
 
         final res = await _dio.get(
-          '$_baseUrl$endpoint',
+          fullApiUrl,
           queryParameters: queryParam,
           options: Options(
-            headers: {
-              'x-user-id': userId,
-              'x-device-id': deviceId,
-              'x-app-secret': appSecret,
-            },
+            headers: requestHeaders,
             validateStatus: (status) => status! < 500,
           ),
         );
 
         if (res.statusCode != 200) {
+          FirebaseCrashlytics.instance.log("❌ API Response Error: ${res.statusCode} - ${res.data}");
           throw Exception(res.data['message'] ?? "Failed to get content info (${res.statusCode})");
         }
 
         final data = res.data;
+        FirebaseCrashlytics.instance.log("✅ API Response Success: Data received for ID $lessonId");
         
         if (isPdf) {
            finalUrl = data['url'];
            if (finalUrl == null) {
+             // Fallback للباك اند في حال لم يكن هناك رابط موقع
              finalUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
+             FirebaseCrashlytics.instance.log("ℹ️ No signed URL found, falling back to direct API download.");
            }
         } else {
+          // منطق الفيديو
           if (data['youtube_video_id'] != null && (data['availableQualities'] == null || (data['availableQualities'] as List).isEmpty)) {
              throw Exception("YouTube videos cannot be downloaded offline.");
           }
@@ -109,8 +125,8 @@ class DownloadManager {
           if (data['availableQualities'] != null) {
             List qualities = data['availableQualities'];
             var q720 = qualities.firstWhere((q) => q['quality'] == 720, orElse: () => null);
-            if (q720 != null) finalUrl = q720['url'];
-            else if (qualities.isNotEmpty) finalUrl = qualities.first['url'];
+            if (q720 != null) { finalUrl = q720['url']; quality = "720p"; }
+            else if (qualities.isNotEmpty) { finalUrl = qualities.first['url']; quality = "${qualities.first['quality']}p"; }
           }
           if (finalUrl == null && data['url'] != null) finalUrl = data['url'];
         }
@@ -120,10 +136,11 @@ class DownloadManager {
         throw Exception("No valid download link found");
       }
 
-      FirebaseCrashlytics.instance.log("🔗 Resolved URL: $finalUrl");
+      FirebaseCrashlytics.instance.log("🔗 Final Download URL: $finalUrl");
 
       // 2. تجهيز المسارات
       final appDir = await getApplicationDocumentsDirectory();
+      // تنظيف الأسماء من الرموز الخاصة
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeChapter = chapterName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -137,6 +154,7 @@ class DownloadManager {
       File tempFile = File(tempPath);
       if (await tempFile.exists()) await tempFile.delete();
 
+      // دالة لتحديث التقدم
       Function(double) internalOnProgress = (p) {
         var prog = Map<String, double>.from(downloadingProgress.value);
         prog[lessonId] = p;
@@ -144,20 +162,30 @@ class DownloadManager {
         onProgress(p); 
       };
 
-      // 3. التحميل (إلى ملف مؤقت غير مشفر)
+      // 3. التحميل الفعلي للملف
       bool isHls = !isPdf && (finalUrl.contains('.m3u8') || finalUrl.contains('.m3u'));
 
       if (isHls) {
         await _downloadAndMergeHls(finalUrl!, tempPath, internalOnProgress);
       } else {
         Options downloadOptions = Options();
+        Map<String, dynamic> downloadHeaders = {};
+
+        // إضافة الهيدرز فقط إذا كان الرابط يتبع سيرفرنا
         if (finalUrl.contains(_baseUrl)) {
-           downloadOptions = Options(headers: {
+           downloadHeaders = {
               'x-user-id': userId,
               'x-device-id': deviceId,
               'x-app-secret': appSecret,
-           });
+           };
+           downloadOptions = Options(headers: downloadHeaders);
         } 
+
+        // ✅ تسجيل بيانات طلب التحميل
+        FirebaseCrashlytics.instance.log(
+          "🚀 File Download Request: GET $finalUrl\n"
+          "Headers: $downloadHeaders"
+        );
 
         await _dio.download(
           finalUrl,
@@ -171,13 +199,15 @@ class DownloadManager {
 
       FirebaseCrashlytics.instance.log("✅ Download Finished. Starting Chunked GCM Encryption...");
 
-      // 4. التشفير (Chunked AES-GCM) ✅✅✅ التحديث الجديد
+      // 4. التشفير (Chunked AES-GCM)
       if (await tempFile.exists()) {
         final fileSize = await tempFile.length();
         int minSize = isPdf ? 100 : 1024 * 10; 
         
         if (fileSize < minSize) { 
           await tempFile.delete();
+          // تسجيل الخطأ مع حجم الملف
+          FirebaseCrashlytics.instance.log("❌ Downloaded file too small: $fileSize bytes");
           throw Exception("Download failed: File is too small ($fileSize bytes)");
         }
 
@@ -201,6 +231,8 @@ class DownloadManager {
         'subject': subjectName,
         'chapter': chapterName,
         'type': isPdf ? 'pdf' : 'video',
+        'quality': quality,
+        'duration': duration,
         'date': DateTime.now().toIso8601String(),
         'size': File(savePath).lengthSync(),
       });
@@ -211,6 +243,7 @@ class DownloadManager {
       if (e is DioException) {
           FirebaseCrashlytics.instance.log("🌐 Dio Error URL: ${e.requestOptions.uri}");
           FirebaseCrashlytics.instance.log("🌐 Dio Error Status: ${e.response?.statusCode}");
+          FirebaseCrashlytics.instance.log("🌐 Dio Error Headers: ${e.requestOptions.headers}");
       }
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Process Failed: $lessonId');
       onError(e.toString());
@@ -223,7 +256,6 @@ class DownloadManager {
   }
 
   /// ✅ دالة التشفير الجديدة: تعتمد على Chunked AES-GCM
-  /// تقوم بتقسيم الملف إلى كتل، وتشفير كل كتلة بشكل مستقل مع IV خاص بها
   Future<void> _encryptFileStream(File inputFile, File outputFile) async {
     RandomAccessFile? rafRead;
     RandomAccessFile? rafWrite;
@@ -251,7 +283,7 @@ class DownloadManager {
         Uint8List chunk = await rafRead.read(toRead);
         if (chunk.isEmpty) break;
 
-        // تشفير الكتلة (تقوم الدالة بتوليد IV ودمجه مع الناتج)
+        // تشفير الكتلة
         try {
           Uint8List encryptedChunk = EncryptionHelper.encryptBlock(chunk);
           
