@@ -1,27 +1,28 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math'; 
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+// ✅ مكتبات MediaKit
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:screen_protector/screen_protector.dart'; 
+import 'package:screen_protector/screen_protector.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:path_provider/path_provider.dart'; 
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
+import 'package:path_provider/path_provider.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/utils/encryption_helper.dart'; 
+import '../../core/utils/encryption_helper.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  final Map<String, String> streams; 
+  final Map<String, String> streams;
   final String title;
 
   const VideoPlayerScreen({
-    super.key, 
-    required this.streams, 
-    required this.title
+    super.key,
+    required this.streams,
+    required this.title,
   });
 
   @override
@@ -31,13 +32,14 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _controller;
-  
+
   String _currentQuality = "";
   List<String> _sortedQualities = [];
-  
+  double _currentSpeed = 1.0;
+
   bool _isError = false;
   String _errorMessage = "";
-  bool _isDecrypting = false; 
+  bool _isDecrypting = false;
   File? _tempDecryptedFile;
 
   Timer? _watermarkTimer;
@@ -53,20 +55,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Started");
+    FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init");
+
+    // تفعيل ملء الشاشة فوراً
+    _enterFullScreenMode();
 
     _player = Player();
     
-    // ✅ تم التعديل: إزالة الخاصية غير المدعومة androidAttachSurfaceAfterVideoOutput
     _controller = VideoController(
       _player,
       configuration: const VideoControllerConfiguration(
-        enableHardwareAcceleration: true, 
+        enableHardwareAcceleration: true,
+        androidAttachSurfaceAfterVideoOutput: true,
       ),
     );
 
     _player.stream.error.listen((error) {
-      FirebaseCrashlytics.instance.log("🚨 MediaKit Error: $error");
+      FirebaseCrashlytics.instance.log("🚨 MediaKit Stream Error: $error");
       if (mounted) {
         setState(() {
           _isError = true;
@@ -81,14 +86,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _parseQualities();
   }
 
+  Future<void> _enterFullScreenMode() async {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
+
+  Future<void> _exitFullScreenMode() async {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+  }
+
   Future<void> _setupScreenProtection() async {
     try {
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
       await WakelockPlus.enable();
-      await ScreenProtector.protectDataLeakageOn(); 
+      await ScreenProtector.protectDataLeakageOn();
       await ScreenProtector.preventScreenshotOn();
 
       _screenRecordingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
@@ -97,7 +113,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           _handleScreenRecordingDetected();
         }
       });
-    } catch (_) {}
+    } catch (e) {
+      // Ignore
+    }
   }
 
   void _handleScreenRecordingDetected() {
@@ -172,37 +190,43 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Future<void> _playVideo(String url) async {
+  Future<void> _playVideo(String url, {Duration? startAt}) async {
     try {
+      // 1. أوفلاين
       if (!url.startsWith('http')) {
         setState(() => _isDecrypting = true); 
 
         final encryptedFile = File(url);
-        if (await encryptedFile.exists()) {
-          final tempDir = await getTemporaryDirectory();
-          final tempPath = '${tempDir.path}/play_${DateTime.now().millisecondsSinceEpoch}.mp4';
-          
-          // ✅ الآن ستعمل هذه الدالة لأننا أضفناها في EncryptionHelper
-          _tempDecryptedFile = await EncryptionHelper.decryptFile(encryptedFile, tempPath);
-          
-          await _player.open(Media(_tempDecryptedFile!.path));
-        } else {
-          throw Exception("Offline file missing");
-        }
+        if (!await encryptedFile.exists()) throw Exception("Offline file missing");
+
+        final tempDir = await getTemporaryDirectory();
+        final tempPath = '${tempDir.path}/play_${DateTime.now().millisecondsSinceEpoch}.mp4';
         
+        try {
+          _tempDecryptedFile = await EncryptionHelper.decryptFile(encryptedFile, tempPath);
+          await _player.open(Media(_tempDecryptedFile!.path), play: false);
+        } catch (e) {
+          throw e;
+        }
         setState(() => _isDecrypting = false);
       } 
+      // 2. أونلاين
       else {
-        await _player.open(Media(
-          url,
-          httpHeaders: _nativeHeaders, 
-        ));
+        await _player.open(Media(url, httpHeaders: _nativeHeaders), play: false);
       }
       
-      _player.play();
+      if (startAt != null) {
+        await _player.seek(startAt);
+      }
+
+      if (_currentSpeed != 1.0) {
+        await _player.setRate(_currentSpeed);
+      }
+
+      await _player.play();
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'MediaKit Load Failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'MediaKit Play Failed');
       if (mounted) {
         setState(() {
           _isError = true;
@@ -213,26 +237,92 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  void _showQualitySheet() {
+  Future<void> _seekRelative(Duration amount) async {
+    final currentPos = _player.state.position;
+    final newPos = currentPos + amount;
+    await _player.seek(newPos);
+  }
+
+  // دوال عرض القوائم (Settings)
+  void _showSettingsSheet() {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(padding: EdgeInsets.all(16), child: Text("Select Quality", style: TextStyle(color: Colors.white, fontSize: 18))),
-            ..._sortedQualities.reversed.map((q) => ListTile(
-              title: Text(q, style: TextStyle(color: q == _currentQuality ? AppColors.accentYellow : Colors.white)),
+            const Padding(
+              padding: EdgeInsets.all(16), 
+              child: Text("Settings", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))
+            ),
+            const Divider(color: Colors.white24),
+            
+            ListTile(
+              leading: const Icon(LucideIcons.monitor, color: Colors.white),
+              title: Text("Quality: $_currentQuality", style: const TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(ctx);
-                if (q != _currentQuality) {
-                  setState(() { _currentQuality = q; _isError = false; });
-                  _playVideo(widget.streams[q]!);
-                }
+                _showQualitySelection();
               },
-            )),
+            ),
+
+            ListTile(
+              leading: const Icon(LucideIcons.gauge, color: Colors.white),
+              title: Text("Speed: ${_currentSpeed}x", style: const TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showSpeedSelection();
+              },
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showQualitySelection() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: _sortedQualities.reversed.map((q) => ListTile(
+            title: Text(q, style: TextStyle(color: q == _currentQuality ? AppColors.accentYellow : Colors.white)),
+            trailing: q == _currentQuality ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
+            onTap: () {
+              Navigator.pop(ctx);
+              if (q != _currentQuality) {
+                final currentPos = _player.state.position;
+                setState(() { _currentQuality = q; _isError = false; });
+                _playVideo(widget.streams[q]!, startAt: currentPos);
+              }
+            },
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _showSpeedSelection() {
+    final speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: speeds.map((s) => ListTile(
+            title: Text("${s}x", style: TextStyle(color: s == _currentSpeed ? AppColors.accentYellow : Colors.white)),
+            trailing: s == _currentSpeed ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
+            onTap: () {
+              Navigator.pop(ctx);
+              setState(() => _currentSpeed = s);
+              _player.setRate(s);
+            },
+          )).toList(),
         ),
       ),
     );
@@ -251,125 +341,156 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       } catch (_) {}
     }
     
+    _exitFullScreenMode();
     ScreenProtector.protectDataLeakageOff();
     ScreenProtector.preventScreenshotOff();
     WakelockPlus.disable();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          Center(
-            child: _isError
-                ? Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-                      const SizedBox(height: 16),
-                      Text(_errorMessage, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                           setState(() => _isError = false);
-                           _playVideo(widget.streams[_currentQuality]!);
-                        }, 
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
-                        child: const Text("Retry", style: TextStyle(color: Colors.black)),
-                      )
-                    ],
-                  )
-                : (_isDecrypting)
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) {
+        if (didPop) _exitFullScreenMode();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            // 1. المشغل مع تخصيص الأزرار بالكامل
+            Positioned.fill(
+              child: Center(
+                child: _isError
                     ? Column(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          CircularProgressIndicator(color: AppColors.accentYellow),
-                          SizedBox(height: 16),
-                          Text("Preparing Video...", style: TextStyle(color: Colors.white70)),
+                        children: [
+                          const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                          const SizedBox(height: 16),
+                          Text(_errorMessage, style: const TextStyle(color: Colors.white)),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () {
+                               setState(() => _isError = false);
+                               _playVideo(widget.streams[_currentQuality]!);
+                            }, 
+                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
+                            child: const Text("Retry", style: TextStyle(color: Colors.black)),
+                          )
                         ],
                       )
-                    : Video(
-                        controller: _controller,
-                        controls: MaterialVideoControls, 
-                      ),
-          ),
+                    : (_isDecrypting)
+                        ? Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              CircularProgressIndicator(color: AppColors.accentYellow),
+                              SizedBox(height: 16),
+                              Text("Preparing Video...", style: TextStyle(color: Colors.white70)),
+                            ],
+                          )
+                        : MaterialVideoControlsTheme(
+                            // ✅ هنا يتم تخصيص أماكن الأزرار
+                            normal: MaterialVideoControlsThemeData(
+                              // 1. الشريط العلوي (رجوع + عنوان)
+                              topButtonBar: [
+                                const SizedBox(width: 14),
+                                MaterialCustomButton(
+                                  onPressed: () {
+                                    _exitFullScreenMode();
+                                    Navigator.pop(context);
+                                  },
+                                  icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+                                ),
+                                const SizedBox(width: 14),
+                                Text(
+                                  widget.title,
+                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                              
+                              // 2. شريط المنتصف (تأخير 10 - تشغيل - تقديم 10)
+                              primaryButtonBar: [
+                                const Spacer(flex: 2),
+                                // زر تأخير 10 ثواني
+                                MaterialCustomButton(
+                                  onPressed: () => _seekRelative(const Duration(seconds: -10)),
+                                  icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
+                                ),
+                                const SizedBox(width: 24),
+                                // زر التشغيل/الإيقاف الافتراضي
+                                const MaterialPlayOrPauseButton(iconSize: 56),
+                                const SizedBox(width: 24),
+                                // زر تقديم 10 ثواني
+                                MaterialCustomButton(
+                                  onPressed: () => _seekRelative(const Duration(seconds: 10)),
+                                  icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
+                                ),
+                                const Spacer(flex: 2),
+                              ],
 
-          if (!_isError && !_isDecrypting)
-            AnimatedAlign(
-              duration: const Duration(seconds: 2), 
-              curve: Curves.easeInOut,
-              alignment: _watermarkAlignment,
-              child: IgnorePointer(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3), 
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _watermarkText,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.3), 
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12, 
-                      decoration: TextDecoration.none,
+                              // 3. الشريط السفلي (وقت - سيك بار - وقت كلي - إعدادات)
+                              bottomButtonBar: [
+                                const SizedBox(width: 24),
+                                const MaterialPositionIndicator(), // الوقت الحالي والكلي
+                                const Spacer(),
+                                const MaterialSeekBar(), // شريط التقدم
+                                const Spacer(),
+                                // زر الإعدادات الجديد بجوار شريط التقدم
+                                MaterialCustomButton(
+                                  onPressed: _showSettingsSheet,
+                                  icon: const Icon(LucideIcons.settings, color: Colors.white),
+                                ),
+                                const SizedBox(width: 24),
+                              ],
+                              
+                              // إخفاء زر ملء الشاشة الافتراضي لأننا بالفعل في ملء الشاشة
+                              automaticallyImplySkipNextButton: false,
+                              automaticallyImplySkipPreviousButton: false,
+                              brightness: Brightness.dark,
+                            ),
+                            fullscreen: const MaterialVideoControlsThemeData(
+                              // نكرر نفس التصميم لوضع الفل سكرين لضمان الثبات
+                              displaySeekBar: true,
+                              automaticallyImplySkipNextButton: false,
+                              automaticallyImplySkipPreviousButton: false,
+                            ),
+                            child: Video(
+                              controller: _controller,
+                              // تأكد من عدم استخدام controls هنا لأننا غلفناه بـ Theme
+                            ),
+                          ),
+              ),
+            ),
+
+            // 2. العلامة المائية (طبقة منفصلة فوق الفيديو دائماً)
+            if (!_isError && !_isDecrypting)
+              AnimatedAlign(
+                duration: const Duration(seconds: 2), 
+                curve: Curves.easeInOut,
+                alignment: _watermarkAlignment,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3), 
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _watermarkText,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.4), 
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12, 
+                        decoration: TextDecoration.none,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-
-          Positioned(
-            top: 20,
-            left: 20,
-            child: SafeArea(
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(
-                        color: Colors.black54,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 20),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      widget.title,
-                      style: const TextStyle(color: Colors.white, fontSize: 12, decoration: TextDecoration.none),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: _showQualitySheet,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Icon(LucideIcons.settings, color: Colors.white, size: 16),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
