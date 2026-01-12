@@ -97,7 +97,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         options: Options(headers: {
           'x-user-id': box.get('user_id'),
           'x-device-id': box.get('device_id'),
-          // ✅ إرسال السر من متغيرات البيئة كما طلبت
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
@@ -127,8 +126,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           }
 
         } else {
-          // --- تشغيل داخلي (ExoPlayer/Chewie) ---
-          // تحويل قائمة الجودات من الـ API إلى Map يدعمها VideoPlayerScreen
+          // --- تشغيل داخلي ---
           Map<String, String> qualities = {};
           
           if (data['availableQualities'] != null) {
@@ -152,13 +150,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
             );
           } else {
-            // ✅ تسجيل خطأ منطقي (لا توجد روابط)
             FirebaseCrashlytics.instance.log("No streamable URLs found for lesson: ${video['id']}");
             _showErrorSnackBar("No playable stream found.");
           }
         }
       } else {
-        // ✅ تسجيل خطأ API (رفض الوصول أو غيره)
         FirebaseCrashlytics.instance.recordError(
           Exception("API Error ${res.statusCode}: ${res.data}"), 
           null, 
@@ -168,7 +164,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       }
     } catch (e, stack) {
       if (mounted) Navigator.pop(context);
-      // ✅ تسجيل الاستثناء الفعلي
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Play Video Exception');
       _showErrorSnackBar("Connection Error: Please check internet");
     }
@@ -178,7 +173,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   // 2. منطق التحميل (Download Logic) واختيار الجودة
   // ===========================================================================
 
-  Future<void> _prepareVideoDownload(String videoId, String videoTitle) async {
+  // ✅ تم التحديث: استقبال مدة الفيديو (duration)
+  Future<void> _prepareVideoDownload(String videoId, String videoTitle, String duration) async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -205,30 +201,28 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         List<dynamic> qualities = data['availableQualities'] ?? [];
 
         if (qualities.isNotEmpty) {
-          // عرض نافذة اختيار الجودة
-          _showQualitySelectionDialog(videoId, videoTitle, qualities);
+          // ✅ تم التحديث: تمرير المدة
+          _showQualitySelectionDialog(videoId, videoTitle, qualities, duration);
         } else if (data['url'] != null) {
-          // إذا كان رابط واحد فقط، ابدأ التحميل مباشرة
-          _startVideoDownload(videoId, videoTitle, data['url']);
+          // ✅ تم التحديث: تمرير المدة والجودة الافتراضية
+          _startVideoDownload(videoId, videoTitle, data['url'], "Auto", duration);
         } else {
-          // ✅ تسجيل خطأ منطقي
           FirebaseCrashlytics.instance.log("No download links for lesson: $videoId");
           _showErrorSnackBar("No download links available");
         }
       } else {
-        // ✅ تسجيل خطأ API
         FirebaseCrashlytics.instance.log("Prepare download API returned: ${res.statusCode}");
         _showErrorSnackBar("Server Error: ${res.statusCode}");
       }
     } catch (e, stack) {
       if (mounted) Navigator.pop(context);
-      // ✅ تسجيل خطأ الشبكة أو غيره
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Prepare Download Failed: $videoId');
       _showErrorSnackBar("Failed to fetch download info");
     }
   }
 
-  void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities) {
+  // ✅ تم التحديث: استقبال مدة الفيديو
+  void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.backgroundSecondary,
@@ -261,8 +255,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                   trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
                   onTap: () {
                     Navigator.pop(context);
-                    // بدء التحميل بالرابط المختار
-                    _startVideoDownload(videoId, title, q['url']);
+                    // ✅ تم التحديث: تمرير الجودة المحددة والمدة
+                    _startVideoDownload(videoId, title, q['url'], "${q['quality']}p", duration);
                   },
                 );
               }),
@@ -273,28 +267,32 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  void _startVideoDownload(String videoId, String videoTitle, [String? downloadUrl]) {
+  // ✅ تم التحديث: استقبال الجودة والمدة وتمريرها لمدير التحميل
+  void _startVideoDownload(String videoId, String videoTitle, String? downloadUrl, String quality, String duration) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
+    
+    // ملاحظة: يفضل تمرير اسم الكورس والمادة بشكل ديناميكي من الصفحة السابقة
+    // حالياً نستخدم قيم افتراضية أو يمكنك جلبها إذا كانت متوفرة
     
     DownloadManager().startDownload(
       lessonId: videoId,
       videoTitle: videoTitle,
-      courseName: "My Courses",
-      subjectName: "Subject Content",
+      courseName: "My Courses", // يمكن تحسينه بتمريره في الـ Constructor
+      subjectName: "Subject Content", // يمكن تحسينه
       chapterName: widget.chapter['title'] ?? "Chapter",
-      downloadUrl: downloadUrl, // تمرير الرابط المباشر
+      downloadUrl: downloadUrl,
+      quality: quality,   // ✅ تمرير الجودة
+      duration: duration, // ✅ تمرير المدة
       onProgress: (p) {},
       onComplete: () {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Completed!"), backgroundColor: AppColors.success));
       },
       onError: (e) {
-        // ملاحظة: DownloadManager يقوم بتسجيل الخطأ في Crashlytics داخلياً
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error));
       },
     );
   }
 
-  // تحميل ملفات PDF
   void _startPdfDownload(String pdfId, String pdfTitle) {
      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
      DownloadManager().startDownload(
@@ -308,7 +306,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success));
       },
       onError: (e) {
-        // ملاحظة: DownloadManager يقوم بتسجيل الخطأ في Crashlytics داخلياً
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error));
       },
     );
@@ -445,7 +442,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // --- قائمة الفيديوهات ---
   Widget _buildVideosList(List<Map<String, dynamic>> videos) {
     if (videos.isEmpty) return _buildEmptyState(LucideIcons.monitorPlay, "No video lessons");
     
@@ -455,6 +451,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       itemBuilder: (context, index) {
         final video = videos[index];
         final String videoId = video['id'].toString();
+        // ✅ استخراج مدة الفيديو من البيانات (إن وجدت)
+        final String duration = video['duration'] ?? ""; 
         
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -507,12 +505,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     child: _buildActionButton(
                       "Watch Now", 
                       AppColors.accentYellow, 
-                      () => _showPlayerSelectionDialog(video), // ✅ فتح قائمة المشغلات
+                      () => _showPlayerSelectionDialog(video), 
                     ),
                   ),
                   Container(width: 1, height: 48, color: Colors.white10),
                   
-                  // زر التحميل مع تحديث الحالة
                   Expanded(
                     child: ValueListenableBuilder(
                       valueListenable: Hive.box('downloads_box').listenable(),
@@ -522,7 +519,12 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
                         if (isDownloaded) return _buildStatusButton("SAVED", AppColors.success, LucideIcons.checkCircle);
                         else if (isDownloading) return _buildStatusButton("LOADING...", AppColors.accentYellow, LucideIcons.loader);
-                        else return _buildActionButton("Download", AppColors.textSecondary, () => _prepareVideoDownload(videoId, video['title']));
+                        else return _buildActionButton(
+                          "Download", 
+                          AppColors.textSecondary, 
+                          // ✅ تمرير المدة لعملية التحضير
+                          () => _prepareVideoDownload(videoId, video['title'], duration)
+                        );
                       },
                     ),
                   ),
@@ -535,7 +537,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // --- قائمة ملفات PDF ---
   Widget _buildPdfsList(List<Map<String, dynamic>> pdfs) {
     if (pdfs.isEmpty) return _buildEmptyState(LucideIcons.fileText, "No PDF files");
 
@@ -613,8 +614,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       },
     );
   }
-
-  // --- Widgets مساعدة ---
 
   Widget _buildOptionTile({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
     return GestureDetector(
