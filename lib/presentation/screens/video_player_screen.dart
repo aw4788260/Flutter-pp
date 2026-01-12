@@ -235,7 +235,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ الدالة الوحيدة التي تم تعديلها لإضافة ميزة الانتظار الذكي (Smart Wait)
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     try {
       String playUrl = url;
@@ -246,19 +245,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       }
       
-      // 1. فتح الفيديو مع تجميد التشغيل
+      // ✅ 1. إيقاف الفيديو الحالي تماماً (هذا يحل مشكلة أول تغيير للجودة)
+      await _player.stop();
+      
+      // 2. فتح الفيديو الجديد مع تجميد التشغيل
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
-      // 2. الانتظار حتى تحميل مدة الفيديو الحقيقية (الحل الجذري لمشكلة البدء من الصفر)
+      // 3. انتظار تحميل البيانات الوصفية (Metadata) لضمان نجاح القفز
       if (startAt != null && startAt != Duration.zero) {
         int retries = 0;
-        // حلقة انتظار: تستمر حتى تصبح المدة أكبر من صفر أو تنتهي المحاولات
+        // الانتظار حتى تصبح المدة معروفة (بعد الـ stop ستكون 0، لذا ننتظر حتى تتغير)
         while (_player.state.duration == Duration.zero && retries < 40) {
           await Future.delayed(const Duration(milliseconds: 100));
           retries++;
         }
         
-        // الآن الأمر seek سيعمل بشكل صحيح لأن المشغل يعرف طول الفيديو
+        // الآن القفز آمن
         await _player.seek(startAt);
       }
 
@@ -389,40 +391,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // حساب المناطق الآمنة
     final padding = MediaQuery.of(context).viewPadding;
     
-    // إعداد الثيم (كما أرسلته سابقاً)
+    // إعداد الثيم
     final controlsTheme = MaterialVideoControlsThemeData(
-      // ✅ إخفاء الشريط الافتراضي المكرر
       displaySeekBar: false,
-      
-      // ضبط البادينغ لرفع العناصر عن الحافة
       padding: EdgeInsets.only(
         top: padding.top > 0 ? padding.top : 20, 
         bottom: padding.bottom > 0 ? padding.bottom : 20,
         left: 20, 
         right: 20
       ),
-      
-      // ✅ الشريط السفلي
       bottomButtonBar: [
-        const MaterialPositionIndicator(), // الوقت
+        const MaterialPositionIndicator(),
         const SizedBox(width: 10),
-        
-        // ✅ شريط التقدم
-        const Expanded(
-          child: MaterialSeekBar(),
-        ),
-        
+        const Expanded(child: MaterialSeekBar()),
         const SizedBox(width: 10),
-        
-        // زر الإعدادات
         MaterialCustomButton(
           onPressed: _showSettingsSheet,
           icon: const Icon(LucideIcons.settings, color: Colors.white),
         ),
-        
         const SizedBox(width: 10),
-        
-        // زر الخروج/التصغير
         MaterialCustomButton(
           onPressed: () {
             _restoreSystemUI();
@@ -431,7 +418,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           icon: const Icon(LucideIcons.minimize, color: Colors.white),
         ),
       ],
-      
       topButtonBar: [
         MaterialCustomButton(
           onPressed: () {
@@ -446,7 +432,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ],
-      
       primaryButtonBar: [
         const Spacer(flex: 2),
         MaterialCustomButton(
@@ -504,10 +489,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             else
               Center(
                 child: MaterialVideoControlsTheme(
-                  // ✅ تطبيق الثيم الموحد
                   normal: controlsTheme,
                   fullscreen: controlsTheme,
-                  
                   child: Video(
                     controller: _controller,
                     fit: BoxFit.contain, 
@@ -515,7 +498,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-            // العلامة المائية
+            // ✅ العلامة المائية المعدلة (تباين أعلى + ارتفاع أقل)
             if (!_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
@@ -523,15 +506,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 alignment: _watermarkAlignment,
                 child: IgnorePointer(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    // تقليل الحشوة الرأسية لتقليل الارتفاع
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.3), 
+                      // زيادة شفافية الخلفية لتصبح أغمق (تباين أعلى)
+                      color: Colors.black.withOpacity(0.6), 
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       _watermarkText,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.4), 
+                        // زيادة شفافية النص ليصبح أكثر وضوحاً
+                        color: Colors.white.withOpacity(0.85), 
                         fontWeight: FontWeight.bold,
                         fontSize: 12, 
                         decoration: TextDecoration.none,
