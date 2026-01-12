@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:typed_data'; // ✅ تمت إضافة هذا السطر لحل مشكلة Uint8List
+import 'dart:typed_data';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
@@ -32,7 +32,6 @@ class LocalProxyService {
   Future<Response> _handleVideoRequest(Request request) async {
     final path = request.url.queryParameters['path'];
     if (path == null) {
-      FirebaseCrashlytics.instance.log("⚠️ Proxy: Missing path parameter");
       return Response.notFound('Path not provided');
     }
 
@@ -45,7 +44,7 @@ class LocalProxyService {
     try {
       final fileLength = await file.length();
       
-      // 1. معالجة طلب الـ Range (مهم جداً للتقديم والتأخير في الفيديو)
+      // 1. معالجة طلب الـ Range
       final rangeHeader = request.headers['range'];
       int start = 0;
       int end = fileLength - 1;
@@ -64,18 +63,16 @@ class LocalProxyService {
       if (start < 0) start = 0;
       if (end >= fileLength) end = fileLength - 1;
       
-      // طول المحتوى المطلوب
       final contentLength = end - start + 1;
 
-      // تسجيل الطلب للمتابعة
-      FirebaseCrashlytics.instance.log("📡 Streaming request: Range $start-$end (Total: $fileLength)");
+      FirebaseCrashlytics.instance.log("📡 Proxy Stream: Range $start-$end / $fileLength");
 
       // 2. إنشاء Stream يقرأ ويفك التشفير فورياً
       final stream = _createDecryptedStream(file, start, end, fileLength);
 
       // 3. إرجاع استجابة جزئية (206 Partial Content)
       return Response(
-        206, // HTTP 206 Partial Content
+        206,
         body: stream,
         headers: {
           'Content-Type': 'video/mp4',
@@ -83,7 +80,7 @@ class LocalProxyService {
           'Content-Range': 'bytes $start-$end/$fileLength',
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store', // منع التخزين المؤقت للأمان
+          'Cache-Control': 'no-store',
         },
       );
 
@@ -99,58 +96,44 @@ class LocalProxyService {
     
     try {
       raf = await file.open(mode: FileMode.read);
-      
-      // إعدادات التشفير (AES-CBC Block Size = 16)
       const int blockSize = 16;
       
-      // ✅ 1. تحديد بداية القراءة (يجب أن تكون مضاعفات 16)
-      // نحتاج للبدء من بداية البلوك للحصول على IV صحيح، حتى لو طلب اللاعب بايتات من منتصف البلوك
+      // ✅ تحديد بداية البلوك (Aligned Start)
       final int alignedStart = (start ~/ blockSize) * blockSize;
-      final int offsetInBlock = start - alignedStart; // الفرق الذي سنحذفه لاحقاً
+      final int offsetInBlock = start - alignedStart;
       
-      // ✅ 2. تحديد الـ IV (Vector) المناسب
-      // في AES-CBC: الـ IV للبلوك الحالي هو النص المشفر (Ciphertext) للبلوك السابق.
+      // ✅ تحديد الـ IV المناسب للبلوك المطلوب
       encrypt.IV currentIV;
-      
       if (alignedStart == 0) {
-        // إذا كنا في البداية، نستخدم الـ IV الأصلي
         currentIV = EncryptionHelper.iv; 
         await raf.setPosition(0);
       } else {
-        // إذا كنا في الوسط، نقرأ الـ 16 بايت السابقة لتكون هي الـ IV
+        // نأخذ الـ 16 بايت المشفرة السابقة كـ IV للبلوك الحالي
         await raf.setPosition(alignedStart - blockSize);
         final ivBytes = await raf.read(blockSize);
-        currentIV = encrypt.IV(internet8ListFromList(ivBytes));
+        currentIV = encrypt.IV(Uint8List.fromList(ivBytes));
       }
 
-      // ✅ 3. إعداد مفك التشفير (بدون Padding)
-      // نستخدم padding: null لأننا سنفك أجزاء عشوائية، والحشو موجود فقط في آخر الملف
-      
-      // ✅ تصحيح: استخدام EncryptionHelper.key مباشرة بدلاً من محاولة استخراجه من الـ algo
+      // ✅ إعداد مفك التشفير بدون Padding (نحن نتحكم به يدوياً)
       final key = EncryptionHelper.key; 
-      
       final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.cbc, padding: null));
 
       int currentPos = alignedStart;
-      const int bufferSize = 64 * 1024; // قراءة 64KB في كل دفعة
+      const int bufferSize = 64 * 1024; // 64KB
 
       while (currentPos <= end) {
-        // حساب كمية القراءة (يجب أن تكون مضاعفات 16)
         int bytesToRead = bufferSize;
-        
-        // تعديل الكمية لعدم تجاوز نهاية الملف
         if (currentPos + bytesToRead > fileLength) {
           bytesToRead = fileLength - currentPos;
         }
         
-        // التأكد من أن القراءة تتماشى مع البلوكات (إلا في آخر جزء)
+        // المحاذاة مع البلوكات (16 بايت)
         if (bytesToRead % blockSize != 0 && (currentPos + bytesToRead) < fileLength) {
            bytesToRead = ((bytesToRead ~/ blockSize) + 1) * blockSize;
         }
 
-        if (bytesToRead == 0) break;
+        if (bytesToRead <= 0) break;
 
-        // قراءة البيانات المشفرة
         final encryptedChunk = await raf.read(bytesToRead);
         if (encryptedChunk.isEmpty) break;
 
@@ -160,27 +143,42 @@ class LocalProxyService {
           iv: currentIV
         );
 
-        // تحديث الـ IV للدورة القادمة (آخر 16 بايت من المشفر تصبح الـ IV القادم)
+        // تحديث الـ IV للدورة القادمة
         if (encryptedChunk.length >= blockSize) {
            currentIV = encrypt.IV(encryptedChunk.sublist(encryptedChunk.length - blockSize));
         }
 
-        // ✅ 4. معالجة البيانات وإرسالها
         List<int> result = decryptedChunk;
 
-        // إذا كانت هذه أول دفعة، نحذف البايتات الزائدة من البداية (offsetInBlock)
-        if (currentPos == alignedStart && offsetInBlock > 0) {
-          if (result.length > offsetInBlock) {
-             result = result.sublist(offsetInBlock);
-          } else {
-             result = [];
+        // ✅ معالجة الـ Padding في آخر بلوك بالملف
+        if (currentPos + encryptedChunk.length >= fileLength) {
+          int lastByte = result.last;
+          if (lastByte > 0 && lastByte <= 16) {
+            // التحقق إذا كان هذا فعلاً حشو PKCS7
+            bool isPadding = true;
+            for (int i = 1; i <= lastByte; i++) {
+              if (result[result.length - i] != lastByte) {
+                isPadding = false;
+                break;
+              }
+            }
+            if (isPadding) {
+              result = result.sublist(0, result.length - lastByte);
+            }
           }
         }
 
-        // إذا تجاوزنا النهاية المطلوبة، نقص الزائد
-        final int bytesLeftToSend = (end - (currentPos + (currentPos == alignedStart ? offsetInBlock : 0))) + 1;
-        if (result.length > bytesLeftToSend) {
-          result = result.sublist(0, bytesLeftToSend);
+        // قص الزيادات الناتجة عن المحاذاة (Alignment) في البداية والنهاية
+        if (currentPos == alignedStart && offsetInBlock > 0) {
+          result = result.length > offsetInBlock ? result.sublist(offsetInBlock) : [];
+        }
+
+        // حساب الكمية المتبقية المطلوب إرسالها فعلياً بناءً على طلب الـ Range
+        final int sentSoFar = (currentPos > alignedStart) ? (currentPos - start) : 0;
+        final int remainingToSent = (end - start + 1) - sentSoFar;
+
+        if (result.length > remainingToSent) {
+          result = result.sublist(0, remainingToSent);
         }
 
         if (result.isNotEmpty) {
@@ -188,29 +186,19 @@ class LocalProxyService {
         }
 
         currentPos += encryptedChunk.length;
-        
-        // الخروج إذا وصلنا للنهاية
         if (currentPos > end) break;
       }
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Streaming Loop Error');
-      // لا نعيد الخطأ للمشغل لكي لا يقطع، بل ننهي البث فقط
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: '🚨 Proxy Stream Loop Error');
     } finally {
-      try {
-        await raf?.close();
-      } catch (_) {}
+      await raf?.close();
     }
-  }
-
-  /// دالة مساعدة لتحويل القوائم
-  Uint8List internet8ListFromList(List<int> data) {
-    if (data is Uint8List) return data;
-    return Uint8List.fromList(data);
   }
 
   void stop() {
     _server?.close(force: true);
     _server = null;
+    FirebaseCrashlytics.instance.log('🛑 Proxy Stopped');
   }
 }
