@@ -4,6 +4,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import 'course_details_screen.dart';
 import 'course_materials_screen.dart';
+import 'login_screen.dart'; // ✅ ضروري لتوجيه الضيف لتسجيل الدخول
 
 class MyCoursesScreen extends StatefulWidget {
   const MyCoursesScreen({super.key});
@@ -18,13 +19,146 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ 1. التحقق أولاً: هل المستخدم ضيف؟
+    if (AppState().isGuest) {
+      // إذا كان المستخدم في وضع "المتجر"، نسمح له بالتصفح
+      if (_view == 'market') {
+        return _buildMarketView();
+      }
+      // إذا حاول الوصول للمكتبة، نعرض له واجهة "يجب تسجيل الدخول"
+      return _buildGuestView();
+    }
+
+    // المستخدم مسجل دخول: السلوك الطبيعي
     if (_view == 'market') {
       return _buildMarketView();
     }
     return _buildLibraryView();
   }
 
-  // --- 1. واجهة المكتبة (تعتمد على myLibrary الجاهزة من السيرفر) ---
+  // ✅ 2. واجهة خاصة بالضيف عند محاولة دخول المكتبة
+  Widget _buildGuestView() {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundPrimary,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header (مشابه للمكتبة للحفاظ على التناسق)
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 48, height: 48,
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        ),
+                        child: const Icon(LucideIcons.lock, color: AppColors.textSecondary, size: 24),
+                      ),
+                      const SizedBox(width: 16),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "LIBRARY",
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: -0.5,
+                              height: 1.0,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            "GUEST MODE",
+                            style: TextStyle(
+                              color: AppColors.accentYellow, // لون مختلف للتمييز
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 2.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  // زر الذهاب للمتجر (مسموح للضيف)
+                  GestureDetector(
+                    onTap: () => setState(() => _view = 'market'),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundSecondary,
+                        borderRadius: BorderRadius.circular(50),
+                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                      ),
+                      child: const Icon(LucideIcons.shoppingCart, color: AppColors.accentYellow, size: 22),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // محتوى رسالة "يجب تسجيل الدخول"
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(LucideIcons.shieldAlert, size: 64, color: AppColors.textSecondary.withOpacity(0.2)),
+                    const SizedBox(height: 24),
+                    const Text(
+                      "LOGIN REQUIRED",
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Sign in to access your purchased lessons.",
+                      style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 12),
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: () {
+                        // مسح حالة الضيف والعودة لشاشة الدخول
+                        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (context) => const LoginScreen()),
+                          (route) => false,
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accentYellow,
+                        foregroundColor: AppColors.backgroundPrimary,
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: const Text(
+                        "LOGIN NOW",
+                        style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- 3. واجهة المكتبة (للمستخدم المسجل) ---
   Widget _buildLibraryView() {
     final libraryItems = AppState().myLibrary;
 
@@ -50,9 +184,9 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                         child: const Icon(LucideIcons.bookOpen, color: AppColors.accentYellow, size: 24),
                       ),
                       const SizedBox(width: 16),
-                      Column(
+                      const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Text(
                             "LIBRARY",
                             style: TextStyle(
@@ -133,8 +267,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   courseId: id,
                                   courseTitle: title,
                                   courseCode: code,
-                                  instructorName: instructor, // ✅ تم إضافة تمرير اسم المدرس هنا
-                                  preLoadedSubjects: subjectsToPass, // ✅ تمرير المواد الجاهزة
+                                  instructorName: instructor,
+                                  preLoadedSubjects: subjectsToPass,
                                 ),
                               ),
                             );
@@ -228,7 +362,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 2. واجهة المتجر (تعرض كل الكورسات) ---
+  // --- 4. واجهة المتجر (تعرض كل الكورسات - متاحة للضيف أيضاً) ---
   Widget _buildMarketView() {
     final availableCourses = AppState().allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
