@@ -378,6 +378,82 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // حساب المناطق الآمنة لضبط البادينغ
     final padding = MediaQuery.of(context).viewPadding;
     
+    // إعدادات الثيم (نحفظها في متغير لاستخدامها في الوضعين)
+    final controlsTheme = MaterialVideoControlsThemeData(
+      // ✅ 1. إيقاف شريط التقدم الافتراضي لمنع التكرار
+      displaySeekBar: false,
+      
+      // ضبط البادينغ
+      padding: EdgeInsets.only(
+        top: padding.top > 0 ? padding.top : 20, 
+        bottom: padding.bottom > 0 ? padding.bottom : 20,
+        left: 20, 
+        right: 20
+      ),
+      
+      // الشريط السفلي (يحتوي على شريط التقدم المخصص والأزرار)
+      bottomButtonBar: [
+        const MaterialPositionIndicator(),
+        const SizedBox(width: 10),
+        // ✅ استخدام Expanded هنا هو الحل السحري لإعطاء الشريط باقي المساحة
+        const Expanded(
+          child: MaterialSeekBar(),
+        ),
+        const SizedBox(width: 10),
+        
+        // زر الإعدادات
+        MaterialCustomButton(
+          onPressed: _showSettingsSheet,
+          icon: const Icon(LucideIcons.settings, color: Colors.white),
+        ),
+        const SizedBox(width: 10),
+        
+        // زر التصغير
+        MaterialCustomButton(
+          onPressed: () {
+            _restoreSystemUI();
+            Navigator.pop(context);
+          },
+          icon: const Icon(LucideIcons.minimize, color: Colors.white),
+        ),
+      ],
+      
+      // الشريط العلوي
+      topButtonBar: [
+        MaterialCustomButton(
+          onPressed: () {
+            _restoreSystemUI();
+            Navigator.pop(context);
+          },
+          icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+        ),
+        const SizedBox(width: 14),
+        Text(
+          widget.title,
+          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+      ],
+      
+      // أزرار الوسط
+      primaryButtonBar: [
+        const Spacer(flex: 2),
+        MaterialCustomButton(
+          onPressed: () => _seekRelative(const Duration(seconds: -10)),
+          icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
+        ),
+        const SizedBox(width: 24),
+        const MaterialPlayOrPauseButton(iconSize: 56),
+        const SizedBox(width: 24),
+        MaterialCustomButton(
+          onPressed: () => _seekRelative(const Duration(seconds: 10)),
+          icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
+        ),
+        const Spacer(flex: 2),
+      ],
+      automaticallyImplySkipNextButton: false,
+      automaticallyImplySkipPreviousButton: false,
+    );
+
     return PopScope(
       canPop: true,
       onPopInvoked: (didPop) {
@@ -416,83 +492,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             else
               Center(
                 child: MaterialVideoControlsTheme(
-                  normal: MaterialVideoControlsThemeData(
-                    // ✅ ضبط البادينغ ليرفع العناصر بعيداً عن الحواف
-                    padding: EdgeInsets.only(
-                      top: padding.top > 0 ? padding.top : 20, 
-                      bottom: padding.bottom > 0 ? padding.bottom : 20,
-                      left: 20, 
-                      right: 20
-                    ),
-                    
-                    // ✅ تصميم الشريط السفلي ليضمن ظهور الأزرار
-                    bottomButtonBar: [
-                      const MaterialPositionIndicator(),
-                      const SizedBox(width: 10),
-                      // ✅ استخدام Expanded هنا هو الحل السحري لإعطاء الشريط باقي المساحة
-                      // ودفع الأزرار للظهور
-                      const Expanded(
-                        child: MaterialSeekBar(),
-                      ),
-                      const SizedBox(width: 10),
-                      
-                      // زر الإعدادات (الجودة والسرعة)
-                      MaterialCustomButton(
-                        onPressed: _showSettingsSheet,
-                        icon: const Icon(LucideIcons.settings, color: Colors.white),
-                      ),
-                      const SizedBox(width: 10),
-                      
-                      // زر التصغير
-                      MaterialCustomButton(
-                        onPressed: () {
-                          _restoreSystemUI();
-                          Navigator.pop(context);
-                        },
-                        icon: const Icon(LucideIcons.minimize, color: Colors.white),
-                      ),
-                    ],
-                    
-                    topButtonBar: [
-                      MaterialCustomButton(
-                        onPressed: () {
-                          _restoreSystemUI();
-                          Navigator.pop(context);
-                        },
-                        icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-                      ),
-                      const SizedBox(width: 14),
-                      Text(
-                        widget.title,
-                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                    
-                    primaryButtonBar: [
-                      const Spacer(flex: 2),
-                      MaterialCustomButton(
-                        onPressed: () => _seekRelative(const Duration(seconds: -10)),
-                        icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
-                      ),
-                      const SizedBox(width: 24),
-                      const MaterialPlayOrPauseButton(iconSize: 56),
-                      const SizedBox(width: 24),
-                      MaterialCustomButton(
-                        onPressed: () => _seekRelative(const Duration(seconds: 10)),
-                        icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
-                      ),
-                      const Spacer(flex: 2),
-                    ],
-                    automaticallyImplySkipNextButton: false,
-                    automaticallyImplySkipPreviousButton: false,
-                  ),
-                  
-                  fullscreen: const MaterialVideoControlsThemeData(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                    displaySeekBar: true,
-                    automaticallyImplySkipNextButton: false,
-                    automaticallyImplySkipPreviousButton: false,
-                  ),
+                  // ✅ نستخدم نفس الثيم للوضعين لضمان ثبات الواجهة
+                  normal: controlsTheme,
+                  fullscreen: controlsTheme,
                   
                   child: Video(
                     controller: _controller,
