@@ -34,7 +34,8 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
   void initState() {
     super.initState();
     
-    // ✅ 1. إجبار الشاشة على الوضع الأفقي (ملء الشاشة) عند الفتح
+    // ✅ 1. تفعيل وضع ملء الشاشة الحقيقي (إخفاء شريط الحالة وأزرار التنقل) وتدوير الشاشة
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -55,7 +56,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
           forceHD: false,
           isLive: false,
           loop: false,
-          // ✅ تم التعديل: إيقاف الترجمة التلقائية
+          // ✅ إيقاف الترجمة التلقائية
           enableCaption: false, 
           // تعطيل زر ملء الشاشة لمنع التعارض مع العلامة المائية
           disableDragSeek: false, 
@@ -72,7 +73,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
     }
   }
 
-  // ✅ تعديل: جلب رقم الهاتف فقط
+  // ✅ جلب رقم الهاتف فقط
   void _getUserId() {
     try {
       if (Hive.isBoxOpen('auth_box')) {
@@ -113,15 +114,15 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
     _controller.removeListener(_playerListener);
     _controller.dispose();
     
-    // ✅ إعادة الشاشة للوضع الرأسي عند الخروج
+    // ✅ إعادة الشاشة للوضع الرأسي وإظهار أشرطة النظام عند الخروج
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ تم إزالة YoutubePlayerBuilder واستخدام Scaffold مباشرة
-    // لأننا أجبرنا الشاشة على الوضع الأفقي، فالصفحة كلها تعتبر "ملء شاشة"
+    // ✅ استخدام Scaffold مباشرة لأن الشاشة بالكامل هي المشغل
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -144,7 +145,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
                 const SizedBox(width: 10),
                 const RemainingDuration(),
                 const PlaybackSpeedButton(),
-                // تم إزالة FullScreenButton() لضمان بقاء الواجهة كما هي
+                // تم إزالة FullScreenButton() لأننا بالفعل في وضع ملء الشاشة
               ],
             ),
           ),
@@ -159,14 +160,14 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
                 // ✅ الحفاظ على نفس الحجم (Padding صغير)
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  // ✅ تم التعديل: زيادة التباين للخلفية لتصبح أوضح (كانت 0.3)
+                  // ✅ زيادة التباين للخلفية لتصبح أوضح
                   color: Colors.black.withOpacity(0.6), 
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   _userIdText,
                   style: TextStyle(
-                    // ✅ تم التعديل: جعل النص أبيض شبه ناصع (كان 0.4)
+                    // ✅ جعل النص أبيض شبه ناصع
                     color: Colors.white.withOpacity(0.9), 
                     fontWeight: FontWeight.bold,
                     // ✅ الحفاظ على نفس حجم الخط
