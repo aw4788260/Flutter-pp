@@ -366,8 +366,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _proxyService.stop();
     _player.dispose();
     _restoreSystemUI();
-    ScreenProtector.protectDataLeakageOff();
-    ScreenProtector.preventScreenshotOff();
+    
+    // ✅ تم حذف إلغاء الحماية ليستمر المنع في باقي التطبيق
+    
     WakelockPlus.disable();
     super.dispose();
   }
