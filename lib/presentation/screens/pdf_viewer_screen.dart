@@ -10,13 +10,17 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../core/utils/encryption_helper.dart'; // ✅ استيراد مساعد التشفير
+import '../../core/utils/encryption_helper.dart'; // ✅ ضروري لفك التشفير
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfId;
   final String title;
 
-  const PdfViewerScreen({super.key, required this.pdfId, required this.title});
+  const PdfViewerScreen({
+    super.key, 
+    required this.pdfId, 
+    required this.title
+  });
 
   @override
   State<PdfViewerScreen> createState() => _PdfViewerScreenState();
@@ -24,7 +28,7 @@ class PdfViewerScreen extends StatefulWidget {
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String? _localPath;
-  File? _tempDecryptedFile; // ✅ متغير لحفظ الملف المفكوك مؤقتاً
+  File? _tempDecryptedFile; // ✅ مرجع للملف المؤقت لحذفه عند الخروج
   bool _loading = true;
   String? _error;
   int _totalPages = 0;
@@ -36,6 +40,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   @override
   void initState() {
     super.initState();
+    FirebaseCrashlytics.instance.log("📄 PDF Screen Opened: ${widget.title} (ID: ${widget.pdfId})");
     _initWatermarkText();
     _loadPdf();
   }
@@ -46,126 +51,134 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     if (_tempDecryptedFile != null && _tempDecryptedFile!.existsSync()) {
       try {
         _tempDecryptedFile!.deleteSync();
-        debugPrint("🔒 Temp decrypted PDF deleted.");
+        FirebaseCrashlytics.instance.log("🔒 Temp decrypted PDF deleted successfully.");
       } catch (e) {
-        debugPrint("Failed to delete temp PDF: $e");
+        FirebaseCrashlytics.instance.log("⚠️ Failed to delete temp PDF: $e");
       }
     }
     super.dispose();
   }
 
   void _initWatermarkText() {
-    String phone = '';
-    // محاولة جلب رقم الهاتف من الذاكرة الحية أو التخزين المحلي
+    String displayText = '';
+    
+    // 1. المحاولة الأولى: من الذاكرة الحية (الأسرع)
     if (AppState().userData != null) {
-      phone = AppState().userData!['phone'] ?? '';
+      displayText = AppState().userData!['phone'] ?? '';
     } 
-    if (phone.isEmpty) {
+    
+    // 2. المحاولة الثانية: من التخزين المحلي
+    if (displayText.isEmpty) {
        try {
          if(Hive.isBoxOpen('auth_box')) {
            var box = Hive.box('auth_box');
-           phone = box.get('phone') ?? '';
+           displayText = box.get('phone') ?? box.get('username') ?? '';
          }
-       } catch(_) {}
+       } catch(e) {
+         FirebaseCrashlytics.instance.log("⚠️ Watermark load error: $e");
+       }
     }
+
     setState(() {
-      _watermarkText = phone.isNotEmpty ? phone : 'User';
+      _watermarkText = displayText.isNotEmpty ? displayText : 'User';
     });
   }
 
   Future<void> _loadPdf() async {
     setState(() => _loading = true);
     try {
-      // ✅ 1. التحقق أولاً: هل الملف محمل ومشفر محلياً؟
+      // ============================================================
+      // 1. محاولة الفتح من الملفات المحملة محلياً (Offline)
+      // ============================================================
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
 
       if (downloadItem != null && downloadItem['path'] != null) {
-        final File encryptedFile = File(downloadItem['path']);
+        final String encryptedPath = downloadItem['path'];
+        final File encryptedFile = File(encryptedPath);
         
         if (await encryptedFile.exists()) {
-          FirebaseCrashlytics.instance.log("📂 Found encrypted PDF offline: ${widget.pdfId}");
+          FirebaseCrashlytics.instance.log("📂 Found encrypted PDF offline at: $encryptedPath");
           
           // تحديد مسار مؤقت لفك التشفير
           final tempDir = await getTemporaryDirectory();
-          final tempPath = '${tempDir.path}/${widget.pdfId}_temp.pdf';
-          
-          // فك التشفير
-          await EncryptionHelper.init();
-          await EncryptionHelper.decryptFileFull(encryptedFile, tempPath);
-          
-          if (mounted) {
-            setState(() {
-              _localPath = tempPath;
-              _tempDecryptedFile = File(tempPath);
-              _loading = false;
-            });
+          // استخدام timestamp لضمان اسم فريد وتجنب التداخل
+          final tempPath = '${tempDir.path}/temp_${widget.pdfId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+          final tempFile = File(tempPath);
+
+          try {
+            // ✅ فك التشفير
+            await EncryptionHelper.init();
+            await EncryptionHelper.decryptFileFull(encryptedFile, tempPath);
+            FirebaseCrashlytics.instance.log("🔓 PDF Decrypted successfully to: $tempPath");
+            
+            if (mounted) {
+              setState(() {
+                _localPath = tempPath;
+                _tempDecryptedFile = tempFile; // حفظ المرجع للحذف لاحقاً
+                _loading = false;
+              });
+            }
+            return; // ✅ تم الفتح بنجاح من الأوفلاين، نخرج من الدالة
+          } catch (e, stack) {
+            FirebaseCrashlytics.instance.recordError(e, stack, reason: '🔥 PDF Decryption Failed');
+            // لا نتوقف هنا، نحاول التحميل من السيرفر كخيار بديل (Fallback)
           }
-          return; // انتهينا، لا داعي للتحميل من النت
-        }
-      }
-
-      // ✅ 2. إذا لم يكن موجوداً محلياً، قم بتحميله من السيرفر (كاش عادي)
-      FirebaseCrashlytics.instance.log("☁️ Fetching PDF from server: ${widget.pdfId}");
-      
-      final dir = await getApplicationDocumentsDirectory();
-      final cacheDir = Directory('${dir.path}/cached_pdfs');
-      if (!await cacheDir.exists()) {
-        await cacheDir.create(recursive: true);
-      }
-
-      final file = File('${cacheDir.path}/${widget.pdfId}.pdf');
-      bool useCachedFile = false;
-
-      // التحقق من صلاحية الكاش (مثلاً 10 أيام)
-      if (await file.exists()) {
-        final lastModified = await file.lastModified();
-        if (DateTime.now().difference(lastModified).inDays < 10) {
-          useCachedFile = true;
         } else {
-          await file.delete(); 
+          FirebaseCrashlytics.instance.log("⚠️ Offline record found but file missing on disk: $encryptedPath");
         }
       }
 
-      if (useCachedFile) {
-        if (mounted) setState(() { _localPath = file.path; _loading = false; });
+      // ============================================================
+      // 2. التحميل المباشر من السيرفر (Online Fallback)
+      // ============================================================
+      FirebaseCrashlytics.instance.log("☁️ Fetching PDF from Online API...");
+      
+      var box = await Hive.openBox('auth_box');
+      final userId = box.get('user_id');
+      final deviceId = box.get('device_id');
+
+      final dio = Dio();
+      final response = await dio.get(
+        'https://courses.aw478260.dpdns.org/api/secure/get-pdf',
+        queryParameters: {'pdfId': widget.pdfId},
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: {
+            'x-user-id': userId,
+            'x-device-id': deviceId,
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+          },
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final bytes = response.data as Uint8List;
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/online_${widget.pdfId}_${DateTime.now().millisecondsSinceEpoch}.pdf');
+        await file.writeAsBytes(bytes, flush: true);
+
+        FirebaseCrashlytics.instance.log("✅ PDF Downloaded Online: ${bytes.length} bytes");
+
+        if (mounted) {
+          setState(() {
+            _localPath = file.path;
+            _tempDecryptedFile = file; // أيضاً نحذفه عند الخروج
+            _loading = false;
+          });
+        }
       } else {
-        await _downloadAndSavePdf(file);
+        throw Exception("Server Error: ${response.statusCode}");
       }
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF Load Failed');
-      if (mounted) setState(() { _error = "Failed to open PDF"; _loading = false; });
-    }
-  }
-
-  Future<void> _downloadAndSavePdf(File targetFile) async {
-    var box = await Hive.openBox('auth_box');
-    final userId = box.get('user_id');
-    final deviceId = box.get('device_id');
-
-    final dio = Dio();
-    final response = await dio.get(
-      'https://courses.aw478260.dpdns.org/api/secure/get-pdf',
-      queryParameters: {'pdfId': widget.pdfId},
-      options: Options(
-        responseType: ResponseType.bytes,
-        headers: {
-          'x-user-id': userId,
-          'x-device-id': deviceId,
-          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
-        },
-      ),
-    );
-
-    final bytes = response.data as Uint8List;
-    await targetFile.writeAsBytes(bytes, flush: true);
-
-    if (mounted) {
-      setState(() {
-        _localPath = targetFile.path;
-        _loading = false;
-      });
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: '🚨 Final PDF Load Failed');
+      if (mounted) {
+        setState(() { 
+          _error = "Failed to load PDF. Please check your connection."; 
+          _loading = false; 
+        });
+      }
     }
   }
 
@@ -195,15 +208,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             autoSpacing: false,
             pageFling: false,
             backgroundColor: AppColors.backgroundPrimary,
-            onRender: (pages) => setState(() { _totalPages = pages!; _isReady = true; }),
-            onViewCreated: (controller) {},
+            onRender: (pages) {
+              setState(() { _totalPages = pages!; _isReady = true; });
+              FirebaseCrashlytics.instance.log("📄 PDF Rendered: $pages pages");
+            },
             onPageChanged: (page, total) => setState(() => _currentPage = page!),
             onError: (error) {
+              FirebaseCrashlytics.instance.recordError(error, null, reason: 'PDFView Widget Error');
               setState(() => _error = error.toString());
+            },
+            onPageError: (page, error) {
+              FirebaseCrashlytics.instance.log("⚠️ Error on page $page: $error");
             },
           ),
 
-          // 2. العلامة المائية (طبقة فوق الـ PDF)
+          // 2. العلامة المائية (طبقة متكررة)
           IgnorePointer(
             child: Container(
               width: double.infinity,
@@ -242,7 +261,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ودجت لبناء سطر من العلامات المائية لضمان تغطية الشاشة
   Widget _buildWatermarkRow() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -253,18 +271,19 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
+  // ✅ تصميم العلامة المائية (كما هو - بدون تغييرات التباين العالي)
   Widget _buildWatermarkItem() {
     return Transform.rotate(
-      angle: -0.5, // زاوية ميلان
+      angle: -0.5, 
       child: Opacity(
-        opacity: 0.15, // شفافية خفيفة حتى لا تعيق القراءة
+        opacity: 0.15, // شفافية خفيفة
         child: Text(
           _watermarkText,
           textAlign: TextAlign.center,
           style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w900,
-            color: Colors.grey,
+            color: Colors.grey, // لون رمادي كما طلبت
             decoration: TextDecoration.none,
           ),
         ),
