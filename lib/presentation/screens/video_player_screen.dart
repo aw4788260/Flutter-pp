@@ -42,7 +42,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   bool _isError = false;
   String _errorMessage = "";
-  bool _isInitialized = false;
+  bool _isInitialized = false; // ✅ متغير لانتظار التهيئة
   
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
@@ -57,6 +57,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    // ✅ نقلنا كل عمليات البدء إلى دالة غير متزامنة لضمان الترتيب
     _initializePlayerScreen();
   }
 
@@ -76,10 +77,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         DeviceOrientation.landscapeRight,
       ]);
 
-      // 3. تشغيل البروكسي
+      // 3. ✅ تشغيل البروكسي والانتظار
       await _startProxyServer();
 
-      // 4. إنشاء المشغل
+      // 4. ✅ إنشاء المشغل بعد استقرار الشاشة
       _player = Player();
       _controller = VideoController(
         _player,
@@ -107,9 +108,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _loadUserData();
       _startWatermarkAnimation();
 
+      // 5. ✅ تحديد الجودة والتشغيل
       if (mounted) {
         setState(() {
-          _isInitialized = true;
+          _isInitialized = true; // السماح بعرض الواجهة الآن
         });
         _parseQualities();
       }
@@ -379,6 +381,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ حساب المنطقة الآمنة السفلية لرفع عناصر التحكم عنها
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+
     return PopScope(
       canPop: true,
       onPopInvoked: (didPop) {
@@ -387,11 +392,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       child: Scaffold(
         backgroundColor: Colors.black,
         resizeToAvoidBottomInset: false,
+        // ✅ 1. هام: منع Scaffold من التعامل مع المناطق الآمنة لتجنب الإزاحة
         primary: false, 
         extendBody: true,
+        
+        // ✅ 2. استخدام StackFit.expand لملء الشاشة بالكامل
         body: Stack(
           fit: StackFit.expand,
           children: [
+            // في حالة عدم الجاهزية، نعرض مؤشر تحميل أسود
             if (!_isInitialized)
               const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
             else if (_isError)
@@ -415,23 +424,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               )
             else
+              // ✅ 3. توسيط الفيديو لضمان عدم الإزاحة
               Center(
                 child: MaterialVideoControlsTheme(
                   normal: MaterialVideoControlsThemeData(
-                    padding: EdgeInsets.zero,
-                    // ✅ تخصيص الأزرار مع دعم المناطق الآمنة (SafeArea)
+                    // ✅ (هام جداً) هذا السطر يرفع عناصر التحكم عن الحافة السفلية بمقدار المنطقة الآمنة + 20 بكسل إضافية
+                    padding: EdgeInsets.only(bottom: bottomPadding > 0 ? bottomPadding : 20, top: 20, left: 20, right: 20),
+                    
                     bottomButtonBar: [
-                      const SizedBox(width: 24),
                       const MaterialPositionIndicator(),
                       const Spacer(),
-                      const MaterialSeekBar(),
+                      const MaterialSeekBar(), // الآن سيظهر بشكل سليم لأنه محمي بالـ padding الخارجي
                       const Spacer(),
                       MaterialCustomButton(
                         onPressed: _showSettingsSheet,
                         icon: const Icon(LucideIcons.settings, color: Colors.white),
                       ),
                       const SizedBox(width: 10),
-                      // زر الخروج (يغلق الصفحة)
+                      // ✅ زر الخروج من الفيديو
                       MaterialCustomButton(
                         onPressed: () {
                           _restoreSystemUI();
@@ -439,27 +449,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         },
                         icon: const Icon(LucideIcons.minimize, color: Colors.white),
                       ),
-                      const SafeArea(top: false, left: false, right: false, child: SizedBox(width: 24)),
                     ],
                     topButtonBar: [
-                      const SafeArea(bottom: false, left: false, right: false, child: SizedBox(width: 14)),
-                      SafeArea(
-                        bottom: false, left: false, right: false,
-                        child: MaterialCustomButton(
-                          onPressed: () {
-                            _restoreSystemUI();
-                            Navigator.pop(context);
-                          },
-                          icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-                        ),
+                      MaterialCustomButton(
+                        onPressed: () {
+                          _restoreSystemUI();
+                          Navigator.pop(context);
+                        },
+                        icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
                       ),
                       const SizedBox(width: 14),
-                      SafeArea(
-                        bottom: false, left: false, right: false,
-                        child: Text(
-                          widget.title,
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
+                      Text(
+                        widget.title,
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ],
                     primaryButtonBar: [
@@ -481,15 +483,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     automaticallyImplySkipPreviousButton: false,
                   ),
                   fullscreen: const MaterialVideoControlsThemeData(
-                    // نفس الثيم للوضع الكامل لضمان التناسق عند التدوير
-                    padding: EdgeInsets.zero,
+                    // ✅ تطبيق نفس الـ Padding في وضع الـ fullscreen لضمان التناسق
+                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                     displaySeekBar: true,
                     automaticallyImplySkipNextButton: false,
                     automaticallyImplySkipPreviousButton: false,
                   ),
                   child: Video(
                     controller: _controller,
-                    fit: BoxFit.contain, // يحافظ على أبعاد الفيديو دون قص
+                    // ✅ 5. إزالة القيود اليدوية والسماح له بأخذ حجم الـ Center
+                    fit: BoxFit.contain, 
                   ),
                 ),
               ),
