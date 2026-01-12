@@ -1,12 +1,19 @@
 import 'dart:async';
+import 'dart:io'; // للخروج من التطبيق
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // لإغلاق التطبيق
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:safe_device/safe_device.dart'; // ✅ مكتبة الحماية
+import 'package:lucide_icons/lucide_icons.dart';
+
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart'; 
 import 'login_screen.dart';
 import 'main_wrapper.dart';
+import 'privacy_policy_screen.dart'; // ✅ تأكد من وجود الملفات
+import 'terms_conditions_screen.dart'; // ✅ تأكد من وجود الملفات
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -53,20 +60,160 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     _initializeApp();
   }
 
+  // ✅ دالة الفحص الأمني (روت / خيارات مطور)
+  Future<bool> _checkSecurity() async {
+    try {
+      bool isJailBroken = await SafeDevice.isJailBroken;
+      bool isDevMode = await SafeDevice.isDevelopmentModeEnable;
+
+      if (isJailBroken || isDevMode) {
+        String reason = "";
+        if (isJailBroken) reason = "Root/Jailbreak Detected\n(تم اكتشاف كسر حماية)";
+        if (isDevMode) reason = "${reason.isNotEmpty ? '$reason\n' : ''}Developer Options Enabled\n(خيارات المطور مفعلة)";
+
+        if (mounted) {
+          _showSecurityBlockDialog(reason);
+        }
+        return false; // جهاز غير آمن
+      }
+    } catch (e) {
+      FirebaseCrashlytics.instance.recordError(e, null, reason: 'Security Check Failed');
+    }
+    return true; // جهاز آمن
+  }
+
+  // ✅ نافذة الحظر الأمني
+  void _showSecurityBlockDialog(String reason) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: AppColors.backgroundSecondary,
+          title: const Row(
+            children: [
+              Icon(LucideIcons.shieldAlert, color: AppColors.error),
+              SizedBox(width: 10),
+              Text("Security Alert", style: TextStyle(color: AppColors.error, fontSize: 18)),
+            ],
+          ),
+          content: Text(
+            "Security Risk Detected:\n\n$reason\n\nPlease disable these settings to use the app.",
+            style: const TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                if (Platform.isAndroid) SystemNavigator.pop();
+                exit(0);
+              },
+              child: const Text("EXIT", style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ نافذة الموافقة على الشروط والسياسات (أول مرة فقط)
+  Future<bool> _showTermsDialog(Box box) async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: AppColors.backgroundSecondary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            "Welcome / مرحباً بك",
+            style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "يرجى الموافقة على الشروط والأحكام وسياسة الخصوصية للمتابعة.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Please accept our Terms & Privacy Policy to continue.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              
+              // روابط الصفحات
+              ListTile(
+                dense: true,
+                leading: const Icon(LucideIcons.fileText, color: AppColors.accentOrange, size: 20),
+                title: const Text("Terms & Conditions", style: TextStyle(color: Colors.white)),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsConditionsScreen())),
+              ),
+              ListTile(
+                dense: true,
+                leading: const Icon(LucideIcons.shield, color: AppColors.accentOrange, size: 20),
+                title: const Text("Privacy Policy", style: TextStyle(color: Colors.white)),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
+              ),
+            ],
+          ),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context, false), // رفض
+              style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.error)),
+              child: const Text("DECLINE", style: TextStyle(color: AppColors.error)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true), // موافقة
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
+              child: const Text("ACCEPT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    ) ?? false;
+  }
+
   Future<void> _initializeApp() async {
+    // 🛡️ 1. تنفيذ الفحص الأمني أولاً
+    if (!await _checkSecurity()) return;
+
     try {
       // فتح صندوق التخزين المحلي
       await Hive.initFlutter();
       var box = await Hive.openBox('auth_box');
       await Hive.openBox('downloads_box'); // لفتح صندوق التحميلات مبكراً
       
+      // ✅ 2. التحقق من الموافقة على الشروط (أول مرة)
+      bool termsAccepted = box.get('terms_accepted', defaultValue: false);
+      if (!termsAccepted) {
+        // نوقف المؤقت لإظهار النافذة
+        await Future.delayed(const Duration(seconds: 1)); // تأخير بسيط للجمالية
+        if (mounted) {
+          bool userAgreed = await _showTermsDialog(box);
+          if (!userAgreed) {
+            // إذا رفض، نغلق التطبيق
+            if (Platform.isAndroid) SystemNavigator.pop();
+            exit(0);
+          } else {
+            // إذا وافق، نحفظ الحالة
+            await box.put('terms_accepted', true);
+          }
+        }
+      }
+
       String? userId = box.get('user_id');
       String? deviceId = box.get('device_id');
 
       // محاكاة وقت التحميل
       await Future.delayed(const Duration(seconds: 2));
 
-      // ✅ 1. إذا لم يكن هناك مستخدم مسجل مسبقاً، اذهب للدخول فوراً
+      // ✅ 3. إذا لم يكن هناك مستخدم مسجل مسبقاً، اذهب للدخول فوراً
       if (userId == null || deviceId == null) {
         if (mounted) {
            Navigator.of(context).pushReplacement(
@@ -76,7 +223,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         return;
       }
 
-      // ✅ 2. محاولة الاتصال بالسيرفر (Online Check)
+      // ✅ 4. محاولة الاتصال بالسيرفر (Online Check)
       try {
         final response = await _dio.get(
           '$_baseUrl/api/public/get-app-init-data',
@@ -102,6 +249,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           // إذا رد السيرفر بأن المستخدم "غير مسجل دخول" (تم حظره أو تغيير جهازه)
           if (!isLoggedIn) {
             await box.clear(); // مسح البيانات
+            // نعيد حفظ الموافقة على الشروط حتى لا يضطر للموافقة مرة أخرى
+            await box.put('terms_accepted', true); 
+            
             if (mounted) {
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -121,7 +271,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         }
 
       } catch (serverError) {
-        // ✅ 3. (Offline Fallback) فشل الاتصال.. استخدام البيانات المخزنة
+        // ✅ 5. (Offline Fallback) فشل الاتصال.. استخدام البيانات المخزنة
         FirebaseCrashlytics.instance.log("Splash Offline Mode: $serverError");
 
         // هل لدينا بيانات مخزنة من آخر مرة؟
