@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ إضافة الاستيراد
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/local_proxy.dart';
 import '../../core/services/download_manager.dart'; 
@@ -21,14 +21,14 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ تسجيل فتح الشاشة لتتبع مسار المستخدم
+    // تسجيل فتح الشاشة لتتبع مسار المستخدم
     FirebaseCrashlytics.instance.log("User opened DownloadedFilesScreen");
     _init();
   }
 
   Future<void> _init() async {
     try {
-      // ✅ تسجيل بدء عملية التهيئة
+      // تسجيل بدء عملية التهيئة
       FirebaseCrashlytics.instance.log("Initializing Downloads Box and Proxy...");
 
       if (!Hive.isBoxOpen('downloads_box')) {
@@ -42,7 +42,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
       if (mounted) setState(() {});
 
     } catch (e, stack) {
-      // ✅ تسجيل الأخطاء غير القاتلة (Non-fatal)
+      // تسجيل الأخطاء غير القاتلة (Non-fatal)
       FirebaseCrashlytics.instance.recordError(
         e, 
         stack, 
@@ -65,7 +65,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
       _proxy.stop();
       FirebaseCrashlytics.instance.log("Local Proxy stopped successfully");
     } catch (e, stack) {
-      // ✅ تسجيل خطأ عند الإغلاق (نادر الحدوث لكن وارد)
+      // تسجيل خطأ عند الإغلاق (نادر الحدوث لكن وارد)
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error stopping Local Proxy');
     }
     super.dispose();
@@ -164,7 +164,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                       groupedCourses[courseName] = (groupedCourses[courseName] ?? 0) + 1;
                     }
                   } catch (e, stack) {
-                    // ✅ حماية حلقة التكرار وتسجيل الخطأ في حال كانت البيانات في Hive تالفة
+                    // حماية حلقة التكرار وتسجيل الخطأ في حال كانت البيانات في Hive تالفة
                     FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error parsing downloads box data');
                   }
 
