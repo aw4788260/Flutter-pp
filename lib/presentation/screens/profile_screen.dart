@@ -17,10 +17,11 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // دالة تسجيل الخروج الفعلية
+  
+  // دالة تسجيل الخروج (أو العودة لصفحة الدخول للضيف)
   Future<void> _logout() async {
     try {
-      // 1. مسح البيانات من التخزين المحلي
+      // 1. مسح البيانات من التخزين المحلي (بما في ذلك is_guest)
       var authBox = await Hive.openBox('auth_box');
       await authBox.clear();
       
@@ -41,11 +42,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ جلب البيانات الحية من الذاكرة
+    // ✅ 1. التحقق من حالة الضيف وجلب البيانات
+    final isGuest = AppState().isGuest;
     final user = AppState().userData;
-    final String name = (user?['first_name'] ?? "GUEST").toUpperCase();
-    final String username = user?['username'] ?? "@guest";
-    final String firstLetter = name.isNotEmpty ? name[0] : "G";
+
+    // ✅ 2. ضبط النصوص بناءً على الحالة
+    final String name = isGuest ? "GUEST USER" : (user?['first_name'] ?? "User").toUpperCase();
+    final String username = isGuest ? "Not Logged In" : (user?['username'] ?? "@user");
+    final String firstLetter = isGuest ? "?" : (name.isNotEmpty ? name[0] : "U");
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -76,7 +80,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 32),
 
-              // User Info Card
+              // --- User Info Card ---
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -87,7 +91,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: Row(
                   children: [
-                    // Avatar: First Letter Only
+                    // Avatar
                     Container(
                       width: 64, height: 64,
                       decoration: BoxDecoration(
@@ -139,52 +143,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        // عند العودة من التعديل، نقوم بإعادة بناء الواجهة لتحديث الاسم
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => setState(() {}));
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.backgroundPrimary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    
+                    // ✅ إخفاء زر التعديل إذا كان المستخدم ضيفاً
+                    if (!isGuest)
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => setState(() {}));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundPrimary,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withOpacity(0.05)),
+                          ),
+                          child: const Icon(LucideIcons.edit2, size: 16, color: AppColors.accentYellow),
                         ),
-                        child: const Icon(LucideIcons.edit2, size: 16, color: AppColors.accentYellow),
                       ),
-                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
-              const Padding(
-                padding: EdgeInsets.only(left: 8, bottom: 12),
-                child: Text(
-                  "ACCOUNT SETTINGS",
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
+              // --- Account Settings (Only for Registered Users) ---
+              // ✅ إخفاء القسم بالكامل للضيوف
+              if (!isGuest) ...[
+                const Padding(
+                  padding: EdgeInsets.only(left: 8, bottom: 12),
+                  child: Text(
+                    "ACCOUNT SETTINGS",
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
+                  ),
                 ),
-              ),
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundSecondary,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundSecondary,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => setState(() {}))),
+                      const Divider(height: 1, color: Colors.white10),
+                      _buildMenuItem(context, icon: LucideIcons.lock, title: "Change Password", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
+                      const Divider(height: 1, color: Colors.white10),
+                      _buildMenuItem(context, icon: LucideIcons.clipboardList, title: "My Requests", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen()))),
+                    ],
+                  ),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => setState(() {}))),
-                    const Divider(height: 1, color: Colors.white10),
-                    _buildMenuItem(context, icon: LucideIcons.lock, title: "Change Password", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
-                    const Divider(height: 1, color: Colors.white10),
-                    _buildMenuItem(context, icon: LucideIcons.clipboardList, title: "My Requests", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen()))), // أزلت الـ Badge الثابتة لأنه يجب أن تكون ديناميكية
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
+                const SizedBox(height: 32),
+              ],
 
+              // --- General Settings (For Everyone) ---
               const Padding(
                 padding: EdgeInsets.only(left: 8, bottom: 12),
                 child: Text(
@@ -212,21 +223,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 32),
 
+              // --- Action Button (Logout / Login) ---
               GestureDetector(
-                onTap: _logout, // ✅ استدعاء دالة الخروج الحقيقية
+                onTap: _logout, // نفس الدالة تقوم بالتنظيف والتوجيه لصفحة الدخول
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.error.withOpacity(0.1),
+                    // ✅ تغيير اللون إذا كان ضيفاً (أصفر للدخول، أحمر للخروج)
+                    color: isGuest ? AppColors.accentYellow : AppColors.error.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.error.withOpacity(0.2)),
+                    border: Border.all(
+                      color: isGuest ? AppColors.accentYellow : AppColors.error.withOpacity(0.2)
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(LucideIcons.logOut, color: AppColors.error, size: 18),
-                      SizedBox(width: 12),
-                      Text("LOGOUT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.error, letterSpacing: 1.5)),
+                    children: [
+                      Icon(
+                        isGuest ? LucideIcons.logIn : LucideIcons.logOut, 
+                        color: isGuest ? AppColors.backgroundPrimary : AppColors.error, 
+                        size: 18
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        isGuest ? "LOGIN / REGISTER" : "LOGOUT", // ✅ تغيير النص
+                        style: TextStyle(
+                          fontSize: 12, 
+                          fontWeight: FontWeight.bold, 
+                          color: isGuest ? AppColors.backgroundPrimary : AppColors.error, 
+                          letterSpacing: 1.5
+                        )
+                      ),
                     ],
                   ),
                 ),
