@@ -34,6 +34,9 @@ dependencies:
   media_kit_video: ^1.2.4
   media_kit_libs_video: ^1.0.4
   safe_device: ^1.1.4
+  flutter_local_notifications: ^17.0.0
+  flutter_background_service: ^5.0.0
+  permission_handler: ^11.3.0
   
 
   # Security & Privacy
