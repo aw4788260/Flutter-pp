@@ -118,7 +118,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _exitFullScreenMode() async {
-    // ✅ تصحيح: العودة للوضع اليدوي الطبيعي بدلاً من edgeToEdge لمنع تداخل الواجهة في الصفحات الأخرى
+    // ✅ العودة للوضع اليدوي الطبيعي بدلاً من edgeToEdge لمنع تداخل الواجهة في الصفحات الأخرى
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -384,13 +384,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        // ✅ تم إزالة SafeArea لمنع الإزاحة في وضع ملء الشاشة، واستخدام Stack مباشرة
+        // ✅ إضافة هذا السطر لمنع تغير حجم الواجهة عند ظهور الكيبورد أو التداخلات
+        resizeToAvoidBottomInset: false,
+        // ✅ استخدام Stack مباشرة لملء الشاشة بالكامل
         body: Stack(
           children: [
             Positioned.fill(
-              child: Center(
-                child: _isError
-                    ? Column(
+              // ✅ 1. إزالة Center لضمان أن عناصر التحكم تملأ الشاشة كاملة ولا تتقيد بأبعاد الفيديو فقط
+              child: _isError
+                  ? Center(
+                      child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Icon(Icons.error_outline, color: AppColors.error, size: 48),
@@ -407,69 +410,71 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                             child: const Text("Retry", style: TextStyle(color: Colors.black)),
                           )
                         ],
-                      )
-                    : MaterialVideoControlsTheme(
-                        normal: MaterialVideoControlsThemeData(
-                          topButtonBar: [
-                            const SizedBox(width: 14),
-                            MaterialCustomButton(
-                              onPressed: () {
-                                _exitFullScreenMode();
-                                Navigator.pop(context);
-                              },
-                              icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-                            ),
-                            const SizedBox(width: 14),
-                            Text(
-                              widget.title,
-                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                          
-                          primaryButtonBar: [
-                            const Spacer(flex: 2),
-                            MaterialCustomButton(
-                              onPressed: () => _seekRelative(const Duration(seconds: -10)),
-                              icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
-                            ),
-                            const SizedBox(width: 24),
-                            const MaterialPlayOrPauseButton(iconSize: 56),
-                            const SizedBox(width: 24),
-                            MaterialCustomButton(
-                              onPressed: () => _seekRelative(const Duration(seconds: 10)),
-                              icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
-                            ),
-                            const Spacer(flex: 2),
-                          ],
-
-                          bottomButtonBar: [
-                            const SizedBox(width: 24),
-                            const MaterialPositionIndicator(),
-                            const Spacer(),
-                            const MaterialSeekBar(),
-                            const Spacer(),
-                            MaterialCustomButton(
-                              onPressed: _showSettingsSheet,
-                              icon: const Icon(LucideIcons.settings, color: Colors.white),
-                            ),
-                            const SizedBox(width: 24),
-                          ],
-                          
-                          automaticallyImplySkipNextButton: false,
-                          automaticallyImplySkipPreviousButton: false,
-                        ),
-                        fullscreen: const MaterialVideoControlsThemeData(
-                          displaySeekBar: true,
-                          automaticallyImplySkipNextButton: false,
-                          automaticallyImplySkipPreviousButton: false,
-                        ),
-                        child: Video(
-                          controller: _controller,
-                          // ✅ إضافة fit: BoxFit.contain لضمان عدم قص الفيديو
-                          fit: BoxFit.contain,
-                        ),
                       ),
-              ),
+                    )
+                  : MaterialVideoControlsTheme(
+                      // ✅ 2. ضبط الحشوة (Padding) إلى صفر في كلا الوضعين لمنع المكتبة من إضافة مساحة للنوتش المخفي
+                      normal: MaterialVideoControlsThemeData(
+                        padding: EdgeInsets.zero, 
+                        topButtonBar: [
+                          const SizedBox(width: 14),
+                          MaterialCustomButton(
+                            onPressed: () {
+                              _exitFullScreenMode();
+                              Navigator.pop(context);
+                            },
+                            icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+                          ),
+                          const SizedBox(width: 14),
+                          Text(
+                            widget.title,
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                        primaryButtonBar: [
+                          const Spacer(flex: 2),
+                          MaterialCustomButton(
+                            onPressed: () => _seekRelative(const Duration(seconds: -10)),
+                            icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
+                          ),
+                          const SizedBox(width: 24),
+                          const MaterialPlayOrPauseButton(iconSize: 56),
+                          const SizedBox(width: 24),
+                          MaterialCustomButton(
+                            onPressed: () => _seekRelative(const Duration(seconds: 10)),
+                            icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
+                          ),
+                          const Spacer(flex: 2),
+                        ],
+                        bottomButtonBar: [
+                          const SizedBox(width: 24),
+                          const MaterialPositionIndicator(),
+                          const Spacer(),
+                          const MaterialSeekBar(),
+                          const Spacer(),
+                          MaterialCustomButton(
+                            onPressed: _showSettingsSheet,
+                            icon: const Icon(LucideIcons.settings, color: Colors.white),
+                          ),
+                          const SizedBox(width: 24),
+                        ],
+                        automaticallyImplySkipNextButton: false,
+                        automaticallyImplySkipPreviousButton: false,
+                      ),
+                      fullscreen: const MaterialVideoControlsThemeData(
+                        padding: EdgeInsets.zero, // ✅ هام جداً لمنع الإزاحة
+                        displaySeekBar: true,
+                        automaticallyImplySkipNextButton: false,
+                        automaticallyImplySkipPreviousButton: false,
+                      ),
+                      child: Video(
+                        controller: _controller,
+                        fit: BoxFit.contain,
+                        // ✅ 3. إجبار الفيديو على أخذ أبعاد الشاشة بالكامل لضمان تموضع عناصر التحكم في الحواف
+                        width: MediaQuery.of(context).size.width,
+                        height: MediaQuery.of(context).size.height,
+                      ),
+                    ),
             ),
 
             if (!_isError)
