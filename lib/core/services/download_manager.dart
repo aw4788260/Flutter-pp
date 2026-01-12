@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:math'; // لاستخدام min
-import 'dart:typed_data'; // للتعامل مع Uint8List
-import 'package:flutter/foundation.dart'; // للـ ValueNotifier
+import 'dart:math'; 
+import 'dart:typed_data'; 
+import 'package:flutter/foundation.dart'; 
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -15,7 +15,6 @@ class DownloadManager {
   static final Dio _dio = Dio();
   static final Set<String> _activeDownloads = {};
 
-  // متغير عام لمراقبة التقدم (Key: LessonId, Value: Percentage 0.0-1.0)
   static final ValueNotifier<Map<String, double>> downloadingProgress = ValueNotifier({});
 
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
@@ -27,6 +26,41 @@ class DownloadManager {
   bool isFileDownloaded(String id) {
     if (!Hive.isBoxOpen('downloads_box')) return false;
     return Hive.box('downloads_box').containsKey(id);
+  }
+
+  /// دالة مساعدة لاستخراج المدة من الرابط وتحويلها لنص
+  String _extractDurationFromUrl(String url) {
+    try {
+      // البحث عن النمط: dur%3D أو dur= متبوعاً بأرقام
+      // الرابط ياتي مشفر غالباً dur%3D542.069
+      final regex = RegExp(r'(?:dur%3D|dur=)(\d+(\.\d+)?)');
+      final match = regex.firstMatch(url);
+      
+      if (match != null) {
+        final secondsString = match.group(1); // التقاط الرقم 542.069
+        if (secondsString != null) {
+          final double totalSeconds = double.parse(secondsString);
+          return _formatDuration(totalSeconds.toInt());
+        }
+      }
+    } catch (e) {
+      FirebaseCrashlytics.instance.log("⚠️ Failed to parse duration from URL: $e");
+    }
+    return ""; // إعادة نص فارغ في حال الفشل
+  }
+
+  /// تحويل الثواني إلى تنسيق 00:00
+  String _formatDuration(int totalSeconds) {
+    final duration = Duration(seconds: totalSeconds);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    final seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return "${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
+    } else {
+      return "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
+    }
   }
 
   /// دالة بدء عملية التحميل
@@ -42,20 +76,17 @@ class DownloadManager {
     required Function(String) onError,
     bool isPdf = false,
     String quality = "SD",
-    String duration = "",
+    String duration = "", // القيمة الافتراضية (سيتم تحديثها من الرابط)
   }) async {
-    // تسجيل بداية العملية
     FirebaseCrashlytics.instance.log("⬇️ Start Download: $videoTitle ($lessonId) - PDF: $isPdf");
     
     _activeDownloads.add(lessonId);
     
-    // تهيئة شريط التقدم بـ 0 عند البدء
     var currentProgress = Map<String, double>.from(downloadingProgress.value);
     currentProgress[lessonId] = 0.0;
     downloadingProgress.value = currentProgress;
 
     try {
-      // التأكد من تهيئة التشفير قبل البدء بأي شيء
       await EncryptionHelper.init();
 
       var box = await Hive.openBox('auth_box');
@@ -63,7 +94,7 @@ class DownloadManager {
       final deviceId = box.get('device_id');
 
       if (userId == null || deviceId == null) {
-        throw Exception("User authentication missing (UserId: $userId, DeviceId: $deviceId)");
+        throw Exception("User authentication missing");
       }
 
       const String appSecret = String.fromEnvironment(
@@ -82,15 +113,10 @@ class DownloadManager {
         final requestHeaders = {
           'x-user-id': userId,
           'x-device-id': deviceId,
-          'x-app-secret': appSecret, // تحذير: هذا سيظهر في اللوج، تأكد من أن هذا مقبول أثناء التطوير
+          'x-app-secret': appSecret,
         };
 
-        // ✅ تسجيل بيانات الطلب الأول بالتفصيل
-        FirebaseCrashlytics.instance.log(
-          "🚀 API Request: GET $fullApiUrl\n"
-          "Params: $queryParam\n"
-          "Headers: $requestHeaders"
-        );
+        FirebaseCrashlytics.instance.log("🚀 API Request: GET $fullApiUrl Params: $queryParam");
 
         final res = await _dio.get(
           fullApiUrl,
@@ -102,19 +128,15 @@ class DownloadManager {
         );
 
         if (res.statusCode != 200) {
-          FirebaseCrashlytics.instance.log("❌ API Response Error: ${res.statusCode} - ${res.data}");
           throw Exception(res.data['message'] ?? "Failed to get content info (${res.statusCode})");
         }
 
         final data = res.data;
-        FirebaseCrashlytics.instance.log("✅ API Response Success: Data received for ID $lessonId");
         
         if (isPdf) {
            finalUrl = data['url'];
            if (finalUrl == null) {
-             // Fallback للباك اند في حال لم يكن هناك رابط موقع
              finalUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
-             FirebaseCrashlytics.instance.log("ℹ️ No signed URL found, falling back to direct API download.");
            }
         } else {
           // منطق الفيديو
@@ -136,11 +158,20 @@ class DownloadManager {
         throw Exception("No valid download link found");
       }
 
-      FirebaseCrashlytics.instance.log("🔗 Final Download URL: $finalUrl");
+      // ✅✅✅ استخراج وتحديث المدة من الرابط النهائي ✅✅✅
+      if (!isPdf) {
+        String extractedDuration = _extractDurationFromUrl(finalUrl);
+        if (extractedDuration.isNotEmpty) {
+          duration = extractedDuration; // اعتماد المدة المستخرجة من الرابط
+          FirebaseCrashlytics.instance.log("🕒 Duration extracted from URL: $duration");
+        }
+      }
+      // ========================================================
+
+      FirebaseCrashlytics.instance.log("🔗 Final URL: $finalUrl");
 
       // 2. تجهيز المسارات
       final appDir = await getApplicationDocumentsDirectory();
-      // تنظيف الأسماء من الرموز الخاصة
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeChapter = chapterName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -154,7 +185,6 @@ class DownloadManager {
       File tempFile = File(tempPath);
       if (await tempFile.exists()) await tempFile.delete();
 
-      // دالة لتحديث التقدم
       Function(double) internalOnProgress = (p) {
         var prog = Map<String, double>.from(downloadingProgress.value);
         prog[lessonId] = p;
@@ -169,23 +199,13 @@ class DownloadManager {
         await _downloadAndMergeHls(finalUrl!, tempPath, internalOnProgress);
       } else {
         Options downloadOptions = Options();
-        Map<String, dynamic> downloadHeaders = {};
-
-        // إضافة الهيدرز فقط إذا كان الرابط يتبع سيرفرنا
         if (finalUrl.contains(_baseUrl)) {
-           downloadHeaders = {
+           downloadOptions = Options(headers: {
               'x-user-id': userId,
               'x-device-id': deviceId,
               'x-app-secret': appSecret,
-           };
-           downloadOptions = Options(headers: downloadHeaders);
+           });
         } 
-
-        // ✅ تسجيل بيانات طلب التحميل
-        FirebaseCrashlytics.instance.log(
-          "🚀 File Download Request: GET $finalUrl\n"
-          "Headers: $downloadHeaders"
-        );
 
         await _dio.download(
           finalUrl,
@@ -206,14 +226,10 @@ class DownloadManager {
         
         if (fileSize < minSize) { 
           await tempFile.delete();
-          // تسجيل الخطأ مع حجم الملف
-          FirebaseCrashlytics.instance.log("❌ Downloaded file too small: $fileSize bytes");
           throw Exception("Download failed: File is too small ($fileSize bytes)");
         }
 
-        // استخدام دالة التشفير الجديدة
         await _encryptFileStream(tempFile, File(savePath));
-        
         await tempFile.delete(); 
         FirebaseCrashlytics.instance.log("🔒 Encryption Success: $savePath");
 
@@ -221,7 +237,7 @@ class DownloadManager {
         throw Exception("Temp file not found after download process");
       }
 
-      // 5. حفظ البيانات في Hive
+      // 5. حفظ البيانات في Hive (يتم حفظ المدة المحدثة هنا)
       var downloadsBox = await Hive.openBox('downloads_box');
       await downloadsBox.put(lessonId, {
         'id': lessonId,
@@ -231,8 +247,8 @@ class DownloadManager {
         'subject': subjectName,
         'chapter': chapterName,
         'type': isPdf ? 'pdf' : 'video',
-        'quality': quality,
-        'duration': duration,
+        'quality': quality, 
+        'duration': duration, // ✅ سيتم حفظ المدة الدقيقة المستخرجة من الرابط
         'date': DateTime.now().toIso8601String(),
         'size': File(savePath).lengthSync(),
       });
@@ -241,9 +257,7 @@ class DownloadManager {
 
     } catch (e, stack) {
       if (e is DioException) {
-          FirebaseCrashlytics.instance.log("🌐 Dio Error URL: ${e.requestOptions.uri}");
           FirebaseCrashlytics.instance.log("🌐 Dio Error Status: ${e.response?.statusCode}");
-          FirebaseCrashlytics.instance.log("🌐 Dio Error Headers: ${e.requestOptions.headers}");
       }
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Process Failed: $lessonId');
       onError(e.toString());
@@ -261,7 +275,6 @@ class DownloadManager {
     RandomAccessFile? rafWrite;
 
     try {
-      // التأكد من تهيئة المفاتيح
       await EncryptionHelper.init();
 
       rafRead = await inputFile.open(mode: FileMode.read);
@@ -269,32 +282,18 @@ class DownloadManager {
       
       final int fileLength = await inputFile.length();
       int bytesRead = 0;
-      
-      // استخدام حجم الكتلة المحدد في Helper (64KB)
       const int chunkSize = EncryptionHelper.CHUNK_SIZE;
       
-      FirebaseCrashlytics.instance.log("🔒 Encrypting file: ${inputFile.path} -> ${outputFile.path} (Size: $fileLength)");
-
       while (bytesRead < fileLength) {
-        // تحديد كمية القراءة (الكتلة الأخيرة قد تكون أصغر)
         int toRead = min(chunkSize, fileLength - bytesRead);
-        
-        // قراءة البيانات الصافية
         Uint8List chunk = await rafRead.read(toRead);
         if (chunk.isEmpty) break;
 
-        // تشفير الكتلة
         try {
           Uint8List encryptedChunk = EncryptionHelper.encryptBlock(chunk);
-          
-          // كتابة الكتلة المشفرة
           await rafWrite.writeFrom(encryptedChunk);
         } catch (e, stack) {
-          FirebaseCrashlytics.instance.recordError(
-            e, 
-            stack, 
-            reason: 'Block Encryption Failed at pos: $bytesRead'
-          );
+          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Block Encryption Failed');
           throw e;
         }
         
