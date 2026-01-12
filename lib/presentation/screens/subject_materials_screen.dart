@@ -163,7 +163,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     );
   }
 
-  // --- قائمة الامتحانات (معدلة لتتوافق مع الباك اند) ---
+  // --- قائمة الامتحانات ---
   Widget _buildExamsList(List exams) {
     if (exams.isEmpty) return _buildEmptyState(LucideIcons.fileCheck, "No exams available");
 
@@ -180,7 +180,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         return GestureDetector(
           onTap: () {
              if (isCompleted) {
-               // ✅ تم التعديل هنا: قراءة last_attempt_id القادم من الباك اند الجديد
                final attemptId = exam['last_attempt_id'] ?? exam['first_attempt_id'] ?? exam['attempt_id']; 
                
                if (attemptId != null) {
@@ -194,13 +193,11 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                    ),
                  );
                } else {
-                 // عرض رسالة خطأ واضحة
                  ScaffoldMessenger.of(context).showSnackBar(
                    const SnackBar(content: Text("Error: Cannot load result (No Attempt ID found)."), backgroundColor: AppColors.error)
                  );
                }
              } else {
-               // إذا لم يكن محلولاً، افتح صفحة الامتحان
                Navigator.push(
                  context,
                  MaterialPageRoute(builder: (_) => ExamViewScreen(
@@ -296,10 +293,22 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         final pdfsCount = (chapter['pdfs'] as List? ?? []).length;
 
         return GestureDetector(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => ChapterContentsScreen(chapter: Map<String, dynamic>.from(chapter))),
-          ),
+          onTap: () {
+            // ✅ قراءة اسم الكورس من الاستجابة (أصبح متاحاً الآن بعد تعديل الـ API)
+            final String courseTitle = _content?['course_title'] ?? 'Unknown Course';
+            
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ChapterContentsScreen(
+                  chapter: Map<String, dynamic>.from(chapter),
+                  // ✅ تمرير الهيكل الشجري الكامل للشاشة التالية
+                  courseTitle: courseTitle,
+                  subjectTitle: widget.subjectTitle,
+                )
+              ),
+            );
+          },
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
