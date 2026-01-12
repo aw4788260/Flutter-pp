@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/encryption_helper.dart';
-import 'package:encrypt/encrypt.dart' as encrypt;
 
 class LocalProxyService {
   HttpServer? _server;
@@ -15,6 +15,14 @@ class LocalProxyService {
   /// بدء السيرفر
   Future<void> start() async {
     if (_server != null) return;
+
+    // التأكد من تهيئة التشفير (المفاتيح)
+    try {
+      await EncryptionHelper.init();
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Encryption Init Failed', fatal: true);
+      return;
+    }
 
     final router = Router();
     router.get('/video', _handleVideoRequest);
@@ -42,12 +50,32 @@ class LocalProxyService {
     }
 
     try {
-      final fileLength = await file.length();
+      final encryptedLength = await file.length();
       
-      // 1. معالجة طلب الـ Range
+      // ثوابت الأحجام من EncryptionHelper
+      final int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
+      final int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
+      final int overhead = encChunkSize - plainChunkSize; // (IV + Tag)
+
+      // حساب عدد الكتل الكلي في الملف المشفر
+      final int totalChunks = (encryptedLength / encChunkSize).ceil();
+      
+      // حساب الحجم الصافي (الأصلي) للملف الافتراضي
+      // الحجم = (عدد الكتل الكاملة * حجم الكتلة الصافية) + (حجم آخر كتلة صافية)
+      
+      // حجم آخر كتلة مشفرة قد يكون أقل من الحجم الكامل
+      final int lastEncChunkSize = encryptedLength - ((totalChunks - 1) * encChunkSize);
+      
+      // حجم آخر كتلة صافية (نطرح منها الـ overhead: IV و Tag)
+      final int lastPlainChunkSize = max(0, lastEncChunkSize - overhead);
+      
+      // الحجم الكلي للملف "المفكوك"
+      final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + lastPlainChunkSize;
+
+      // 1. معالجة طلب الـ Range من مشغل الفيديو
       final rangeHeader = request.headers['range'];
       int start = 0;
-      int end = fileLength - 1;
+      int end = originalFileSize - 1;
 
       if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
         final parts = rangeHeader.substring(6).split('-');
@@ -55,20 +83,20 @@ class LocalProxyService {
           start = int.tryParse(parts[0]) ?? 0;
         }
         if (parts.length > 1 && parts[1].isNotEmpty) {
-          end = int.tryParse(parts[1]) ?? fileLength - 1;
+          end = int.tryParse(parts[1]) ?? originalFileSize - 1;
         }
       }
 
       // التأكد من الحدود الصحيحة
       if (start < 0) start = 0;
-      if (end >= fileLength) end = fileLength - 1;
+      if (end >= originalFileSize) end = originalFileSize - 1;
       
       final contentLength = end - start + 1;
 
-      FirebaseCrashlytics.instance.log("📡 Proxy Stream: Range $start-$end / $fileLength");
+      FirebaseCrashlytics.instance.log("📡 Proxy Stream: Range $start-$end / $originalFileSize (Encrypted Size: $encryptedLength)");
 
-      // 2. إنشاء Stream يقرأ ويفك التشفير فورياً
-      final stream = _createDecryptedStream(file, start, end, fileLength);
+      // 2. إنشاء Stream يقرأ الكتل المطلوبة ويفك تشفيرها
+      final stream = _createDecryptedStream(file, start, end);
 
       // 3. إرجاع استجابة جزئية (206 Partial Content)
       return Response(
@@ -77,7 +105,7 @@ class LocalProxyService {
         headers: {
           'Content-Type': 'video/mp4',
           'Content-Length': contentLength.toString(),
-          'Content-Range': 'bytes $start-$end/$fileLength',
+          'Content-Range': 'bytes $start-$end/$originalFileSize',
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*',
           'Cache-Control': 'no-store',
@@ -90,103 +118,75 @@ class LocalProxyService {
     }
   }
 
-  /// دالة إنشاء تيار البيانات (The Core Logic)
-  Stream<List<int>> _createDecryptedStream(File file, int start, int end, int fileLength) async* {
+  /// دالة إنشاء تيار البيانات (The Core Logic - Chunked GCM)
+  Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd) async* {
     RandomAccessFile? raf;
     
     try {
       raf = await file.open(mode: FileMode.read);
-      const int blockSize = 16;
       
-      // ✅ تحديد بداية البلوك (Aligned Start)
-      final int alignedStart = (start ~/ blockSize) * blockSize;
-      final int offsetInBlock = start - alignedStart;
-      
-      // ✅ تحديد الـ IV المناسب للبلوك المطلوب
-      encrypt.IV currentIV;
-      if (alignedStart == 0) {
-        currentIV = EncryptionHelper.iv; 
-        await raf.setPosition(0);
-      } else {
-        // نأخذ الـ 16 بايت المشفرة السابقة كـ IV للبلوك الحالي
-        await raf.setPosition(alignedStart - blockSize);
-        final ivBytes = await raf.read(blockSize);
-        currentIV = encrypt.IV(Uint8List.fromList(ivBytes));
-      }
+      // ثوابت الأحجام
+      const int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
+      const int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
 
-      // ✅ إعداد مفك التشفير بدون Padding (نحن نتحكم به يدوياً)
-      final key = EncryptionHelper.key; 
-      final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.cbc, padding: null));
+      // تحديد رقم أول وآخر كتلة نحتاج قراءتها بناءً على الطلب (Request)
+      // مثال: إذا طلب بايت رقم 100000 وحجم الكتلة 65536، إذن نحن نبدأ من الكتلة رقم 1
+      int startChunkIndex = reqStart ~/ plainChunkSize;
+      int endChunkIndex = reqEnd ~/ plainChunkSize;
 
-      int currentPos = alignedStart;
-      const int bufferSize = 64 * 1024; // 64KB
+      final fileLen = await file.length();
 
-      while (currentPos <= end) {
-        int bytesToRead = bufferSize;
-        if (currentPos + bytesToRead > fileLength) {
-          bytesToRead = fileLength - currentPos;
-        }
+      for (int i = startChunkIndex; i <= endChunkIndex; i++) {
+        // حساب موقع القراءة من الملف المشفر (Random Access)
+        // كل كتلة مشفرة تبدأ عند مضاعفات ENCRYPTED_CHUNK_SIZE
+        int seekPos = i * encChunkSize;
         
-        // المحاذاة مع البلوكات (16 بايت)
-        if (bytesToRead % blockSize != 0 && (currentPos + bytesToRead) < fileLength) {
-           bytesToRead = ((bytesToRead ~/ blockSize) + 1) * blockSize;
+        if (seekPos >= fileLen) break; // حماية إضافية
+
+        await raf.setPosition(seekPos);
+
+        // قراءة الكتلة المشفرة
+        // قد تكون الكتلة الأخيرة أصغر من الحجم الكامل
+        int bytesToRead = encChunkSize;
+        if (seekPos + bytesToRead > fileLen) {
+           bytesToRead = fileLen - seekPos;
         }
 
         if (bytesToRead <= 0) break;
 
-        final encryptedChunk = await raf.read(bytesToRead);
-        if (encryptedChunk.isEmpty) break;
-
-        // فك التشفير
-        final decryptedChunk = encrypter.decryptBytes(
-          encrypt.Encrypted(encryptedChunk), 
-          iv: currentIV
-        );
-
-        // تحديث الـ IV للدورة القادمة
-        if (encryptedChunk.length >= blockSize) {
-           currentIV = encrypt.IV(encryptedChunk.sublist(encryptedChunk.length - blockSize));
+        Uint8List encryptedBlock = await raf.read(bytesToRead);
+        
+        // فك تشفير الكتلة بالكامل
+        Uint8List decryptedBlock;
+        try {
+          decryptedBlock = EncryptionHelper.decryptBlock(encryptedBlock);
+        } catch (e, stack) {
+           FirebaseCrashlytics.instance.recordError(
+             e, 
+             stack, 
+             reason: 'Proxy Decrypt Block Failed',
+             information: ['Chunk Index: $i', 'Block Size: ${encryptedBlock.length}']
+           );
+           // إذا فشل فك كتلة، نوقف الستريم بدلاً من إرسال بيانات تالفة قد تسبب كراش للمشغل
+           throw e; 
         }
 
-        List<int> result = decryptedChunk;
+        // حساب أي جزء من هذه الكتلة (المفكوك) نحتاج إرساله للمشغل
+        // بداية هذه الكتلة في الملف "الصافي" المتخيل
+        int blockStartInPlain = i * plainChunkSize;
+        
+        // حساب الإزاحة (Offset) داخل الكتلة المفكوكة
+        // إذا كانت هذه أول كتلة مطلوبة، قد لا نبدأ من أولها (reqStart > blockStartInPlain)
+        int sliceStart = max(0, reqStart - blockStartInPlain);
+        
+        // حساب النهاية داخل الكتلة المفكوكة
+        // إذا كانت هذه آخر كتلة مطلوبة، قد لا نرسلها كاملة (reqEnd < blockEndInPlain)
+        // decryptedBlock.length هو الحجم الفعلي للبيانات في هذه الكتلة
+        int sliceEnd = min(decryptedBlock.length, reqEnd - blockStartInPlain + 1);
 
-        // ✅ معالجة الـ Padding في آخر بلوك بالملف
-        if (currentPos + encryptedChunk.length >= fileLength) {
-          int lastByte = result.last;
-          if (lastByte > 0 && lastByte <= 16) {
-            // التحقق إذا كان هذا فعلاً حشو PKCS7
-            bool isPadding = true;
-            for (int i = 1; i <= lastByte; i++) {
-              if (result[result.length - i] != lastByte) {
-                isPadding = false;
-                break;
-              }
-            }
-            if (isPadding) {
-              result = result.sublist(0, result.length - lastByte);
-            }
-          }
+        if (sliceStart < sliceEnd) {
+          yield decryptedBlock.sublist(sliceStart, sliceEnd);
         }
-
-        // قص الزيادات الناتجة عن المحاذاة (Alignment) في البداية والنهاية
-        if (currentPos == alignedStart && offsetInBlock > 0) {
-          result = result.length > offsetInBlock ? result.sublist(offsetInBlock) : [];
-        }
-
-        // حساب الكمية المتبقية المطلوب إرسالها فعلياً بناءً على طلب الـ Range
-        final int sentSoFar = (currentPos > alignedStart) ? (currentPos - start) : 0;
-        final int remainingToSent = (end - start + 1) - sentSoFar;
-
-        if (result.length > remainingToSent) {
-          result = result.sublist(0, remainingToSent);
-        }
-
-        if (result.isNotEmpty) {
-          yield result;
-        }
-
-        currentPos += encryptedChunk.length;
-        if (currentPos > end) break;
       }
 
     } catch (e, stack) {
