@@ -8,9 +8,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:encrypt/encrypt.dart' as encrypt; 
+import 'package:flutter_background_service/flutter_background_service.dart'; // ✅ استيراد التحكم بالخدمة
 
 import '../utils/encryption_helper.dart';
-import 'notification_service.dart'; // ✅ إضافة استيراد خدمة الإشعارات
+import 'notification_service.dart';
 
 class DownloadManager {
   static final Dio _dio = Dio();
@@ -19,6 +20,9 @@ class DownloadManager {
   static final ValueNotifier<Map<String, double>> downloadingProgress = ValueNotifier({});
 
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
+
+  // مؤقت لإرسال إشارات الحياة (KeepAlive) للخدمة
+  Timer? _keepAliveTimer;
 
   bool isFileDownloading(String id) {
     return _activeDownloads.contains(id);
@@ -32,7 +36,6 @@ class DownloadManager {
   /// دالة مساعدة لاستخراج المدة من الرابط وتحويلها لنص
   String _extractDurationFromUrl(String url) {
     try {
-      // البحث عن النمط: dur%3D أو dur= متبوعاً بأرقام
       final regex = RegExp(r'(?:dur%3D|dur=)(\d+(\.\d+)?)');
       final match = regex.firstMatch(url);
       
@@ -63,6 +66,41 @@ class DownloadManager {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // ✅ دوال التحكم في خدمة الخلفية
+  // ---------------------------------------------------------------------------
+  
+  void _startBackgroundService() async {
+    final service = FlutterBackgroundService();
+    
+    // تشغيل الخدمة إذا لم تكن تعمل
+    if (!await service.isRunning()) {
+      await service.startService();
+    }
+    
+    // بدء إرسال نبضات "أنا أعمل" للخدمة كل ثانية
+    // هذا يمنع الـ Watchdog في ملف main.dart من قتل الخدمة
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      service.invoke('keepAlive');
+    });
+  }
+
+  void _stopBackgroundService() {
+    // نوقف الخدمة فقط إذا لم يعد هناك أي تحميل نشط
+    if (_activeDownloads.isEmpty) {
+      _keepAliveTimer?.cancel(); // إيقاف النبضات
+      
+      final service = FlutterBackgroundService();
+      service.invoke('stopService'); // إرسال أمر الإغلاق للخدمة
+      
+      // إغلاق إشعار التقدم (رقم 888) يدوياً لضمان اختفائه
+      NotificationService().cancelNotification(888);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+
   /// دالة بدء عملية التحميل
   Future<void> startDownload({
     required String lessonId,
@@ -82,16 +120,19 @@ class DownloadManager {
     
     _activeDownloads.add(lessonId);
     
+    // ✅ 1. تشغيل الخدمة عند بدء التحميل
+    _startBackgroundService();
+    
     var currentProgress = Map<String, double>.from(downloadingProgress.value);
     currentProgress[lessonId] = 0.0;
     downloadingProgress.value = currentProgress;
 
-    // ✅ إعداد الإشعارات
     final notifService = NotificationService();
-    // استخدام HashCode لضمان رقم مميز للإشعار (يمكن تغييره لمنطق آخر إذا لزم الأمر)
-    final int notificationId = lessonId.hashCode;
+    
+    // ✅ 2. استخدام ID = 888 لدمج هذا الإشعار مع إشعار الخدمة (فيحل محله)
+    const int notificationId = 888;
 
-    // إشعار البداية
+    // إظهار إشعار البدء
     await notifService.showProgressNotification(
       id: notificationId,
       title: "Downloading: $videoTitle",
@@ -205,11 +246,12 @@ class DownloadManager {
         downloadingProgress.value = prog; 
         onProgress(p); 
 
-        // ✅ تحديث الإشعار كل 5% لتقليل الحمل
+        // ✅ تحديث الإشعار الموحد (888)
         int percent = (p * 100).toInt();
-        if (percent % 5 == 0) {
+        // التحديث كل 2% ليكون الشريط سلساً ولكن لا يضغط على النظام
+        if (percent % 2 == 0) {
           notifService.showProgressNotification(
-            id: notificationId,
+            id: notificationId, // 888
             title: "Downloading: $videoTitle",
             body: "$percent%",
             progress: percent,
@@ -243,13 +285,13 @@ class DownloadManager {
         );
       }
 
-      // ✅ تحديث الإشعار عند بدء التشفير (مرحلة لا تظهر كنسبة مئوية عادة)
+      // ✅ تغيير حالة الإشعار (888) إلى "جاري التشفير"
       await notifService.showProgressNotification(
         id: notificationId,
         title: "Processing: $videoTitle",
         body: "Encrypting file...",
         progress: 0,
-        maxProgress: 0, // Indeterminate (غير محدد)
+        maxProgress: 0, // Indeterminate
       );
 
       FirebaseCrashlytics.instance.log("✅ Download Finished. Starting Chunked GCM Encryption...");
@@ -288,9 +330,9 @@ class DownloadManager {
         'size': File(savePath).lengthSync(),
       });
 
-      // ✅ إشعار النجاح
+      // ✅ 3. إشعار النجاح (بـ ID جديد ومختلف) ليبقى في القائمة
       await notifService.showCompletionNotification(
-        id: notificationId,
+        id: DateTime.now().millisecondsSinceEpoch, // ID فريد
         title: videoTitle,
         isSuccess: true,
       );
@@ -303,9 +345,9 @@ class DownloadManager {
       }
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Process Failed: $lessonId');
       
-      // ✅ إشعار الفشل
+      // ✅ إشعار الفشل (بـ ID جديد ومختلف)
       await notifService.showCompletionNotification(
-        id: notificationId,
+        id: DateTime.now().millisecondsSinceEpoch,
         title: videoTitle,
         isSuccess: false,
       );
@@ -316,10 +358,13 @@ class DownloadManager {
       var prog = Map<String, double>.from(downloadingProgress.value);
       prog.remove(lessonId);
       downloadingProgress.value = prog;
+      
+      // ✅ 4. إيقاف الخدمة وإخفاء شريط التقدم
+      _stopBackgroundService();
     }
   }
 
-  /// ✅ دالة التشفير الجديدة: تعتمد على Chunked AES-GCM
+  /// ✅ دالة التشفير
   Future<void> _encryptFileStream(File inputFile, File outputFile) async {
     RandomAccessFile? rafRead;
     RandomAccessFile? rafWrite;
