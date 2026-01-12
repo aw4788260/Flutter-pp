@@ -222,47 +222,37 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
              }
           },
           child: Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.only(bottom: 12), // تقليل المسافة بين البطاقات
+            padding: const EdgeInsets.all(12), // تقليل الحشو الداخلي لجعل البطاقة أصغر
             decoration: BoxDecoration(
               color: AppColors.backgroundSecondary,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12), // تقليل نصف قطر الحواف قليلاً
               border: Border.all(color: Colors.white.withOpacity(0.05)),
               boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. عرض المسار الكامل أعلى البطاقة
-                Text(
-                  "${item['course']} > ${item['subject']} > ${item['chapter']}",
-                  style: TextStyle(
-                    fontSize: 10, 
-                    color: AppColors.textSecondary.withOpacity(0.6), 
-                    fontWeight: FontWeight.bold
-                  ),
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
+                // ❌ تم إزالة الهيكل الشجري من داخل البطاقة بناءً على طلبك
 
                 // 2. العنوان والأيقونة وزر الحذف
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(8), // أيقونة أصغر
                       decoration: BoxDecoration(
                         color: AppColors.backgroundPrimary,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(icon, color: activeTab == 'videos' ? AppColors.accentOrange : AppColors.accentYellow, size: 20),
+                      child: Icon(icon, color: activeTab == 'videos' ? AppColors.accentOrange : AppColors.accentYellow, size: 18),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         item['title'].toString().toUpperCase(),
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 13, // خط أصغر قليلاً للعنوان
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,
                           height: 1.2
@@ -274,16 +264,16 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                     GestureDetector(
                       onTap: () => _deleteFile(key.toString()),
                       child: const Padding(
-                        padding: EdgeInsets.only(left: 8, bottom: 8, top: 8),
-                        child: Icon(LucideIcons.trash2, size: 18, color: AppColors.error),
+                        padding: EdgeInsets.only(left: 8),
+                        child: Icon(LucideIcons.trash2, size: 16, color: AppColors.error),
                       ),
                     ),
                   ],
                 ),
                 
-                const SizedBox(height: 12),
+                const SizedBox(height: 8), // تقليل المسافة
                 const Divider(color: Colors.white10, height: 1),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8), // تقليل المسافة
 
                 // 3. شريط المعلومات (جودة | مدة | حجم)
                 Row(
@@ -305,11 +295,11 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
   Widget _buildMetaTag(IconData icon, String text) {
     return Row(
       children: [
-        Icon(icon, size: 12, color: AppColors.accentYellow),
+        Icon(icon, size: 10, color: AppColors.accentYellow), // أيقونة أصغر
         const SizedBox(width: 4),
         Text(
           text,
-          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.bold), // خط أصغر
         ),
       ],
     );
