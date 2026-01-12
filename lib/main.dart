@@ -7,30 +7,25 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:safe_device/safe_device.dart'; // ✅ فحص الروت
-import 'package:lucide_icons/lucide_icons.dart'; // ✅ أيقونات التنبيه
+import 'package:safe_device/safe_device.dart'; // فحص الروت
+import 'package:screen_protector/screen_protector.dart'; // ✅ فحص تسجيل الشاشة
+import 'package:lucide_icons/lucide_icons.dart'; 
 
 import 'core/services/notification_service.dart'; 
 import 'core/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
 
-// ✅ مفتاح عام للتحكم في النوافذ من أي مكان
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // 1. تهيئة MediaKit
     MediaKit.ensureInitialized();
 
-    // 2. تهيئة الإشعارات
     await NotificationService().init();
-
-    // 3. تهيئة خدمة الخلفية
     await initializeService();
 
-    // 4. إعدادات النظام
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -39,16 +34,14 @@ void main() async {
       DeviceOrientation.landscapeRight,
     ]);
 
-    // 5. الحماية من تصوير الشاشة
     await _enableSecureMode();
 
-    // 6. Firebase
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp();
     }
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
-    // 🛡️ 7. تشغيل الحماية (فوري + دوري)
+    // تشغيل الحماية
     SecurityManager.instance.checkSecurity();
     SecurityManager.instance.startPeriodicCheck();
 
@@ -67,38 +60,45 @@ class SecurityManager {
 
   bool _isAlertVisible = false;
 
-  // دالة الفحص
+  // دالة الفحص الموحدة
   Future<void> checkSecurity() async {
     if (_isAlertVisible) return;
 
     try {
-      // فحص الحالات
+      // 1. فحص الروت وخيارات المطور
       bool isJailBroken = await SafeDevice.isJailBroken;
       bool isDevMode = await SafeDevice.isDevelopmentModeEnable;
+      
+      // 2. ✅ فحص تسجيل الشاشة
+      // هذه الدالة تكتشف إذا كان هناك تطبيق خارجي يسجل الشاشة أو يتم مشاركتها
+      bool isRecording = await ScreenProtector.isRecording();
 
-      // إذا وُجد أي تهديد
-      if (isJailBroken || isDevMode) {
+      if (isJailBroken || isDevMode || isRecording) {
         _isAlertVisible = true;
-        _showBlockDialog(isJailBroken, isDevMode);
+        _showBlockDialog(isJailBroken, isDevMode, isRecording);
       }
     } catch (e) {
       debugPrint("Security Check Error: $e");
     }
   }
 
-  // الفحص الدوري
   void startPeriodicCheck() {
+    // فحص كل 3 ثواني (سيكشف التسجيل فور بدئه تقريباً)
     Timer.periodic(const Duration(seconds: 3), (timer) {
       checkSecurity();
     });
   }
 
-  // ✅ عرض نافذة الحظر مع توضيح السبب
-  void _showBlockDialog(bool isRoot, bool isDev) {
-    // بناء نص الرسالة بناءً على السبب المكتشف
+  // ✅ عرض نافذة الحظر مع الأسباب المختلفة
+  void _showBlockDialog(bool isRoot, bool isDev, bool isRecording) {
     String arabicReason = "";
     String englishReason = "";
 
+    // تخصيص الرسالة حسب السبب
+    if (isRecording) {
+      arabicReason += "• تم اكتشاف تسجيل للشاشة! (مخالفة جسيمة)\n";
+      englishReason += "• Screen Recording Detected!\n";
+    }
     if (isRoot) {
       arabicReason += "• تم اكتشاف كسر حماية (Root/Jailbreak)\n";
       englishReason += "• Root/Jailbreak Detected\n";
@@ -108,6 +108,11 @@ class SecurityManager {
       englishReason += "• Developer Options Enabled\n";
     }
 
+    // رسالة التهديد الخاصة بالتسجيل
+    String warningMessage = isRecording 
+        ? "\n⚠️ تحذير: محاولة تسجيل المحتوى تعرض حسابك للحظر النهائي فوراً."
+        : "\nيرجى تعطيل هذه الخيارات للمتابعة.";
+
     if (navigatorKey.currentContext != null) {
       showDialog(
         context: navigatorKey.currentContext!,
@@ -115,12 +120,12 @@ class SecurityManager {
         builder: (context) => PopScope(
           canPop: false,
           child: AlertDialog(
-            backgroundColor: const Color(0xFF242F3D), // خلفية داكنة
+            backgroundColor: const Color(0xFF242F3D),
             title: const Row(
               children: [
-                Icon(LucideIcons.shieldAlert, color: Color(0xFFEF4444)), // لون أحمر
+                Icon(LucideIcons.shieldAlert, color: Color(0xFFEF4444)),
                 SizedBox(width: 10),
-                Text("تنبيه أمني / Security Alert", style: TextStyle(color: Color(0xFFEF4444), fontSize: 16, fontWeight: FontWeight.bold)),
+                Text("Security Alert / تنبيه أمني", style: TextStyle(color: Color(0xFFEF4444), fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
             content: SingleChildScrollView(
@@ -129,32 +134,34 @@ class SecurityManager {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    "لا يمكن تشغيل التطبيق لوجود مخاطر أمنية:",
+                    "تم إيقاف التطبيق لأسباب أمنية:",
                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.right,
                   ),
                   const SizedBox(height: 8),
-                  // ✅ عرض السبب بالعربية
                   Text(
                     arabicReason,
-                    style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 13), // لون أصفر للسبب
+                    style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 13, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.right,
                   ),
                   const Divider(color: Colors.white24),
                   const Text(
-                    "The app cannot run due to security risks:",
+                    "Action Required:",
                     style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
-                  // ✅ عرض السبب بالإنجليزية
                   Text(
                     englishReason,
                     style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 12),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    "يرجى تعطيل هذه الخيارات للمتابعة.\nPlease disable these settings to continue.",
-                    style: TextStyle(color: Colors.white54, fontSize: 11),
+                  const SizedBox(height: 16),
+                  Text(
+                    warningMessage,
+                    style: TextStyle(
+                      color: isRecording ? const Color(0xFFEF4444) : Colors.white54, // لون أحمر للتهديد
+                      fontSize: 12, 
+                      fontWeight: FontWeight.bold
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -177,14 +184,11 @@ class SecurityManager {
         ),
       );
     } else {
-      exit(0); // إغلاق فوري إذا لم تكن الواجهة جاهزة
+      exit(0);
     }
   }
 }
 
-// =========================================================
-// ⚙️ إعدادات خدمة الخلفية
-// =========================================================
 Future<void> initializeService() async {
   final service = FlutterBackgroundService();
 
@@ -244,15 +248,13 @@ bool onIosBackground(ServiceInstance service) {
 
 Future<void> _enableSecureMode() async {
   try {
+    // هذا يمنع أخذ لقطات الشاشة (Screenshots) ويظهر شاشة سوداء في التسجيل
     await FlutterWindowManagerPlus.addFlags(FlutterWindowManagerPlus.FLAG_SECURE);
   } catch (e) {
     debugPrint("Security Mode Error: $e");
   }
 }
 
-// =========================================================
-// 📱 واجهة التطبيق
-// =========================================================
 class EduVantageApp extends StatefulWidget {
   const EduVantageApp({super.key});
 
