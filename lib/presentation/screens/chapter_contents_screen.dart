@@ -61,7 +61,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               // خيار المشغل الداخلي
               _buildOptionTile(
                 icon: LucideIcons.playCircle,
-                title: "Internal Player",
+                title: "First player",
                 subtitle: "Best for multi-quality streaming",
                 onTap: () {
                   Navigator.pop(context);
@@ -74,8 +74,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               // خيار مشغل يوتيوب
               _buildOptionTile(
                 icon: LucideIcons.youtube,
-                title: "YouTube Player",
-                subtitle: "Standard YouTube experience",
+                title: "Second player",
+                subtitle: "Standard video player",
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayVideo(video, useYoutube: true);
