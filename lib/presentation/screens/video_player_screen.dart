@@ -64,17 +64,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Sequence Started");
 
     try {
-      // 1. ✅ تفعيل وضع الغامرة
+      // 1. ✅ تفعيل وضع الغامرة (إخفاء الأزرار وشريط الحالة)
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-      // 2. ✅ إجبار الوضع الأفقي فور الفتح
+      // 2. ✅ السماح بالتدوير التلقائي
       await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
 
+      // 3. تشغيل البروكسي
       await _startProxyServer();
 
+      // 4. إنشاء المشغل
       _player = Player();
       _controller = VideoController(
         _player,
@@ -129,7 +133,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _restoreSystemUI() async {
-    // ✅ إيقاف الفيديو واستعادة الوضع الرأسي الطبيعي عند الخروج
     await _player.stop();
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     await SystemChrome.setPreferredOrientations([
@@ -235,6 +238,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  // ✅ الدالة المعدلة بالكامل لحل مشكلة البدء من الصفر
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     try {
       String playUrl = url;
@@ -243,20 +247,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
-      } 
+      }
       
-      // ✅ فتح الفيديو دون تشغيل مباشر
+      // 1. فتح الفيديو مع تجميد التشغيل مؤقتاً
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
-      // ✅ استعادة الموضع بدقة (لحل مشكلة البدء من الصفر عند تغيير الجودة)
-      if (startAt != null) {
+      // 2. منطق الانتظار الذكي (Smart Wait) لتحميل مدة الفيديو
+      if (startAt != null && startAt != Duration.zero) {
+        
+        // ننتظر حتى تصبح مدة الفيديو معروفة (أكبر من صفر)
+        // بحد أقصى 4 ثواني (40 محاولة)
+        int retries = 0;
+        while (_player.state.duration == Duration.zero && retries < 40) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          retries++;
+        }
+
+        // الآن يمكننا القفز بأمان لأن المدة معروفة
         await _player.seek(startAt);
       }
 
+      // 3. ضبط السرعة
       if (_currentSpeed != 1.0) {
         await _player.setRate(_currentSpeed);
       }
 
+      // 4. بدء التشغيل
       await _player.play();
 
     } catch (e, stack) {
@@ -328,10 +344,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
-                // ✅ حفظ مكان الفيديو الحالي
+                // التقاط الموقع الحالي
                 final currentPos = _player.state.position;
                 setState(() { _currentQuality = q; _isError = false; });
-                // ✅ تمرير المكان المحفوظ للدالة
+                // استدعاء التشغيل مع تمرير الموقع الحالي
                 _playVideo(widget.streams[q]!, startAt: currentPos);
               }
             },
@@ -370,96 +386,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _proxyService.stop();
     _player.dispose();
     _restoreSystemUI();
-    
-    // ✅ تم حذف إلغاء الحماية ليستمر المنع في باقي التطبيق
-    
+    ScreenProtector.protectDataLeakageOff();
+    ScreenProtector.preventScreenshotOff();
     WakelockPlus.disable();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // حساب المناطق الآمنة
-    final padding = MediaQuery.of(context).viewPadding;
-    
-    // إعداد الثيم (مشترك بين الوضعين)
-    final controlsTheme = MaterialVideoControlsThemeData(
-      // ✅ إخفاء الشريط الافتراضي المكرر
-      displaySeekBar: false,
-      
-      // ضبط البادينغ لرفع العناصر عن الحافة
-      padding: EdgeInsets.only(
-        top: padding.top > 0 ? padding.top : 20, 
-        bottom: padding.bottom > 0 ? padding.bottom : 20,
-        left: 20, 
-        right: 20
-      ),
-      
-      // ✅ الشريط السفلي: وضع العناصر في قائمة مباشرة (Flattened)
-      // المكتبة ستضعهم تلقائياً في صف واحد (Row)
-      bottomButtonBar: [
-        const MaterialPositionIndicator(), // الوقت
-        const SizedBox(width: 10),
-        
-        // ✅ شريط التقدم: يأخذ المساحة المتبقية
-        const Expanded(
-          child: MaterialSeekBar(),
-        ),
-        
-        const SizedBox(width: 10),
-        
-        // زر الإعدادات
-        MaterialCustomButton(
-          onPressed: _showSettingsSheet,
-          icon: const Icon(LucideIcons.settings, color: Colors.white),
-        ),
-        
-        const SizedBox(width: 10),
-        
-        // زر الخروج/التصغير
-        MaterialCustomButton(
-          onPressed: () {
-            _restoreSystemUI();
-            Navigator.pop(context);
-          },
-          icon: const Icon(LucideIcons.minimize, color: Colors.white),
-        ),
-      ],
-      
-      topButtonBar: [
-        MaterialCustomButton(
-          onPressed: () {
-            _restoreSystemUI();
-            Navigator.pop(context);
-          },
-          icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-        ),
-        const SizedBox(width: 14),
-        Text(
-          widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      ],
-      
-      primaryButtonBar: [
-        const Spacer(flex: 2),
-        MaterialCustomButton(
-          onPressed: () => _seekRelative(const Duration(seconds: -10)),
-          icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
-        ),
-        const SizedBox(width: 24),
-        const MaterialPlayOrPauseButton(iconSize: 56),
-        const SizedBox(width: 24),
-        MaterialCustomButton(
-          onPressed: () => _seekRelative(const Duration(seconds: 10)),
-          icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
-        ),
-        const Spacer(flex: 2),
-      ],
-      automaticallyImplySkipNextButton: false,
-      automaticallyImplySkipPreviousButton: false,
-    );
-
     return PopScope(
       canPop: true,
       onPopInvoked: (didPop) {
@@ -486,8 +420,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: () {
-                         setState(() => _isError = false);
-                         _playVideo(widget.streams[_currentQuality]!);
+                          setState(() => _isError = false);
+                          _playVideo(widget.streams[_currentQuality]!);
                       }, 
                       style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
                       child: const Text("Retry", style: TextStyle(color: Colors.black)),
@@ -498,13 +432,76 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             else
               Center(
                 child: MaterialVideoControlsTheme(
-                  // ✅ تطبيق الثيم الموحد
-                  normal: controlsTheme,
-                  fullscreen: controlsTheme,
-                  
+                  normal: MaterialVideoControlsThemeData(
+                    padding: EdgeInsets.zero,
+                    bottomButtonBar: [
+                      const SizedBox(width: 24),
+                      const MaterialPositionIndicator(),
+                      const Spacer(),
+                      const MaterialSeekBar(),
+                      const Spacer(),
+                      MaterialCustomButton(
+                        onPressed: _showSettingsSheet,
+                        icon: const Icon(LucideIcons.settings, color: Colors.white),
+                      ),
+                      const SizedBox(width: 10),
+                      MaterialCustomButton(
+                        onPressed: () {
+                          _restoreSystemUI();
+                          Navigator.pop(context);
+                        },
+                        icon: const Icon(LucideIcons.minimize, color: Colors.white),
+                      ),
+                      const SafeArea(top: false, left: false, right: false, child: SizedBox(width: 24)),
+                    ],
+                    topButtonBar: [
+                      const SafeArea(bottom: false, left: false, right: false, child: SizedBox(width: 14)),
+                      SafeArea(
+                        bottom: false, left: false, right: false,
+                        child: MaterialCustomButton(
+                          onPressed: () {
+                            _restoreSystemUI();
+                            Navigator.pop(context);
+                          },
+                          icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      SafeArea(
+                        bottom: false, left: false, right: false,
+                        child: Text(
+                          widget.title,
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                    primaryButtonBar: [
+                      const Spacer(flex: 2),
+                      MaterialCustomButton(
+                        onPressed: () => _seekRelative(const Duration(seconds: -10)),
+                        icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
+                      ),
+                      const SizedBox(width: 24),
+                      const MaterialPlayOrPauseButton(iconSize: 56),
+                      const SizedBox(width: 24),
+                      MaterialCustomButton(
+                        onPressed: () => _seekRelative(const Duration(seconds: 10)),
+                        icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
+                      ),
+                      const Spacer(flex: 2),
+                    ],
+                    automaticallyImplySkipNextButton: false,
+                    automaticallyImplySkipPreviousButton: false,
+                  ),
+                  fullscreen: const MaterialVideoControlsThemeData(
+                    padding: EdgeInsets.zero,
+                    displaySeekBar: true,
+                    automaticallyImplySkipNextButton: false,
+                    automaticallyImplySkipPreviousButton: false,
+                  ),
                   child: Video(
                     controller: _controller,
-                    fit: BoxFit.contain, 
+                    fit: BoxFit.contain,
                   ),
                 ),
               ),
