@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
+// استيراد الصفحات الجديدة
+import 'privacy_policy_screen.dart';
+import 'terms_conditions_screen.dart';
 
 class DevInfoScreen extends StatelessWidget {
   const DevInfoScreen({super.key});
@@ -62,7 +65,6 @@ class DevInfoScreen extends StatelessWidget {
                       ),
                       child: Column(
                         children: [
-                          // ✅ اللوجو معروض بمفرده بدون مربع أو حدود
                           Container(
                             width: 100, 
                             height: 100,
@@ -86,20 +88,18 @@ class DevInfoScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 32),
                           
-                          // أزرار التواصل
+                          // أزرار التواصل (المطورين)
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              // Telegram Button
                               _buildSocialBtn(
                                 icon: LucideIcons.send, 
                                 url: "https://t.me/A7MeDWaLiD0",
                               ),
                               const SizedBox(width: 24),
-                              // ✅ WhatsApp Button (تم تغيير الأيقونة)
                               _buildSocialBtn(
-                                icon: LucideIcons.messageCircle, // أيقونة الرسائل بدلاً من الهاتف
-                                url: "https://wa.me/201224984810",
+                                icon: LucideIcons.messageCircle, 
+                                url: "https://wa.me/201224984810", // رقم المطور
                               ),
                             ],
                           )
@@ -110,10 +110,10 @@ class DevInfoScreen extends StatelessWidget {
                     const SizedBox(height: 32),
                     
                     // Legal & Docs
-                    Align(
+                    const Align(
                       alignment: Alignment.centerLeft,
                       child: Padding(
-                        padding: const EdgeInsets.only(left: 8, bottom: 12),
+                        padding: EdgeInsets.only(left: 8, bottom: 12),
                         child: Text("LEGAL & DOCS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0)),
                       ),
                     ),
@@ -127,11 +127,43 @@ class DevInfoScreen extends StatelessWidget {
                       clipBehavior: Clip.antiAlias,
                       child: Column(
                         children: [
-                          _buildDocItem(LucideIcons.shield, "Privacy Policy"),
+                          // ✅ ربط صفحة سياسة الخصوصية
+                          _buildDocItem(
+                            context: context,
+                            icon: LucideIcons.shield, 
+                            title: "Privacy Policy",
+                            onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()));
+                            }
+                          ),
                           const Divider(height: 1, color: Colors.white10),
-                          _buildDocItem(LucideIcons.fileText, "Terms & Conditions"),
+                          // ✅ ربط صفحة الشروط والأحكام
+                          _buildDocItem(
+                            context: context,
+                            icon: LucideIcons.fileText, 
+                            title: "Terms & Conditions",
+                            onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsConditionsScreen()));
+                            }
+                          ),
                           const Divider(height: 1, color: Colors.white10),
-                          _buildDocItem(LucideIcons.mail, "Contact Support"),
+                          // ✅ ربط زر الدعم الفني بالرقم المطلوب
+                          _buildDocItem(
+                            context: context,
+                            icon: LucideIcons.phone, // تغيير الأيقونة لهاتف
+                            title: "Contact Support",
+                            onTap: () async {
+                              // الرقم المطلوب: 01559725404 (كود مصر +20)
+                              final Uri whatsappUri = Uri.parse("https://wa.me/201559725404");
+                              if (await canLaunchUrl(whatsappUri)) {
+                                await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("Could not open WhatsApp"), backgroundColor: AppColors.error),
+                                );
+                              }
+                            }
+                          ),
                         ],
                       ),
                     ),
@@ -169,8 +201,6 @@ class DevInfoScreen extends StatelessWidget {
         final Uri uri = Uri.parse(url);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
-          debugPrint("Could not launch $url");
         }
       },
       child: Container(
@@ -186,11 +216,11 @@ class DevInfoScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDocItem(IconData icon, String title) {
+  Widget _buildDocItem({required BuildContext context, required IconData icon, required String title, required VoidCallback onTap}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {},
+        onTap: onTap, // تفعيل النقر هنا
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Row(
@@ -213,6 +243,8 @@ class DevInfoScreen extends StatelessWidget {
                   color: AppColors.textPrimary,
                 ),
               ),
+              const Spacer(),
+              const Icon(LucideIcons.chevronRight, color: AppColors.textSecondary, size: 16),
             ],
           ),
         ),
