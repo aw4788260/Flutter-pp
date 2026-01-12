@@ -1,19 +1,18 @@
 import 'dart:async';
-import 'dart:io'; // للخروج من التطبيق
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // لإغلاق التطبيق
+import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:safe_device/safe_device.dart'; // ✅ مكتبة الحماية
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/constants/app_colors.dart';
-import '../../core/services/app_state.dart'; 
+import '../../core/services/app_state.dart';
 import 'login_screen.dart';
 import 'main_wrapper.dart';
-import 'privacy_policy_screen.dart'; 
-import 'terms_conditions_screen.dart'; 
+import 'privacy_policy_screen.dart';
+import 'terms_conditions_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -30,7 +29,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late Animation<double> _progressAnimation;
 
   final Dio _dio = Dio();
-  final String _baseUrl = 'https://courses.aw478260.dpdns.org'; 
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   @override
   void initState() {
@@ -56,67 +55,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
     );
 
-    // 2. بدء عملية التهيئة والاتصال
+    // 2. بدء عملية التهيئة
     _initializeApp();
   }
 
-  // ✅ دالة الفحص الأمني (روت / خيارات مطور)
-  Future<bool> _checkSecurity() async {
-    try {
-      bool isJailBroken = await SafeDevice.isJailBroken;
-      bool isDevMode = await SafeDevice.isDevelopmentModeEnable;
+  // ✅ تم حذف دالة _checkSecurity و _showSecurityBlockDialog من هنا
 
-      if (isJailBroken || isDevMode) {
-        String reason = "";
-        if (isJailBroken) reason = "Root/Jailbreak Detected\n(تم اكتشاف كسر حماية)";
-        if (isDevMode) reason = "${reason.isNotEmpty ? '$reason\n' : ''}Developer Options Enabled\n(خيارات المطور مفعلة)";
-
-        if (mounted) {
-          _showSecurityBlockDialog(reason);
-        }
-        return false; // جهاز غير آمن
-      }
-    } catch (e) {
-      FirebaseCrashlytics.instance.recordError(e, null, reason: 'Security Check Failed');
-    }
-    return true; // جهاز آمن
-  }
-
-  // ✅ نافذة الحظر الأمني
-  void _showSecurityBlockDialog(String reason) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          backgroundColor: AppColors.backgroundSecondary,
-          title: const Row(
-            children: [
-              Icon(LucideIcons.shieldAlert, color: AppColors.error),
-              SizedBox(width: 10),
-              Text("Security Alert", style: TextStyle(color: AppColors.error, fontSize: 18)),
-            ],
-          ),
-          content: Text(
-            "Security Risk Detected:\n\n$reason\n\nPlease disable these settings to use the app.",
-            style: const TextStyle(color: Colors.white70),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                if (Platform.isAndroid) SystemNavigator.pop();
-                exit(0);
-              },
-              child: const Text("EXIT", style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ✅ نافذة الموافقة على الشروط والسياسات (أول مرة فقط)
+  // نافذة الموافقة على الشروط والسياسات (أول مرة فقط)
   Future<bool> _showTermsDialog(Box box) async {
     return await showDialog<bool>(
       context: context,
@@ -180,16 +125,15 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   Future<void> _initializeApp() async {
-    // 🛡️ 1. تنفيذ الفحص الأمني أولاً
-    if (!await _checkSecurity()) return;
+    // ✅ تم حذف التحقق الأمني من هنا (يعمل الآن في main.dart)
 
     try {
       // فتح صندوق التخزين المحلي
       await Hive.initFlutter();
       var box = await Hive.openBox('auth_box');
-      await Hive.openBox('downloads_box'); // لفتح صندوق التحميلات مبكراً
+      await Hive.openBox('downloads_box'); 
       
-      // ✅ 2. التحقق من الموافقة على الشروط (أول مرة)
+      // التحقق من الموافقة على الشروط (أول مرة)
       bool termsAccepted = box.get('terms_accepted', defaultValue: false);
       if (!termsAccepted) {
         await Future.delayed(const Duration(seconds: 1)); 
@@ -204,16 +148,15 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         }
       }
 
-      // ✅ 3. قراءة البيانات المحلية (ضيف / مستخدم)
+      // قراءة البيانات المحلية (ضيف / مستخدم)
       bool isGuest = box.get('is_guest', defaultValue: false);
       String? userId = box.get('user_id');
       String? deviceId = box.get('device_id');
 
-      await Future.delayed(const Duration(seconds: 1)); // محاكاة وقت التحميل
+      await Future.delayed(const Duration(seconds: 1)); 
 
       // --- المسار الأول: المستخدم ضيف ---
       if (isGuest) {
-        // إذا كان ضيفاً، نستخدم معرف جهاز وهمي للطلب إن لم يوجد
         deviceId ??= 'guest_device_${DateTime.now().millisecondsSinceEpoch}';
         await _initAsGuest(deviceId);
         return;
@@ -221,7 +164,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
       // --- المسار الثاني: مستخدم عادي ---
       if (userId == null || deviceId == null) {
-        // لا يوجد تسجيل دخول -> شاشة الدخول
         if (mounted) {
            Navigator.of(context).pushReplacement(
              MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -243,7 +185,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     }
   }
 
-  // ✅ دالة مساعدة لتهيئة الضيف
+  // دالة مساعدة لتهيئة الضيف
   Future<void> _initAsGuest(String deviceId) async {
     try {
       final response = await _dio.get(
@@ -258,7 +200,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         ),
       );
 
-      // حتى لو فشل الاتصال، سنسمح للضيف بالدخول (وضع الأوفلاين للضيوف)
       if (response.statusCode == 200) {
         AppState().updateFromInitData(response.data);
       }
@@ -274,7 +215,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     }
   }
 
-  // ✅ دالة مساعدة لتهيئة المستخدم المسجل
+  // دالة مساعدة لتهيئة المستخدم المسجل
   Future<void> _initAsUser(String userId, String deviceId, Box box) async {
     try {
       final response = await _dio.get(
@@ -298,7 +239,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         if (!isLoggedIn) {
           // التوكن منتهي أو تم الدخول من جهاز آخر
           await box.clear();
-          await box.put('terms_accepted', true); // الحفاظ على حالة الشروط
+          await box.put('terms_accepted', true); 
           
           if (mounted) {
             Navigator.of(context).pushReplacement(
@@ -318,7 +259,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       }
 
     } catch (serverError) {
-      // --- Offline Fallback ---
       FirebaseCrashlytics.instance.log("Splash Offline Mode: $serverError");
       final cachedData = box.get('cached_init_data');
       
@@ -340,7 +280,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
            );
          }
       } else {
-         // لا كاش ولا نت -> دخول محدود
          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
              const SnackBar(content: Text("Offline Mode (Limited Access)"), backgroundColor: Colors.grey),
