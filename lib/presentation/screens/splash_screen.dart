@@ -12,8 +12,8 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart'; 
 import 'login_screen.dart';
 import 'main_wrapper.dart';
-import 'privacy_policy_screen.dart'; // ✅ تأكد من وجود الملفات
-import 'terms_conditions_screen.dart'; // ✅ تأكد من وجود الملفات
+import 'privacy_policy_screen.dart'; 
+import 'terms_conditions_screen.dart'; 
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -192,29 +192,36 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       // ✅ 2. التحقق من الموافقة على الشروط (أول مرة)
       bool termsAccepted = box.get('terms_accepted', defaultValue: false);
       if (!termsAccepted) {
-        // نوقف المؤقت لإظهار النافذة
-        await Future.delayed(const Duration(seconds: 1)); // تأخير بسيط للجمالية
+        await Future.delayed(const Duration(seconds: 1)); 
         if (mounted) {
           bool userAgreed = await _showTermsDialog(box);
           if (!userAgreed) {
-            // إذا رفض، نغلق التطبيق
             if (Platform.isAndroid) SystemNavigator.pop();
             exit(0);
           } else {
-            // إذا وافق، نحفظ الحالة
             await box.put('terms_accepted', true);
           }
         }
       }
 
+      // ✅ 3. قراءة البيانات المحلية (ضيف / مستخدم)
+      bool isGuest = box.get('is_guest', defaultValue: false);
       String? userId = box.get('user_id');
       String? deviceId = box.get('device_id');
 
-      // محاكاة وقت التحميل
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 1)); // محاكاة وقت التحميل
 
-      // ✅ 3. إذا لم يكن هناك مستخدم مسجل مسبقاً، اذهب للدخول فوراً
+      // --- المسار الأول: المستخدم ضيف ---
+      if (isGuest) {
+        // إذا كان ضيفاً، نستخدم معرف جهاز وهمي للطلب إن لم يوجد
+        deviceId ??= 'guest_device_${DateTime.now().millisecondsSinceEpoch}';
+        await _initAsGuest(deviceId);
+        return;
+      }
+
+      // --- المسار الثاني: مستخدم عادي ---
       if (userId == null || deviceId == null) {
+        // لا يوجد تسجيل دخول -> شاشة الدخول
         if (mounted) {
            Navigator.of(context).pushReplacement(
              MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -223,100 +230,125 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         return;
       }
 
-      // ✅ 4. محاولة الاتصال بالسيرفر (Online Check)
-      try {
-        final response = await _dio.get(
-          '$_baseUrl/api/public/get-app-init-data',
-          options: Options(
-            headers: {
-              'x-user-id': userId,
-              'x-device-id': deviceId,
-              'x-app-secret': const String.fromEnvironment('APP_SECRET'),
-            },
-            receiveTimeout: const Duration(seconds: 10),
-          ),
-        );
-
-        if (response.statusCode == 200 && response.data['success'] == true) {
-          // ✅ أونلاين: تخزين نسخة جديدة من البيانات للكاش (للاستخدام لاحقاً بدون نت)
-          await box.put('cached_init_data', response.data);
-
-          // تحديث حالة التطبيق (AppState)
-          AppState().updateFromInitData(response.data);
-
-          bool isLoggedIn = response.data['isLoggedIn'] ?? false;
-
-          // إذا رد السيرفر بأن المستخدم "غير مسجل دخول" (تم حظره أو تغيير جهازه)
-          if (!isLoggedIn) {
-            await box.clear(); // مسح البيانات
-            // نعيد حفظ الموافقة على الشروط حتى لا يضطر للموافقة مرة أخرى
-            await box.put('terms_accepted', true); 
-            
-            if (mounted) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
-            }
-            return;
-          }
-
-          // الدخول للصفحة الرئيسية (Online Mode)
-          if (mounted) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const MainWrapper()),
-            );
-          }
-        } else {
-          throw Exception("Server Error: ${response.statusCode}");
-        }
-
-      } catch (serverError) {
-        // ✅ 5. (Offline Fallback) فشل الاتصال.. استخدام البيانات المخزنة
-        FirebaseCrashlytics.instance.log("Splash Offline Mode: $serverError");
-
-        // هل لدينا بيانات مخزنة من آخر مرة؟
-        final cachedData = box.get('cached_init_data');
-        
-        if (cachedData != null) {
-           // ✅ نعم: استخدم الكاش وادخل وضع الأوفلاين
-           try {
-             AppState().updateFromInitData(Map<String, dynamic>.from(cachedData));
-           } catch (_) {}
-
-           if (mounted) {
-             ScaffoldMessenger.of(context).showSnackBar(
-               const SnackBar(
-                 content: Text("No Internet. Entering Offline Mode."),
-                 backgroundColor: AppColors.accentOrange,
-                 duration: Duration(seconds: 3),
-               ),
-             );
-             // الدخول للصفحة الرئيسية (Offline Mode)
-             Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const MainWrapper()),
-             );
-           }
-        } else {
-           // ❌ لا: لا يوجد كاش (أول مرة يفتح التطبيق ولا يوجد نت)
-           // نسمح بالدخول المحدود للوصول للتحميلات (إن وجدت في downloads_box)
-           if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-               const SnackBar(content: Text("Offline Mode (Limited Access)"), backgroundColor: Colors.grey),
-             );
-             Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const MainWrapper()),
-             );
-           }
-        }
-      }
+      // محاولة تهيئة المستخدم المسجل
+      await _initAsUser(userId, deviceId, box);
 
     } catch (e, stack) {
-      // أخطاء قاتلة في النظام (Hive failure, etc)
       FirebaseCrashlytics.instance.recordError(e, stack);
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
         );
+      }
+    }
+  }
+
+  // ✅ دالة مساعدة لتهيئة الضيف
+  Future<void> _initAsGuest(String deviceId) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/public/get-app-init-data',
+        options: Options(
+          headers: {
+            'x-user-id': '0',
+            'x-device-id': deviceId,
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+          },
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+
+      // حتى لو فشل الاتصال، سنسمح للضيف بالدخول (وضع الأوفلاين للضيوف)
+      if (response.statusCode == 200) {
+        AppState().updateFromInitData(response.data);
+      }
+    } catch (_) {
+      // تجاهل الأخطاء للضيف
+    } finally {
+      AppState().isGuest = true;
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainWrapper()),
+        );
+      }
+    }
+  }
+
+  // ✅ دالة مساعدة لتهيئة المستخدم المسجل
+  Future<void> _initAsUser(String userId, String deviceId, Box box) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/public/get-app-init-data',
+        options: Options(
+          headers: {
+            'x-user-id': userId,
+            'x-device-id': deviceId,
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+          },
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        await box.put('cached_init_data', response.data);
+        AppState().updateFromInitData(response.data);
+
+        bool isLoggedIn = response.data['isLoggedIn'] ?? false;
+
+        if (!isLoggedIn) {
+          // التوكن منتهي أو تم الدخول من جهاز آخر
+          await box.clear();
+          await box.put('terms_accepted', true); // الحفاظ على حالة الشروط
+          
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            );
+          }
+          return;
+        }
+
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const MainWrapper()),
+          );
+        }
+      } else {
+        throw Exception("Server Error: ${response.statusCode}");
+      }
+
+    } catch (serverError) {
+      // --- Offline Fallback ---
+      FirebaseCrashlytics.instance.log("Splash Offline Mode: $serverError");
+      final cachedData = box.get('cached_init_data');
+      
+      if (cachedData != null) {
+         try {
+           AppState().updateFromInitData(Map<String, dynamic>.from(cachedData));
+         } catch (_) {}
+
+         if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(
+               content: Text("No Internet. Entering Offline Mode."),
+               backgroundColor: AppColors.accentOrange,
+               duration: Duration(seconds: 3),
+             ),
+           );
+           Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const MainWrapper()),
+           );
+         }
+      } else {
+         // لا كاش ولا نت -> دخول محدود
+         if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text("Offline Mode (Limited Access)"), backgroundColor: Colors.grey),
+           );
+           Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const MainWrapper()),
+           );
+         }
       }
     }
   }
