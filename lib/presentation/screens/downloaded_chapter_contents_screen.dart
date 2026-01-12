@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/local_proxy.dart'; // لتشغيل الفيديو
+import '../../core/services/local_proxy.dart';
 import 'video_player_screen.dart';
 
 class DownloadedChapterContentsScreen extends StatefulWidget {
@@ -22,11 +22,11 @@ class DownloadedChapterContentsScreen extends StatefulWidget {
 }
 
 class _DownloadedChapterContentsScreenState extends State<DownloadedChapterContentsScreen> {
-  String activeTab = 'videos'; // 'videos' | 'pdfs'
+  String activeTab = 'videos';
 
   // --- تشغيل الفيديو أوفلاين ---
   void _playOfflineVideo(Map<dynamic, dynamic> item) {
-    final proxyUrl = "http://127.0.0.1:8080/video?path=${item['path']}";
+    final proxyUrl = "http://127.0.0.1:8080/video?path=${Uri.encodeComponent(item['path'])}";
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -42,121 +42,101 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
   Future<void> _deleteFile(String key) async {
     var box = await Hive.openBox('downloads_box');
     await box.delete(key);
-    // يمكنك إضافة حذف الملف الفعلي من الجهاز هنا باستخدام dart:io
-    setState(() {}); // تحديث الواجهة
+    setState(() {});
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File removed"), backgroundColor: AppColors.accentOrange));
   }
 
   @override
   Widget build(BuildContext context) {
-    // 1. جلب وتصفية البيانات من Hive
+    // 1. جلب البيانات من Hive
     var box = Hive.box('downloads_box');
-    List<Map<dynamic, dynamic>> chapterFiles = [];
-    List<dynamic> keys = []; // لحفظ المفاتيح للحذف
+    
+    // إعداد القوائم مع حفظ المفتاح (key) داخل العنصر لسهولة الحذف
+    List<Map<String, dynamic>> videoItems = [];
+    List<Map<String, dynamic>> pdfItems = [];
 
     for (var key in box.keys) {
       final item = box.get(key);
+      // تصفية العناصر الخاصة بالشابتر الحالي
       if (item['course'] == widget.courseTitle && 
           item['subject'] == widget.subjectTitle &&
           item['chapter'] == widget.chapterTitle) {
-        chapterFiles.add(item);
-        keys.add(key);
+        
+        // تحويل العنصر إلى Map قابل للتعديل وإضافة المفتاح
+        final itemMap = Map<String, dynamic>.from(item);
+        itemMap['key'] = key;
+
+        if (item['type'] == 'pdf') {
+          pdfItems.add(itemMap);
+        } else {
+          videoItems.add(itemMap);
+        }
       }
     }
-
-    // 2. تصنيف الملفات (حالياً نعتبر الكل فيديو لأننا لم نضف نوع الملف عند التحميل بعد)
-    // إذا قمت بتحديث DownloadManager لحفظ النوع 'type': 'video'/'pdf'، يمكنك استخدام الفلتر أدناه
-    // حالياً سنفترض أن الكل فيديو حتى يتم دعم PDF
-    final videos = chapterFiles; 
-    final pdfs = <Map<dynamic, dynamic>>[]; 
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: SafeArea(
         child: Column(
           children: [
-            // Header (Sticky effect)
+            // Header
             Container(
+              padding: const EdgeInsets.all(24.0),
               color: AppColors.backgroundPrimary.withOpacity(0.95),
-              child: Column(
+              child: Row(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Row(
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                            ),
-                            child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
-                          ),
+                        Text(
+                          widget.chapterTitle.toUpperCase(),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.chapterTitle.toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textPrimary,
-                                  overflow: TextOverflow.ellipsis,
-                                  letterSpacing: -0.5,
-                                ),
-                                maxLines: 1,
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "DOWNLOADED FILES",
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.accentYellow,
-                                  letterSpacing: 2.0,
-                                ),
-                              ),
-                            ],
-                          ),
+                        const SizedBox(height: 4),
+                        // ✅ عرض المسار الكامل في الهيدر (كورس > مادة)
+                        Text(
+                          "${widget.courseTitle} > ${widget.subjectTitle}",
+                          style: TextStyle(fontSize: 10, color: AppColors.textSecondary.withOpacity(0.7)),
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
                         ),
                       ],
-                    ),
-                  ),
-
-                  // Tab Switcher
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSecondary,
-                        borderRadius: BorderRadius.circular(50),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
-                      ),
-                      child: Row(
-                        children: [
-                          _buildTab("Videos (${videos.length})", 'videos'),
-                          _buildTab("PDFs (${pdfs.length})", 'pdfs'),
-                        ],
-                      ),
                     ),
                   ),
                 ],
               ),
             ),
 
-            // Content List
+            // Tab Switcher
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundSecondary,
+                  borderRadius: BorderRadius.circular(50),
+                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                ),
+                child: Row(
+                  children: [
+                    _buildTab("Videos (${videoItems.length})", 'videos'),
+                    _buildTab("PDFs (${pdfItems.length})", 'pdfs'),
+                  ],
+                ),
+              ),
+            ),
+
+            // List
             Expanded(
               child: activeTab == 'videos'
-                  ? _buildFileList(videos, keys, LucideIcons.play)
-                  : _buildFileList(pdfs, [], LucideIcons.fileText),
+                  ? _buildFileList(videoItems, LucideIcons.play)
+                  : _buildFileList(pdfItems, LucideIcons.fileText),
             ),
           ],
         ),
@@ -192,8 +172,8 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
     );
   }
 
-  Widget _buildFileList(List<Map<dynamic, dynamic>> files, List<dynamic> keys, IconData icon) {
-    if (files.isEmpty) {
+  Widget _buildFileList(List<Map<String, dynamic>> items, IconData icon) {
+    if (items.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -220,91 +200,118 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
 
     return ListView.builder(
       padding: const EdgeInsets.all(24),
-      itemCount: files.length,
+      itemCount: items.length,
       itemBuilder: (context, index) {
-        final item = files[index];
-        final key = keys.isNotEmpty ? keys[index] : null; // المفتاح للحذف
+        final item = items[index];
+        final key = item['key']; // المفتاح للحذف
         
-        // حساب الحجم
+        // استخراج البيانات
         final sizeBytes = item['size'] ?? 0;
         final sizeMB = (sizeBytes / (1024 * 1024)).toStringAsFixed(1);
+        final quality = item['quality'] ?? "SD";
+        final duration = item['duration'] ?? "--:--";
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSecondary,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    if (activeTab == 'videos') {
-                      _playOfflineVideo(item);
-                    } else {
-                      // فتح PDF (مستقبلاً)
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Opening PDF: ${item['title']}")));
-                    }
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.backgroundPrimary,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
-                          ),
-                          child: Icon(icon, color: activeTab == 'videos' ? AppColors.accentOrange : AppColors.accentYellow, size: 14),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item['title'].toString().toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textPrimary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                "$sizeMB MB",
-                                style: const TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+        // ✅ استخدام GestureDetector على كامل البطاقة
+        return GestureDetector(
+          onTap: () {
+             if (activeTab == 'videos') {
+               _playOfflineVideo(item);
+             } else {
+               // فتح PDF
+               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Opening PDF: ${item['title']}")));
+             }
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSecondary,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. عرض المسار الكامل أعلى البطاقة
+                Text(
+                  "${item['course']} > ${item['subject']} > ${item['chapter']}",
+                  style: TextStyle(
+                    fontSize: 10, 
+                    color: AppColors.textSecondary.withOpacity(0.6), 
+                    fontWeight: FontWeight.bold
                   ),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Container(width: 1, height: 32, color: Colors.white.withOpacity(0.05)),
-              IconButton(
-                icon: const Icon(LucideIcons.trash2, size: 14, color: AppColors.accentOrange),
-                onPressed: () {
-                  if (key != null) _deleteFile(key.toString());
-                },
-              ),
-            ],
+                const SizedBox(height: 8),
+
+                // 2. العنوان والأيقونة وزر الحذف
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundPrimary,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(icon, color: activeTab == 'videos' ? AppColors.accentOrange : AppColors.accentYellow, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        item['title'].toString().toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                          height: 1.2
+                        ),
+                        maxLines: 2, overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    // زر الحذف (مفصول عن ضغطة البطاقة)
+                    GestureDetector(
+                      onTap: () => _deleteFile(key.toString()),
+                      child: const Padding(
+                        padding: EdgeInsets.only(left: 8, bottom: 8, top: 8),
+                        child: Icon(LucideIcons.trash2, size: 18, color: AppColors.error),
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 12),
+                const Divider(color: Colors.white10, height: 1),
+                const SizedBox(height: 12),
+
+                // 3. شريط المعلومات (جودة | مدة | حجم)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildMetaTag(LucideIcons.monitor, quality),
+                    if(activeTab == 'videos') _buildMetaTag(LucideIcons.clock, duration),
+                    _buildMetaTag(LucideIcons.hardDrive, "$sizeMB MB"),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildMetaTag(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 12, color: AppColors.accentYellow),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.bold),
+        ),
+      ],
     );
   }
 }
