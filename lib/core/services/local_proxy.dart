@@ -9,12 +9,30 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/encryption_helper.dart';
 
 class LocalProxyService {
+  // ✅ 1. تطبيق Singleton Pattern: لضمان وجود نسخة واحدة فقط من السيرفر
+  static final LocalProxyService _instance = LocalProxyService._internal();
+  
+  factory LocalProxyService() {
+    return _instance;
+  }
+  
+  LocalProxyService._internal();
+
   HttpServer? _server;
   final int port = 8080;
+  
+  // ✅ 2. عداد المراجع: لنعرف كم شاشة تستخدم السيرفر حالياً
+  int _usageCount = 0;
 
   /// بدء السيرفر
   Future<void> start() async {
-    if (_server != null) return;
+    _usageCount++; // زيادة العداد (شاشة جديدة فتحت)
+    
+    // إذا كان السيرفر يعمل مسبقاً، لا تحاول تشغيله مرة أخرى (هذا يمنع الكراش)
+    if (_server != null) {
+        FirebaseCrashlytics.instance.log('🔒 Proxy already running (Clients: $_usageCount)');
+        return;
+    }
 
     // التأكد من تهيئة التشفير (المفاتيح)
     try {
@@ -32,7 +50,25 @@ class LocalProxyService {
       FirebaseCrashlytics.instance.log('🔒 Proxy Started on port ${_server!.port}');
       print('🔒 Local Proxy running on port ${_server!.port}');
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Start Failed', fatal: true);
+      // تسجيل الخطأ دون إيقاف التطبيق بالكامل
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Start Failed');
+    }
+  }
+
+  /// إيقاف السيرفر
+  void stop() {
+    _usageCount--; // تقليل العداد (شاشة أغلقت)
+    
+    // ✅ 3. لا نغلق السيرفر إلا إذا خرج المستخدم من جميع الشاشات
+    if (_usageCount <= 0) {
+        _usageCount = 0;
+        if (_server != null) {
+            _server?.close(force: true);
+            _server = null;
+            FirebaseCrashlytics.instance.log('🛑 Proxy Stopped (No active clients)');
+        }
+    } else {
+        FirebaseCrashlytics.instance.log('ℹ️ Proxy kept alive (Remaining clients: $_usageCount)');
     }
   }
 
@@ -57,22 +93,15 @@ class LocalProxyService {
       final int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       final int overhead = encChunkSize - plainChunkSize; // (IV + Tag)
 
-      // حساب عدد الكتل الكلي في الملف المشفر
+      // حساب الحجم الصافي (الأصلي) للملف
       final int totalChunks = (encryptedLength / encChunkSize).ceil();
       
-      // حساب الحجم الصافي (الأصلي) للملف الافتراضي
-      // الحجم = (عدد الكتل الكاملة * حجم الكتلة الصافية) + (حجم آخر كتلة صافية)
-      
-      // حجم آخر كتلة مشفرة قد يكون أقل من الحجم الكامل
       final int lastEncChunkSize = encryptedLength - ((totalChunks - 1) * encChunkSize);
-      
-      // حجم آخر كتلة صافية (نطرح منها الـ overhead: IV و Tag)
       final int lastPlainChunkSize = max(0, lastEncChunkSize - overhead);
       
-      // الحجم الكلي للملف "المفكوك"
       final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + lastPlainChunkSize;
 
-      // 1. معالجة طلب الـ Range من مشغل الفيديو
+      // 1. معالجة طلب الـ Range
       final rangeHeader = request.headers['range'];
       int start = 0;
       int end = originalFileSize - 1;
@@ -93,9 +122,9 @@ class LocalProxyService {
       
       final contentLength = end - start + 1;
 
-      FirebaseCrashlytics.instance.log("📡 Proxy Stream: Range $start-$end / $originalFileSize (Encrypted Size: $encryptedLength)");
+      FirebaseCrashlytics.instance.log("📡 Proxy Stream: Range $start-$end / $originalFileSize");
 
-      // 2. إنشاء Stream يقرأ الكتل المطلوبة ويفك تشفيرها
+      // 2. إنشاء Stream يقرأ الكتل ويفك التشفير
       final stream = _createDecryptedStream(file, start, end);
 
       // 3. إرجاع استجابة جزئية (206 Partial Content)
@@ -125,28 +154,23 @@ class LocalProxyService {
     try {
       raf = await file.open(mode: FileMode.read);
       
-      // ثوابت الأحجام
       const int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       const int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
 
-      // تحديد رقم أول وآخر كتلة نحتاج قراءتها بناءً على الطلب (Request)
-      // مثال: إذا طلب بايت رقم 100000 وحجم الكتلة 65536، إذن نحن نبدأ من الكتلة رقم 1
+      // تحديد رقم أول وآخر كتلة نحتاج قراءتها
       int startChunkIndex = reqStart ~/ plainChunkSize;
       int endChunkIndex = reqEnd ~/ plainChunkSize;
 
       final fileLen = await file.length();
 
       for (int i = startChunkIndex; i <= endChunkIndex; i++) {
-        // حساب موقع القراءة من الملف المشفر (Random Access)
-        // كل كتلة مشفرة تبدأ عند مضاعفات ENCRYPTED_CHUNK_SIZE
+        // حساب موقع القراءة من الملف المشفر
         int seekPos = i * encChunkSize;
         
-        if (seekPos >= fileLen) break; // حماية إضافية
+        if (seekPos >= fileLen) break;
 
         await raf.setPosition(seekPos);
 
-        // قراءة الكتلة المشفرة
-        // قد تكون الكتلة الأخيرة أصغر من الحجم الكامل
         int bytesToRead = encChunkSize;
         if (seekPos + bytesToRead > fileLen) {
            bytesToRead = fileLen - seekPos;
@@ -167,21 +191,12 @@ class LocalProxyService {
              reason: 'Proxy Decrypt Block Failed',
              information: ['Chunk Index: $i', 'Block Size: ${encryptedBlock.length}']
            );
-           // إذا فشل فك كتلة، نوقف الستريم بدلاً من إرسال بيانات تالفة قد تسبب كراش للمشغل
            throw e; 
         }
 
-        // حساب أي جزء من هذه الكتلة (المفكوك) نحتاج إرساله للمشغل
-        // بداية هذه الكتلة في الملف "الصافي" المتخيل
+        // حساب أي جزء من هذه الكتلة نحتاج إرساله
         int blockStartInPlain = i * plainChunkSize;
-        
-        // حساب الإزاحة (Offset) داخل الكتلة المفكوكة
-        // إذا كانت هذه أول كتلة مطلوبة، قد لا نبدأ من أولها (reqStart > blockStartInPlain)
         int sliceStart = max(0, reqStart - blockStartInPlain);
-        
-        // حساب النهاية داخل الكتلة المفكوكة
-        // إذا كانت هذه آخر كتلة مطلوبة، قد لا نرسلها كاملة (reqEnd < blockEndInPlain)
-        // decryptedBlock.length هو الحجم الفعلي للبيانات في هذه الكتلة
         int sliceEnd = min(decryptedBlock.length, reqEnd - blockStartInPlain + 1);
 
         if (sliceStart < sliceEnd) {
@@ -194,11 +209,5 @@ class LocalProxyService {
     } finally {
       await raf?.close();
     }
-  }
-
-  void stop() {
-    _server?.close(force: true);
-    _server = null;
-    FirebaseCrashlytics.instance.log('🛑 Proxy Stopped');
   }
 }
