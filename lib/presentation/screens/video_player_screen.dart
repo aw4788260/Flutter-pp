@@ -42,7 +42,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   bool _isError = false;
   String _errorMessage = "";
-  bool _isInitialized = false; // ✅ متغير لانتظار التهيئة
+  bool _isInitialized = false;
   
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
@@ -57,7 +57,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ نقلنا كل عمليات البدء إلى دالة غير متزامنة لضمان الترتيب
     _initializePlayerScreen();
   }
 
@@ -65,17 +64,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Sequence Started");
 
     try {
-      // 1. ✅ إجبار الوضع الأفقي وملء الشاشة والانتظار حتى يكتمل
+      // 1. ✅ تفعيل وضع الغامرة (إخفاء الأزرار وشريط الحالة) لتجربة مشاهدة أفضل
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+      // 2. ✅ السماح بالتدوير التلقائي (عدم إجبار وضع معين)
+      // هذا يسمح للمستخدم بقلب الهاتف لتدوير الفيديو، أو بقائه رأسياً إذا كان يحمل الهاتف رأسياً
       await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
 
-      // 2. ✅ تشغيل البروكسي والانتظار
+      // 3. تشغيل البروكسي
       await _startProxyServer();
 
-      // 3. ✅ إنشاء المشغل بعد استقرار الشاشة
+      // 4. إنشاء المشغل
       _player = Player();
       _controller = VideoController(
         _player,
@@ -103,10 +107,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _loadUserData();
       _startWatermarkAnimation();
 
-      // 4. ✅ تحديد الجودة والتشغيل
       if (mounted) {
         setState(() {
-          _isInitialized = true; // السماح بعرض الواجهة الآن
+          _isInitialized = true;
         });
         _parseQualities();
       }
@@ -130,8 +133,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Future<void> _exitFullScreenMode() async {
-    // ✅ الترتيب مهم: أولاً إيقاف الفيديو، ثم استعادة الوضع الرأسي
+  Future<void> _restoreSystemUI() async {
+    // ✅ عند الخروج: إيقاف الفيديو، إعادة أشرطة النظام، وإعادة الوضع الرأسي (الافتراضي للتطبيقات)
     await _player.stop();
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     await SystemChrome.setPreferredOrientations([
@@ -367,7 +370,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _screenRecordingTimer?.cancel();
     _proxyService.stop();
     _player.dispose();
-    _exitFullScreenMode();
+    _restoreSystemUI(); // ✅ استعادة الوضع الطبيعي عند الخروج
     ScreenProtector.protectDataLeakageOff();
     ScreenProtector.preventScreenshotOff();
     WakelockPlus.disable();
@@ -379,20 +382,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     return PopScope(
       canPop: true,
       onPopInvoked: (didPop) {
-        if (didPop) _exitFullScreenMode();
+        if (didPop) _restoreSystemUI();
       },
       child: Scaffold(
         backgroundColor: Colors.black,
         resizeToAvoidBottomInset: false,
-        // ✅ 1. هام: منع Scaffold من التعامل مع المناطق الآمنة لتجنب الإزاحة
         primary: false, 
         extendBody: true,
-        
-        // ✅ 2. استخدام StackFit.expand لملء الشاشة بالكامل
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // في حالة عدم الجاهزية، نعرض مؤشر تحميل أسود
             if (!_isInitialized)
               const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
             else if (_isError)
@@ -416,12 +415,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               )
             else
-              // ✅ 3. توسيط الفيديو لضمان عدم الإزاحة
               Center(
                 child: MaterialVideoControlsTheme(
                   normal: MaterialVideoControlsThemeData(
-                    padding: EdgeInsets.zero, // إلغاء الحواف الداخلية
-                    // ✅ 4. تخصيص الشريط السفلي ليكون ضمن مساحة آمنة
+                    padding: EdgeInsets.zero,
+                    // ✅ تخصيص الأزرار مع دعم المناطق الآمنة (SafeArea)
                     bottomButtonBar: [
                       const SizedBox(width: 24),
                       const MaterialPositionIndicator(),
@@ -433,24 +431,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         icon: const Icon(LucideIcons.settings, color: Colors.white),
                       ),
                       const SizedBox(width: 10),
+                      // زر الخروج (يغلق الصفحة)
                       MaterialCustomButton(
                         onPressed: () {
-                          _exitFullScreenMode();
+                          _restoreSystemUI();
                           Navigator.pop(context);
                         },
                         icon: const Icon(LucideIcons.minimize, color: Colors.white),
                       ),
-                      // ✅ إضافة مساحة آمنة سفلية إذا لزم الأمر
                       const SafeArea(top: false, left: false, right: false, child: SizedBox(width: 24)),
                     ],
                     topButtonBar: [
-                      // ✅ إضافة مساحة آمنة علوية للأزرار العلوية
                       const SafeArea(bottom: false, left: false, right: false, child: SizedBox(width: 14)),
                       SafeArea(
                         bottom: false, left: false, right: false,
                         child: MaterialCustomButton(
                           onPressed: () {
-                            _exitFullScreenMode();
+                            _restoreSystemUI();
                             Navigator.pop(context);
                           },
                           icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
@@ -484,6 +481,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     automaticallyImplySkipPreviousButton: false,
                   ),
                   fullscreen: const MaterialVideoControlsThemeData(
+                    // نفس الثيم للوضع الكامل لضمان التناسق عند التدوير
                     padding: EdgeInsets.zero,
                     displaySeekBar: true,
                     automaticallyImplySkipNextButton: false,
@@ -491,8 +489,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   ),
                   child: Video(
                     controller: _controller,
-                    // ✅ 5. إزالة القيود اليدوية والسماح له بأخذ حجم الـ Center
-                    fit: BoxFit.contain, 
+                    fit: BoxFit.contain, // يحافظ على أبعاد الفيديو دون قص
                   ),
                 ),
               ),
