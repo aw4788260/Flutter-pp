@@ -14,22 +14,14 @@ void main() async {
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // 1. تهيئة MediaKit
     MediaKit.ensureInitialized();
 
-    // ✅ 2. تهيئة الإشعارات (وإنشاء القناة لتجنب الكراش)
+    // تهيئة الإشعارات والقناة أولاً
     await NotificationService().init();
 
-    // ✅ 3. إعداد الخدمة (بدون تشغيل تلقائي)
+    // تهيئة الخدمة (بدون تشغيل تلقائي)
     await initializeService();
 
-    // 4. تشغيل الخدمة الآن بعد التأكد من جاهزية القناة
-    final service = FlutterBackgroundService();
-    if (!await service.isRunning()) {
-      await service.startService();
-    }
-
-    // 5. إعدادات النظام
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -58,15 +50,15 @@ Future<void> initializeService() async {
   await service.configure(
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
-      autoStart: false, // ⚠️ إيقاف التشغيل التلقائي لمنع السباق مع إنشاء القناة
+      autoStart: false, // ⚠️ هام: لا تبدأ تلقائياً، سنبدأها مع التحميل فقط
       isForegroundMode: true,
       notificationChannelId: 'downloads_channel',
-      initialNotificationTitle: 'مــــداد Service',
-      initialNotificationContent: 'Running in background...',
-      foregroundServiceNotificationId: 888,
+      initialNotificationTitle: 'مــــداد',
+      initialNotificationContent: 'Initializing downloads...',
+      foregroundServiceNotificationId: 888, // ✅ هذا الرقم سنستخدمه لدمج الإشعارات
     ),
     iosConfiguration: IosConfiguration(
-      autoStart: true,
+      autoStart: false,
       onForeground: onStart,
       onBackground: onIosBackground,
     ),
@@ -75,6 +67,24 @@ Future<void> initializeService() async {
 
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
+  // --- منطق المراقب (Watchdog) ---
+  // إذا انقطع الاتصال بالتطبيق الرئيسي (بسبب إغلاقه)، ستقوم الخدمة بإغلاق نفسها
+  // بعد فترة قصيرة لمنع بقاء الإشعار معلقاً.
+  
+  Timer? watchdogTimer;
+
+  // دالة لإعادة ضبط المؤقت
+  void resetWatchdog() {
+    watchdogTimer?.cancel();
+    // إذا لم تصل إشارة "keepAlive" لمدة 10 ثواني، نعتبر التطبيق مات ونغلق الخدمة
+    watchdogTimer = Timer(const Duration(seconds: 10), () {
+      service.stopSelf();
+    });
+  }
+
+  // تفعيل المؤقت لأول مرة
+  resetWatchdog();
+
   if (service is AndroidServiceInstance) {
     service.on('setAsForeground').listen((event) {
       service.setAsForegroundService();
@@ -86,6 +96,11 @@ void onStart(ServiceInstance service) async {
 
   service.on('stopService').listen((event) {
     service.stopSelf();
+  });
+
+  // ✅ استقبال إشارة الحياة من DownloadManager
+  service.on('keepAlive').listen((event) {
+    resetWatchdog();
   });
 }
 
