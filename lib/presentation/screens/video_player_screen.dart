@@ -245,12 +245,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       } 
       
+      // ✅ فتح الفيديو دون تشغيل تلقائي لضبط الموضع أولاً
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
+      // ✅ استعادة الموضع إذا تم تحديده (عند تغيير الجودة)
       if (startAt != null) {
         await _player.seek(startAt);
       }
 
+      // ✅ استعادة السرعة المحددة
       if (_currentSpeed != 1.0) {
         await _player.setRate(_currentSpeed);
       }
@@ -326,8 +329,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
+                // ✅ حفظ الموضع الحالي قبل تغيير الجودة
                 final currentPos = _player.state.position;
                 setState(() { _currentQuality = q; _isError = false; });
+                // ✅ تمرير الموضع للدالة لتبدأ منه
                 _playVideo(widget.streams[q]!, startAt: currentPos);
               }
             },
@@ -393,29 +398,36 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       // الشريط السفلي (يحتوي على شريط التقدم المخصص والأزرار)
       bottomButtonBar: [
-        const MaterialPositionIndicator(),
-        const SizedBox(width: 10),
-        // ✅ استخدام Expanded هنا هو الحل السحري لإعطاء الشريط باقي المساحة
-        const Expanded(
-          child: MaterialSeekBar(),
-        ),
-        const SizedBox(width: 10),
-        
-        // زر الإعدادات
-        MaterialCustomButton(
-          onPressed: _showSettingsSheet,
-          icon: const Icon(LucideIcons.settings, color: Colors.white),
-        ),
-        const SizedBox(width: 10),
-        
-        // زر التصغير
-        MaterialCustomButton(
-          onPressed: () {
-            _restoreSystemUI();
-            Navigator.pop(context);
-          },
-          icon: const Icon(LucideIcons.minimize, color: Colors.white),
-        ),
+        // ✅ هذا يضمن محاذاة جميع العناصر في المنتصف عمودياً
+        // لن تكون هناك عناصر أعلى أو أسفل الأخرى
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center, // ✅ المحاذاة العمودية في المنتصف
+          children: [
+             const MaterialPositionIndicator(), // الوقت (الدقائق)
+             const SizedBox(width: 10),
+             
+             // شريط التقدم يأخذ المساحة المتبقية
+             const Expanded(
+               child: MaterialSeekBar(),
+             ),
+             const SizedBox(width: 10),
+             
+             // زر الإعدادات
+             MaterialCustomButton(
+               onPressed: _showSettingsSheet,
+               icon: const Icon(LucideIcons.settings, color: Colors.white),
+             ),
+             
+             // زر التصغير
+             MaterialCustomButton(
+               onPressed: () {
+                 _restoreSystemUI();
+                 Navigator.pop(context);
+               },
+               icon: const Icon(LucideIcons.minimize, color: Colors.white),
+             ),
+          ],
+        )
       ],
       
       // الشريط العلوي
