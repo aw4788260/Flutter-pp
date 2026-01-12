@@ -17,8 +17,12 @@ class AppState {
   // ✅ القائمة الجاهزة للعرض في صفحة "مكتبتي"
   List<Map<String, dynamic>> myLibrary = [];
 
+  // ✅ 1. متغير لتحديد هل المستخدم ضيف أم لا
+  bool isGuest = false;
+
   // getter للتحقق من تسجيل الدخول بسرعة
-  bool get isLoggedIn => userData != null;
+  // ✅ التعديل: السماح بالدخول إذا كان المستخدم مسجلاً أو زائراً
+  bool get isLoggedIn => userData != null || isGuest;
 
   // التحقق من الملكية
   bool ownsCourse(String courseId) => myCourseIds.contains(courseId);
@@ -29,20 +33,20 @@ class AppState {
     // تحويل البيانات إلى Map<String, dynamic> لضمان التوافق
     final castedData = Map<String, dynamic>.from(data);
 
-    // 1. استقبال كورسات المتجر
+    // 1. استقبال كورسات المتجر (متاحة للجميع: مسجلين وضيوف)
     if (castedData['courses'] != null) {
       allCourses = (castedData['courses'] as List)
           .map((e) => CourseModel.fromJson(e))
           .toList();
     }
     
-    // 2. بيانات المستخدم
-    if (castedData['user'] != null) {
+    // 2. بيانات المستخدم (فقط إذا لم يكن ضيفاً)
+    if (!isGuest && castedData['user'] != null) {
       userData = Map<String, dynamic>.from(castedData['user']);
     }
 
-    // 3. أرقام الاشتراكات (للحماية والتحقق الداخلي)
-    if (castedData['myAccess'] != null) {
+    // 3. أرقام الاشتراكات (فقط إذا لم يكن ضيفاً)
+    if (!isGuest && castedData['myAccess'] != null) {
       myCourseIds = (castedData['myAccess']['courses'] as List?)
               ?.map((e) => e.toString())
               .toList() ?? [];
@@ -53,15 +57,18 @@ class AppState {
     }
 
     // 4. ✅ استقبال مكتبة الطالب الجاهزة
-    if (castedData['library'] != null) {
+    if (!isGuest && castedData['library'] != null) {
       myLibrary = List<Map<String, dynamic>>.from(castedData['library']);
+    } else {
+      // ✅ إذا كان ضيفاً، نجعل المكتبة فارغة دائماً
+      myLibrary = [];
     }
   }
 
-  // ✅ دالة جديدة: محاولة تحميل البيانات من الذاكرة المحلية (Offline Mode)
+  // ✅ دالة: محاولة تحميل البيانات من الذاكرة المحلية (Offline Mode)
   Future<bool> loadOfflineData() async {
     try {
-      // فتح صندوق الكاش (تأكد من استخدام نفس الاسم الموجود في Splash Screen)
+      // فتح صندوق الكاش
       var cacheBox = await Hive.openBox('app_cache');
       
       // جلب البيانات
@@ -84,6 +91,7 @@ class AppState {
     myCourseIds = [];
     mySubjectIds = [];
     myLibrary = [];
+    isGuest = false; // ✅ إعادة تعيين حالة الضيف
     // لا نمسح allCourses لأنها بيانات عامة قد نحتاجها في صفحة الدخول
   }
 }
