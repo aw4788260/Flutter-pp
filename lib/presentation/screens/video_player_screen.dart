@@ -67,7 +67,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // 1. ✅ تفعيل وضع الغامرة
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-      // 2. ✅ إجبار الوضع الأفقي فور الفتح (Landscape Only)
+      // 2. ✅ إجبار الوضع الأفقي فور الفتح
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
@@ -245,15 +245,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       } 
       
-      // ✅ فتح الفيديو دون تشغيل تلقائي لضبط الموضع أولاً
+      // ✅ فتح الفيديو دون تشغيل مباشر
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
-      // ✅ استعادة الموضع إذا تم تحديده (عند تغيير الجودة)
+      // ✅ استعادة الموضع بدقة (لحل مشكلة البدء من الصفر عند تغيير الجودة)
       if (startAt != null) {
         await _player.seek(startAt);
       }
 
-      // ✅ استعادة السرعة المحددة
       if (_currentSpeed != 1.0) {
         await _player.setRate(_currentSpeed);
       }
@@ -329,10 +328,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
-                // ✅ حفظ الموضع الحالي قبل تغيير الجودة
+                // ✅ حفظ مكان الفيديو الحالي
                 final currentPos = _player.state.position;
                 setState(() { _currentQuality = q; _isError = false; });
-                // ✅ تمرير الموضع للدالة لتبدأ منه
+                // ✅ تمرير المكان المحفوظ للدالة
                 _playVideo(widget.streams[q]!, startAt: currentPos);
               }
             },
@@ -380,15 +379,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // حساب المناطق الآمنة لضبط البادينغ
+    // حساب المناطق الآمنة
     final padding = MediaQuery.of(context).viewPadding;
     
-    // إعدادات الثيم (نحفظها في متغير لاستخدامها في الوضعين)
+    // إعداد الثيم (مشترك بين الوضعين)
     final controlsTheme = MaterialVideoControlsThemeData(
-      // ✅ 1. إيقاف شريط التقدم الافتراضي لمنع التكرار
+      // ✅ إخفاء الشريط الافتراضي المكرر
       displaySeekBar: false,
       
-      // ضبط البادينغ
+      // ضبط البادينغ لرفع العناصر عن الحافة
       padding: EdgeInsets.only(
         top: padding.top > 0 ? padding.top : 20, 
         bottom: padding.bottom > 0 ? padding.bottom : 20,
@@ -396,41 +395,37 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         right: 20
       ),
       
-      // الشريط السفلي (يحتوي على شريط التقدم المخصص والأزرار)
+      // ✅ الشريط السفلي: وضع العناصر في قائمة مباشرة (Flattened)
+      // المكتبة ستضعهم تلقائياً في صف واحد (Row)
       bottomButtonBar: [
-        // ✅ هذا يضمن محاذاة جميع العناصر في المنتصف عمودياً
-        // لن تكون هناك عناصر أعلى أو أسفل الأخرى
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center, // ✅ المحاذاة العمودية في المنتصف
-          children: [
-             const MaterialPositionIndicator(), // الوقت (الدقائق)
-             const SizedBox(width: 10),
-             
-             // شريط التقدم يأخذ المساحة المتبقية
-             const Expanded(
-               child: MaterialSeekBar(),
-             ),
-             const SizedBox(width: 10),
-             
-             // زر الإعدادات
-             MaterialCustomButton(
-               onPressed: _showSettingsSheet,
-               icon: const Icon(LucideIcons.settings, color: Colors.white),
-             ),
-             
-             // زر التصغير
-             MaterialCustomButton(
-               onPressed: () {
-                 _restoreSystemUI();
-                 Navigator.pop(context);
-               },
-               icon: const Icon(LucideIcons.minimize, color: Colors.white),
-             ),
-          ],
-        )
+        const MaterialPositionIndicator(), // الوقت
+        const SizedBox(width: 10),
+        
+        // ✅ شريط التقدم: يأخذ المساحة المتبقية
+        const Expanded(
+          child: MaterialSeekBar(),
+        ),
+        
+        const SizedBox(width: 10),
+        
+        // زر الإعدادات
+        MaterialCustomButton(
+          onPressed: _showSettingsSheet,
+          icon: const Icon(LucideIcons.settings, color: Colors.white),
+        ),
+        
+        const SizedBox(width: 10),
+        
+        // زر الخروج/التصغير
+        MaterialCustomButton(
+          onPressed: () {
+            _restoreSystemUI();
+            Navigator.pop(context);
+          },
+          icon: const Icon(LucideIcons.minimize, color: Colors.white),
+        ),
       ],
       
-      // الشريط العلوي
       topButtonBar: [
         MaterialCustomButton(
           onPressed: () {
@@ -446,7 +441,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ),
       ],
       
-      // أزرار الوسط
       primaryButtonBar: [
         const Spacer(flex: 2),
         MaterialCustomButton(
@@ -504,7 +498,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             else
               Center(
                 child: MaterialVideoControlsTheme(
-                  // ✅ نستخدم نفس الثيم للوضعين لضمان ثبات الواجهة
+                  // ✅ تطبيق الثيم الموحد
                   normal: controlsTheme,
                   fullscreen: controlsTheme,
                   
