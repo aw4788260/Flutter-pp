@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:encrypt/encrypt.dart' as encrypt; 
 
 import '../utils/encryption_helper.dart';
+import 'notification_service.dart'; // ✅ إضافة استيراد خدمة الإشعارات
 
 class DownloadManager {
   static final Dio _dio = Dio();
@@ -32,12 +33,11 @@ class DownloadManager {
   String _extractDurationFromUrl(String url) {
     try {
       // البحث عن النمط: dur%3D أو dur= متبوعاً بأرقام
-      // الرابط ياتي مشفر غالباً dur%3D542.069
       final regex = RegExp(r'(?:dur%3D|dur=)(\d+(\.\d+)?)');
       final match = regex.firstMatch(url);
       
       if (match != null) {
-        final secondsString = match.group(1); // التقاط الرقم 542.069
+        final secondsString = match.group(1); 
         if (secondsString != null) {
           final double totalSeconds = double.parse(secondsString);
           return _formatDuration(totalSeconds.toInt());
@@ -46,7 +46,7 @@ class DownloadManager {
     } catch (e) {
       FirebaseCrashlytics.instance.log("⚠️ Failed to parse duration from URL: $e");
     }
-    return ""; // إعادة نص فارغ في حال الفشل
+    return ""; 
   }
 
   /// تحويل الثواني إلى تنسيق 00:00
@@ -76,7 +76,7 @@ class DownloadManager {
     required Function(String) onError,
     bool isPdf = false,
     String quality = "SD",
-    String duration = "", // القيمة الافتراضية (سيتم تحديثها من الرابط)
+    String duration = "", 
   }) async {
     FirebaseCrashlytics.instance.log("⬇️ Start Download: $videoTitle ($lessonId) - PDF: $isPdf");
     
@@ -85,6 +85,20 @@ class DownloadManager {
     var currentProgress = Map<String, double>.from(downloadingProgress.value);
     currentProgress[lessonId] = 0.0;
     downloadingProgress.value = currentProgress;
+
+    // ✅ إعداد الإشعارات
+    final notifService = NotificationService();
+    // استخدام HashCode لضمان رقم مميز للإشعار (يمكن تغييره لمنطق آخر إذا لزم الأمر)
+    final int notificationId = lessonId.hashCode;
+
+    // إشعار البداية
+    await notifService.showProgressNotification(
+      id: notificationId,
+      title: "Downloading: $videoTitle",
+      body: "Starting...",
+      progress: 0,
+      maxProgress: 100,
+    );
 
     try {
       await EncryptionHelper.init();
@@ -106,11 +120,10 @@ class DownloadManager {
 
       // 1. جلب الرابط تلقائياً إذا لم يتم توفيره
       if (finalUrl == null) {
-        // ✅ التعديل هنا: إذا كان PDF، نتجاوز طلب الـ JSON ونضع الرابط مباشرة
         if (isPdf) {
            finalUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
         } else {
-          // --- منطق الفيديو (نحتاج لطلب المعلومات) ---
+          // --- منطق الفيديو ---
           final endpoint = '/api/secure/get-video-id';
           final queryParam = {'lessonId': lessonId};
           final fullApiUrl = '$_baseUrl$endpoint';
@@ -138,7 +151,6 @@ class DownloadManager {
 
           final data = res.data;
           
-          // ✅ التحقق من أن البيانات Map لتجنب الخطأ
           if (data is! Map) {
              throw Exception("Unexpected response format for Video info");
           }
@@ -161,15 +173,13 @@ class DownloadManager {
         throw Exception("No valid download link found");
       }
 
-      // ✅✅✅ استخراج وتحديث المدة من الرابط النهائي ✅✅✅
       if (!isPdf) {
         String extractedDuration = _extractDurationFromUrl(finalUrl);
         if (extractedDuration.isNotEmpty) {
-          duration = extractedDuration; // اعتماد المدة المستخرجة من الرابط
+          duration = extractedDuration;
           FirebaseCrashlytics.instance.log("🕒 Duration extracted from URL: $duration");
         }
       }
-      // ========================================================
 
       FirebaseCrashlytics.instance.log("🔗 Final URL: $finalUrl");
 
@@ -188,11 +198,24 @@ class DownloadManager {
       File tempFile = File(tempPath);
       if (await tempFile.exists()) await tempFile.delete();
 
+      // دالة تحديث التقدم (للتطبيق والإشعارات)
       Function(double) internalOnProgress = (p) {
         var prog = Map<String, double>.from(downloadingProgress.value);
         prog[lessonId] = p;
         downloadingProgress.value = prog; 
         onProgress(p); 
+
+        // ✅ تحديث الإشعار كل 5% لتقليل الحمل
+        int percent = (p * 100).toInt();
+        if (percent % 5 == 0) {
+          notifService.showProgressNotification(
+            id: notificationId,
+            title: "Downloading: $videoTitle",
+            body: "$percent%",
+            progress: percent,
+            maxProgress: 100,
+          );
+        }
       };
 
       // 3. التحميل الفعلي للملف
@@ -201,9 +224,8 @@ class DownloadManager {
       if (isHls) {
         await _downloadAndMergeHls(finalUrl!, tempPath, internalOnProgress);
       } else {
-        // ✅ إعداد الهيدرز ونوع الاستجابة
         Options downloadOptions = Options(
-            responseType: ResponseType.bytes, // مهم لاستقبال الملفات
+            responseType: ResponseType.bytes, 
             headers: {
               'x-user-id': userId,
               'x-device-id': deviceId,
@@ -220,6 +242,15 @@ class DownloadManager {
           },
         );
       }
+
+      // ✅ تحديث الإشعار عند بدء التشفير (مرحلة لا تظهر كنسبة مئوية عادة)
+      await notifService.showProgressNotification(
+        id: notificationId,
+        title: "Processing: $videoTitle",
+        body: "Encrypting file...",
+        progress: 0,
+        maxProgress: 0, // Indeterminate (غير محدد)
+      );
 
       FirebaseCrashlytics.instance.log("✅ Download Finished. Starting Chunked GCM Encryption...");
 
@@ -241,7 +272,7 @@ class DownloadManager {
         throw Exception("Temp file not found after download process");
       }
 
-      // 5. حفظ البيانات في Hive (يتم حفظ المدة المحدثة هنا)
+      // 5. حفظ البيانات في Hive
       var downloadsBox = await Hive.openBox('downloads_box');
       await downloadsBox.put(lessonId, {
         'id': lessonId,
@@ -252,10 +283,17 @@ class DownloadManager {
         'chapter': chapterName,
         'type': isPdf ? 'pdf' : 'video',
         'quality': quality, 
-        'duration': duration, // ✅ سيتم حفظ المدة الدقيقة المستخرجة من الرابط
+        'duration': duration, 
         'date': DateTime.now().toIso8601String(),
         'size': File(savePath).lengthSync(),
       });
+
+      // ✅ إشعار النجاح
+      await notifService.showCompletionNotification(
+        id: notificationId,
+        title: videoTitle,
+        isSuccess: true,
+      );
 
       onComplete();
 
@@ -264,6 +302,14 @@ class DownloadManager {
           FirebaseCrashlytics.instance.log("🌐 Dio Error Status: ${e.response?.statusCode}");
       }
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Process Failed: $lessonId');
+      
+      // ✅ إشعار الفشل
+      await notifService.showCompletionNotification(
+        id: notificationId,
+        title: videoTitle,
+        isSuccess: false,
+      );
+
       onError(e.toString());
     } finally {
       _activeDownloads.remove(lessonId);
