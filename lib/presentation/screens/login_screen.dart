@@ -117,6 +117,10 @@ class _LoginScreenState extends State<LoginScreen> {
         await box.put('username', userMap['username']);
         await box.put('first_name', userMap['firstName']);
         
+        // تأكد من مسح علامة الضيف عند تسجيل الدخول الحقيقي
+        await box.delete('is_guest');
+        AppState().isGuest = false; 
+        
         await _fetchInitData(userMap['id'].toString(), deviceId);
 
         if (mounted) {
@@ -131,6 +135,59 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack);
       setState(() => _errorMessage = "Connection Error");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ✅ دالة جديدة لمعالجة الدخول كضيف
+  Future<void> _handleGuestLogin() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      var box = await Hive.openBox('auth_box');
+      // نحتاج معرف جهاز للطلب
+      final deviceId = await _getAndSaveDeviceId(box);
+
+      // نطلب البيانات العامة من السيرفر بمعرف مستخدم "0"
+      final response = await _dio.get(
+        '$_baseUrl/api/public/get-app-init-data',
+        options: Options(headers: {
+          'x-user-id': '0', // معرف وهمي للزائر
+          'x-device-id': deviceId,
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
+      );
+
+      // سواء نجح الطلب أو فشل (بسبب النت)، سنسمح بالدخول
+      // لكن إذا نجح، نحدث البيانات
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        AppState().updateFromInitData(response.data);
+      }
+      
+      // ✅ حفظ وضع الضيف في Hive ليبقى بعد الإغلاق
+      await box.put('is_guest', true);
+      AppState().isGuest = true;
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainWrapper()),
+        );
+      }
+
+    } catch (e) {
+      // في حالة الفشل التام (أوفلاين)، ندخل كضيف فارغ
+      var box = await Hive.openBox('auth_box');
+      await box.put('is_guest', true);
+      AppState().isGuest = true;
+      
+      if (mounted) {
+         Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainWrapper()),
+          );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -239,6 +296,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 32),
 
+              // Login Button
               ElevatedButton(
                 onPressed: _isLoading ? null : _handleLogin,
                 style: ElevatedButton.styleFrom(
@@ -268,6 +326,32 @@ class _LoginScreenState extends State<LoginScreen> {
                         Icon(LucideIcons.arrowRight, size: 18),
                       ],
                     ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // ✅ Guest Login Button (جديد)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _isLoading ? null : _handleGuestLogin,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    side: const BorderSide(color: AppColors.accentYellow),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                  ),
+                  child: const Text(
+                    "BROWSE AS GUEST",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      letterSpacing: 1.0,
+                      color: AppColors.accentYellow,
+                    ),
+                  ),
+                ),
               ),
 
               const SizedBox(height: 48),
