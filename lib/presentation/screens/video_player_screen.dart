@@ -118,7 +118,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _exitFullScreenMode() async {
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // ✅ تصحيح: العودة للوضع اليدوي الطبيعي بدلاً من edgeToEdge لمنع تداخل الواجهة في الصفحات الأخرى
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
@@ -272,7 +273,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ... (نفس دوال عرض القوائم _showSettingsSheet وغيرها لم تتغير)
   void _showSettingsSheet() {
     showModalBottomSheet(
       context: context,
@@ -384,121 +384,119 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        // ✅ استخدام SafeArea هنا يحل مشكلة الأبعاد غير المضبوطة مع النوتش
-        body: SafeArea(
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Center(
-                  child: _isError
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-                            const SizedBox(height: 16),
-                            Text(_errorMessage, style: const TextStyle(color: Colors.white)),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
+        // ✅ تم إزالة SafeArea لمنع الإزاحة في وضع ملء الشاشة، واستخدام Stack مباشرة
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: Center(
+                child: _isError
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                          const SizedBox(height: 16),
+                          Text(_errorMessage, style: const TextStyle(color: Colors.white)),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () {
+                               FirebaseCrashlytics.instance.log("🔄 User Clicked Retry");
+                               setState(() => _isError = false);
+                               _playVideo(widget.streams[_currentQuality]!);
+                            }, 
+                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
+                            child: const Text("Retry", style: TextStyle(color: Colors.black)),
+                          )
+                        ],
+                      )
+                    : MaterialVideoControlsTheme(
+                        normal: MaterialVideoControlsThemeData(
+                          topButtonBar: [
+                            const SizedBox(width: 14),
+                            MaterialCustomButton(
                               onPressed: () {
-                                 FirebaseCrashlytics.instance.log("🔄 User Clicked Retry");
-                                 setState(() => _isError = false);
-                                 _playVideo(widget.streams[_currentQuality]!);
-                              }, 
-                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
-                              child: const Text("Retry", style: TextStyle(color: Colors.black)),
-                            )
+                                _exitFullScreenMode();
+                                Navigator.pop(context);
+                              },
+                              icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+                            ),
+                            const SizedBox(width: 14),
+                            Text(
+                              widget.title,
+                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
                           ],
-                        )
-                      : MaterialVideoControlsTheme(
-                          normal: MaterialVideoControlsThemeData(
-                            topButtonBar: [
-                              const SizedBox(width: 14),
-                              MaterialCustomButton(
-                                onPressed: () {
-                                  _exitFullScreenMode();
-                                  Navigator.pop(context);
-                                },
-                                icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-                              ),
-                              const SizedBox(width: 14),
-                              Text(
-                                widget.title,
-                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                            
-                            primaryButtonBar: [
-                              const Spacer(flex: 2),
-                              MaterialCustomButton(
-                                onPressed: () => _seekRelative(const Duration(seconds: -10)),
-                                icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
-                              ),
-                              const SizedBox(width: 24),
-                              const MaterialPlayOrPauseButton(iconSize: 56),
-                              const SizedBox(width: 24),
-                              MaterialCustomButton(
-                                onPressed: () => _seekRelative(const Duration(seconds: 10)),
-                                icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
-                              ),
-                              const Spacer(flex: 2),
-                            ],
+                          
+                          primaryButtonBar: [
+                            const Spacer(flex: 2),
+                            MaterialCustomButton(
+                              onPressed: () => _seekRelative(const Duration(seconds: -10)),
+                              icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
+                            ),
+                            const SizedBox(width: 24),
+                            const MaterialPlayOrPauseButton(iconSize: 56),
+                            const SizedBox(width: 24),
+                            MaterialCustomButton(
+                              onPressed: () => _seekRelative(const Duration(seconds: 10)),
+                              icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
+                            ),
+                            const Spacer(flex: 2),
+                          ],
 
-                            bottomButtonBar: [
-                              const SizedBox(width: 24),
-                              const MaterialPositionIndicator(),
-                              const Spacer(),
-                              const MaterialSeekBar(),
-                              const Spacer(),
-                              MaterialCustomButton(
-                                onPressed: _showSettingsSheet,
-                                icon: const Icon(LucideIcons.settings, color: Colors.white),
-                              ),
-                              const SizedBox(width: 24),
-                            ],
-                            
-                            automaticallyImplySkipNextButton: false,
-                            automaticallyImplySkipPreviousButton: false,
-                          ),
-                          fullscreen: const MaterialVideoControlsThemeData(
-                            displaySeekBar: true,
-                            automaticallyImplySkipNextButton: false,
-                            automaticallyImplySkipPreviousButton: false,
-                          ),
-                          child: Video(
-                            controller: _controller,
-                            // ✅ إضافة fit: BoxFit.contain لضمان عدم قص الفيديو
-                            fit: BoxFit.contain,
-                          ),
+                          bottomButtonBar: [
+                            const SizedBox(width: 24),
+                            const MaterialPositionIndicator(),
+                            const Spacer(),
+                            const MaterialSeekBar(),
+                            const Spacer(),
+                            MaterialCustomButton(
+                              onPressed: _showSettingsSheet,
+                              icon: const Icon(LucideIcons.settings, color: Colors.white),
+                            ),
+                            const SizedBox(width: 24),
+                          ],
+                          
+                          automaticallyImplySkipNextButton: false,
+                          automaticallyImplySkipPreviousButton: false,
                         ),
-                ),
-              ),
-
-              if (!_isError)
-                AnimatedAlign(
-                  duration: const Duration(seconds: 2), 
-                  curve: Curves.easeInOut,
-                  alignment: _watermarkAlignment,
-                  child: IgnorePointer(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.3), 
-                        borderRadius: BorderRadius.circular(8),
+                        fullscreen: const MaterialVideoControlsThemeData(
+                          displaySeekBar: true,
+                          automaticallyImplySkipNextButton: false,
+                          automaticallyImplySkipPreviousButton: false,
+                        ),
+                        child: Video(
+                          controller: _controller,
+                          // ✅ إضافة fit: BoxFit.contain لضمان عدم قص الفيديو
+                          fit: BoxFit.contain,
+                        ),
                       ),
-                      child: Text(
-                        _watermarkText,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.4), 
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12, 
-                          decoration: TextDecoration.none,
-                        ),
+              ),
+            ),
+
+            if (!_isError)
+              AnimatedAlign(
+                duration: const Duration(seconds: 2), 
+                curve: Curves.easeInOut,
+                alignment: _watermarkAlignment,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3), 
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _watermarkText,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.4), 
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12, 
+                        decoration: TextDecoration.none,
                       ),
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
