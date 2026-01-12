@@ -105,7 +105,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
       if (res.statusCode == 200) {
         final data = res.data;
-        // استخدام العنوان من قاعدة البيانات إن وجد، وإلا العنوان المحلي
         final String videoTitle = data['db_video_title'] ?? video['title'];
 
         if (useYoutube) {
@@ -120,7 +119,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
             );
           } else {
-            // ✅ تسجيل خطأ منطقي (بيانات ناقصة)
             FirebaseCrashlytics.instance.log("YouTube ID missing for lesson: ${video['id']}");
             _showErrorSnackBar("Not a YouTube video or ID missing.");
           }
@@ -137,7 +135,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
             }
           }
 
-          // إذا لم توجد جودات، نستخدم الرابط الاحتياطي
           if (qualities.isEmpty && data['url'] != null) {
             qualities["Auto"] = data['url'];
           }
@@ -173,7 +170,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   // 2. منطق التحميل (Download Logic) واختيار الجودة
   // ===========================================================================
 
-  // ✅ تم التحديث: استقبال مدة الفيديو (duration)
+  // ✅ استقبال المدة (duration)
   Future<void> _prepareVideoDownload(String videoId, String videoTitle, String duration) async {
     showDialog(
       context: context,
@@ -201,10 +198,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         List<dynamic> qualities = data['availableQualities'] ?? [];
 
         if (qualities.isNotEmpty) {
-          // ✅ تم التحديث: تمرير المدة
+          // ✅ تمرير المدة للحوار
           _showQualitySelectionDialog(videoId, videoTitle, qualities, duration);
         } else if (data['url'] != null) {
-          // ✅ تم التحديث: تمرير المدة والجودة الافتراضية
+          // ✅ التحميل المباشر مع تمرير المدة والجودة الافتراضية
           _startVideoDownload(videoId, videoTitle, data['url'], "Auto", duration);
         } else {
           FirebaseCrashlytics.instance.log("No download links for lesson: $videoId");
@@ -221,7 +218,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // ✅ تم التحديث: استقبال مدة الفيديو
+  // ✅ استقبال وتمرير المدة
   void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration) {
     showModalBottomSheet(
       context: context,
@@ -255,7 +252,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                   trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
                   onTap: () {
                     Navigator.pop(context);
-                    // ✅ تم التحديث: تمرير الجودة المحددة والمدة
+                    // ✅ تمرير الجودة المختارة والمدة
                     _startVideoDownload(videoId, title, q['url'], "${q['quality']}p", duration);
                   },
                 );
@@ -267,18 +264,15 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // ✅ تم التحديث: استقبال الجودة والمدة وتمريرها لمدير التحميل
+  // ✅ تمرير الجودة والمدة لمدير التحميل
   void _startVideoDownload(String videoId, String videoTitle, String? downloadUrl, String quality, String duration) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
-    
-    // ملاحظة: يفضل تمرير اسم الكورس والمادة بشكل ديناميكي من الصفحة السابقة
-    // حالياً نستخدم قيم افتراضية أو يمكنك جلبها إذا كانت متوفرة
     
     DownloadManager().startDownload(
       lessonId: videoId,
       videoTitle: videoTitle,
-      courseName: "My Courses", // يمكن تحسينه بتمريره في الـ Constructor
-      subjectName: "Subject Content", // يمكن تحسينه
+      courseName: "My Courses",
+      subjectName: "Subject Content",
       chapterName: widget.chapter['title'] ?? "Chapter",
       downloadUrl: downloadUrl,
       quality: quality,   // ✅ تمرير الجودة
@@ -295,12 +289,17 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
   void _startPdfDownload(String pdfId, String pdfTitle) {
      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
+     
      DownloadManager().startDownload(
       lessonId: pdfId, 
       videoTitle: pdfTitle, 
       courseName: "PDFs", 
       subjectName: "Subject Content",
       chapterName: widget.chapter['title'] ?? "Chapter",
+      // ✅✅✅ إصلاح خطأ Access Denied: إضافة معامل isPdf ✅✅✅
+      isPdf: true,
+      // ========================================================
+      
       onProgress: (p) {},
       onComplete: () {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success));
@@ -451,8 +450,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       itemBuilder: (context, index) {
         final video = videos[index];
         final String videoId = video['id'].toString();
-        // ✅ استخراج مدة الفيديو من البيانات (إن وجدت)
-        final String duration = video['duration'] ?? ""; 
+        // ✅ استخراج مدة الفيديو من الكائن
+        final String duration = video['duration'] ?? "--:--"; 
         
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -489,7 +488,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            "SESSION",
+                            "SESSION • $duration", // عرض المدة هنا أيضاً
                             style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.7)),
                           ),
                         ],
@@ -522,7 +521,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         else return _buildActionButton(
                           "Download", 
                           AppColors.textSecondary, 
-                          // ✅ تمرير المدة لعملية التحضير
+                          // ✅ تمرير المدة
                           () => _prepareVideoDownload(videoId, video['title'], duration)
                         );
                       },
@@ -614,6 +613,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       },
     );
   }
+
+  // --- Widgets مساعدة ---
 
   Widget _buildOptionTile({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
     return GestureDetector(
