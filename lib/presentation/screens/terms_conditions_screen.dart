@@ -74,11 +74,12 @@ class TermsConditionsScreen extends StatelessWidget {
                       ),
                        const Divider(color: Colors.white10, height: 40),
 
+                      // ✅ تم التعديل هنا
                       _buildSection(
                         "3. المدفوعات والاسترداد",
                         "3. Payments & Refunds",
-                        "رسوم الكورسات غير قابلة للاسترداد بمجرد منح صلاحية الوصول، إلا في حالات الأعطال التقنية من جانبنا التي يتعذر إصلاحها.",
-                        "Course fees are non-refundable once access is granted, except in cases of technical failure on our end that cannot be resolved."
+                        "تخضع سياسة استرداد الأموال لطبيعة المدرس والمحتوى المقدم. يمكن في بعض الحالات استرداد المبلغ بعد مراجعة الإدارة.",
+                        "Refund policy is subject to the nature of the teacher and the content provided. In some cases, a refund may be issued after administration review."
                       ),
                     ],
                   ),
