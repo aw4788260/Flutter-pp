@@ -47,6 +47,9 @@ android {
     }
 
     compileOptions {
+        // ✅ 1. تفعيل Core Library Desugaring (مطلوب لمكتبة الإشعارات لتعمل على إصدارات أندرويد القديمة)
+        isCoreLibraryDesugaringEnabled = true
+
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -61,6 +64,9 @@ flutter {
 }
 
 dependencies {
+    // ✅ 2. إضافة مكتبة Desugaring JDK Libs الضرورية لتفعيل الميزة أعلاه
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-crashlytics")
