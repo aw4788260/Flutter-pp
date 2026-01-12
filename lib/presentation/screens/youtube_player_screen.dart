@@ -114,8 +114,10 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
     _controller.removeListener(_playerListener);
     _controller.dispose();
     
-    // ✅ إعادة الشاشة للوضع الرأسي وإظهار أشرطة النظام عند الخروج
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // ✅ التعديل هنا: استعادة وضع النظام اليدوي لمنع تداخل الواجهة في الشاشات الأخرى
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
+    
+    // إعادة الشاشة للوضع الرأسي
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
