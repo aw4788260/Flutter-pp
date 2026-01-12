@@ -106,40 +106,43 @@ class DownloadManager {
 
       // 1. جلب الرابط تلقائياً إذا لم يتم توفيره
       if (finalUrl == null) {
-        final endpoint = isPdf ? '/api/secure/get-pdf' : '/api/secure/get-video-id';
-        final queryParam = isPdf ? {'pdfId': lessonId} : {'lessonId': lessonId};
-        final fullApiUrl = '$_baseUrl$endpoint';
-
-        final requestHeaders = {
-          'x-user-id': userId,
-          'x-device-id': deviceId,
-          'x-app-secret': appSecret,
-        };
-
-        FirebaseCrashlytics.instance.log("🚀 API Request: GET $fullApiUrl Params: $queryParam");
-
-        final res = await _dio.get(
-          fullApiUrl,
-          queryParameters: queryParam,
-          options: Options(
-            headers: requestHeaders,
-            validateStatus: (status) => status! < 500,
-          ),
-        );
-
-        if (res.statusCode != 200) {
-          throw Exception(res.data['message'] ?? "Failed to get content info (${res.statusCode})");
-        }
-
-        final data = res.data;
-        
+        // ✅ التعديل هنا: إذا كان PDF، نتجاوز طلب الـ JSON ونضع الرابط مباشرة
         if (isPdf) {
-           finalUrl = data['url'];
-           if (finalUrl == null) {
-             finalUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
-           }
+           finalUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
         } else {
-          // منطق الفيديو
+          // --- منطق الفيديو (نحتاج لطلب المعلومات) ---
+          final endpoint = '/api/secure/get-video-id';
+          final queryParam = {'lessonId': lessonId};
+          final fullApiUrl = '$_baseUrl$endpoint';
+
+          final requestHeaders = {
+            'x-user-id': userId,
+            'x-device-id': deviceId,
+            'x-app-secret': appSecret,
+          };
+
+          FirebaseCrashlytics.instance.log("🚀 API Request: GET $fullApiUrl Params: $queryParam");
+
+          final res = await _dio.get(
+            fullApiUrl,
+            queryParameters: queryParam,
+            options: Options(
+              headers: requestHeaders,
+              validateStatus: (status) => status! < 500,
+            ),
+          );
+
+          if (res.statusCode != 200) {
+            throw Exception(res.data['message'] ?? "Failed to get content info (${res.statusCode})");
+          }
+
+          final data = res.data;
+          
+          // ✅ التحقق من أن البيانات Map لتجنب الخطأ
+          if (data is! Map) {
+             throw Exception("Unexpected response format for Video info");
+          }
+
           if (data['youtube_video_id'] != null && (data['availableQualities'] == null || (data['availableQualities'] as List).isEmpty)) {
              throw Exception("YouTube videos cannot be downloaded offline.");
           }
@@ -198,14 +201,15 @@ class DownloadManager {
       if (isHls) {
         await _downloadAndMergeHls(finalUrl!, tempPath, internalOnProgress);
       } else {
-        Options downloadOptions = Options();
-        if (finalUrl.contains(_baseUrl)) {
-           downloadOptions = Options(headers: {
+        // ✅ إعداد الهيدرز ونوع الاستجابة
+        Options downloadOptions = Options(
+            responseType: ResponseType.bytes, // مهم لاستقبال الملفات
+            headers: {
               'x-user-id': userId,
               'x-device-id': deviceId,
               'x-app-secret': appSecret,
-           });
-        } 
+           }
+        );
 
         await _dio.download(
           finalUrl,
