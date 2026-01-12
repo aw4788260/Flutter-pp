@@ -20,8 +20,12 @@ void main() async {
     // هذا يضمن أن أشرطة النظام (الساعة والبطارية والأزرار السفلية) ظاهرة وبحجمها الطبيعي
     // مما يمنع مشكلة الإزاحة التي تحدثت عنها
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
-    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     // 1. تفعيل وضع الحماية (منع لقطات الشاشة وتسجيل الفيديو)
     await _enableSecureMode();
 
