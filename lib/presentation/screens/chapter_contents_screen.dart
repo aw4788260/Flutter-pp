@@ -11,8 +11,16 @@ import 'pdf_viewer_screen.dart';
 
 class ChapterContentsScreen extends StatefulWidget {
   final Map<String, dynamic> chapter;
+  // ✅ 1. إضافة المتغيرات لاستقبال الهيكل الشجري
+  final String courseTitle;
+  final String subjectTitle;
 
-  const ChapterContentsScreen({super.key, required this.chapter});
+  const ChapterContentsScreen({
+    super.key, 
+    required this.chapter,
+    required this.courseTitle,  // ✅ مطلوب
+    required this.subjectTitle, // ✅ مطلوب
+  });
 
   @override
   State<ChapterContentsScreen> createState() => _ChapterContentsScreenState();
@@ -170,7 +178,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   // 2. منطق التحميل (Download Logic) واختيار الجودة
   // ===========================================================================
 
-  // ✅ استقبال المدة (duration)
   Future<void> _prepareVideoDownload(String videoId, String videoTitle, String duration) async {
     showDialog(
       context: context,
@@ -198,10 +205,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         List<dynamic> qualities = data['availableQualities'] ?? [];
 
         if (qualities.isNotEmpty) {
-          // ✅ تمرير المدة للحوار
           _showQualitySelectionDialog(videoId, videoTitle, qualities, duration);
         } else if (data['url'] != null) {
-          // ✅ التحميل المباشر مع تمرير المدة والجودة الافتراضية
           _startVideoDownload(videoId, videoTitle, data['url'], "Auto", duration);
         } else {
           FirebaseCrashlytics.instance.log("No download links for lesson: $videoId");
@@ -218,7 +223,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // ✅ استقبال وتمرير المدة
   void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration) {
     showModalBottomSheet(
       context: context,
@@ -252,7 +256,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                   trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
                   onTap: () {
                     Navigator.pop(context);
-                    // ✅ تمرير الجودة المختارة والمدة
                     _startVideoDownload(videoId, title, q['url'], "${q['quality']}p", duration);
                   },
                 );
@@ -264,19 +267,20 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // ✅ تمرير الجودة والمدة لمدير التحميل
   void _startVideoDownload(String videoId, String videoTitle, String? downloadUrl, String quality, String duration) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
     
     DownloadManager().startDownload(
       lessonId: videoId,
       videoTitle: videoTitle,
-      courseName: "My Courses",
-      subjectName: "Subject Content",
+      // ✅ 2. استخدام الأسماء الصحيحة الممررة للـ Widget
+      courseName: widget.courseTitle,
+      subjectName: widget.subjectTitle,
       chapterName: widget.chapter['title'] ?? "Chapter",
+      // ----------------------------------------------------
       downloadUrl: downloadUrl,
-      quality: quality,   // ✅ تمرير الجودة
-      duration: duration, // ✅ تمرير المدة
+      quality: quality,   
+      duration: duration, 
       onProgress: (p) {},
       onComplete: () {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Completed!"), backgroundColor: AppColors.success));
@@ -293,13 +297,12 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
      DownloadManager().startDownload(
       lessonId: pdfId, 
       videoTitle: pdfTitle, 
-      courseName: "PDFs", 
-      subjectName: "Subject Content",
+      // ✅ 3. استخدام الأسماء الصحيحة للـ PDF أيضاً
+      courseName: widget.courseTitle, 
+      subjectName: widget.subjectTitle,
       chapterName: widget.chapter['title'] ?? "Chapter",
-      // ✅✅✅ إصلاح خطأ Access Denied: إضافة معامل isPdf ✅✅✅
+      // ----------------------------------------------------
       isPdf: true,
-      // ========================================================
-      
       onProgress: (p) {},
       onComplete: () {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success));
@@ -363,14 +366,17 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                 maxLines: 1,
                               ),
                               const SizedBox(height: 4),
-                              const Text(
-                                "MATERIALS EXPLORER",
+                              // ✅ إضافة عرض المسار تحت العنوان (اختياري لتحسين التجربة)
+                              Text(
+                                "${widget.courseTitle} > ${widget.subjectTitle}",
                                 style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
-                                  color: AppColors.accentYellow,
-                                  letterSpacing: 2.0,
+                                  color: AppColors.accentYellow.withOpacity(0.8),
+                                  letterSpacing: 1.0,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
@@ -487,8 +493,9 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
+                          // ✅ 4. استبدال كلمة SESSION بـ VIDEO
                           Text(
-                            "SESSION • $duration", // عرض المدة هنا أيضاً
+                            "VIDEO", 
                             style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.7)),
                           ),
                         ],
