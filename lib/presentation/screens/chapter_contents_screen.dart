@@ -75,7 +75,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               _buildOptionTile(
                 icon: LucideIcons.youtube,
                 title: "Second player",
-                subtitle: "Standard video player",
+                subtitle: "Best for auto quality selection",
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayVideo(video, useYoutube: true);
