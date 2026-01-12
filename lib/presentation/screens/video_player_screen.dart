@@ -34,7 +34,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _controller;
 
-  // ✅ تعريف خدمة البروكسي
   final LocalProxyService _proxyService = LocalProxyService();
 
   String _currentQuality = "";
@@ -43,6 +42,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   bool _isError = false;
   String _errorMessage = "";
+  bool _isInitialized = false; // ✅ متغير لانتظار التهيئة
   
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
@@ -57,64 +57,82 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Started");
+    // ✅ نقلنا كل عمليات البدء إلى دالة غير متزامنة لضمان الترتيب
+    _initializePlayerScreen();
+  }
 
-    // ✅ تفعيل ملء الشاشة فوراً عند الدخول
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+  Future<void> _initializePlayerScreen() async {
+    FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Sequence Started");
 
-    // ✅ بدء تشغيل البروكسي
-    _startProxyServer();
+    try {
+      // 1. ✅ إجبار الوضع الأفقي وملء الشاشة والانتظار حتى يكتمل
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
 
-    _player = Player();
-    
-    // ✅ إعداد الكونترولر
-    _controller = VideoController(
-      _player,
-      configuration: const VideoControllerConfiguration(
-        enableHardwareAcceleration: true,
-        // ✅ هذا الخيار مهم لمنع تداخل تحكم المكتبة مع تحكمنا اليدوي في الواجهة
-        androidAttachSurfaceAfterVideoParameters: true,
-      ),
-    );
+      // 2. ✅ تشغيل البروكسي والانتظار
+      await _startProxyServer();
 
-    _player.stream.error.listen((error) {
-      FirebaseCrashlytics.instance.recordError(
-        Exception(error), 
-        StackTrace.current, 
-        reason: "🚨 MediaKit Stream Error"
+      // 3. ✅ إنشاء المشغل بعد استقرار الشاشة
+      _player = Player();
+      _controller = VideoController(
+        _player,
+        configuration: const VideoControllerConfiguration(
+          enableHardwareAcceleration: true,
+          androidAttachSurfaceAfterVideoParameters: true,
+        ),
       );
-      
+
+      _player.stream.error.listen((error) {
+        FirebaseCrashlytics.instance.recordError(
+          Exception(error), 
+          StackTrace.current, 
+          reason: "🚨 MediaKit Stream Error"
+        );
+        if (mounted) {
+          setState(() {
+            _isError = true;
+            _errorMessage = "Playback Error: $error";
+          });
+        }
+      });
+
+      _setupScreenProtection();
+      _loadUserData();
+      _startWatermarkAnimation();
+
+      // 4. ✅ تحديد الجودة والتشغيل
+      if (mounted) {
+        setState(() {
+          _isInitialized = true; // السماح بعرض الواجهة الآن
+        });
+        _parseQualities();
+      }
+
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: "Initialization Failed");
       if (mounted) {
         setState(() {
           _isError = true;
-          _errorMessage = "Playback Error: $error";
+          _errorMessage = "Init Failed: $e";
         });
       }
-    });
-
-    _setupScreenProtection();
-    _loadUserData();
-    _startWatermarkAnimation();
-    _parseQualities();
+    }
   }
 
-  // ✅ دالة تشغيل البروكسي مع تسجيل الأخطاء
   Future<void> _startProxyServer() async {
     try {
-      FirebaseCrashlytics.instance.log("🔌 Starting Local Proxy...");
       await _proxyService.start();
-      FirebaseCrashlytics.instance.log("✅ Local Proxy Started on port ${_proxyService.port}");
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: "🔥 Proxy Start Failed");
+    } catch (e) {
+      debugPrint("Proxy Error: $e");
     }
   }
 
   Future<void> _exitFullScreenMode() async {
-    // ✅ العودة للوضع اليدوي الطبيعي مع إعادة إظهار أشرطة النظام
+    // ✅ الترتيب مهم: أولاً إيقاف الفيديو، ثم استعادة الوضع الرأسي
+    await _player.stop();
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -130,12 +148,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _screenRecordingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
         final isRecording = await ScreenProtector.isRecording();
         if (isRecording) {
-          FirebaseCrashlytics.instance.log("⚠️ Screen Recording Detected!");
           _handleScreenRecordingDetected();
         }
       });
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: "Screen Protection Error");
+    } catch (e) {
+      debugPrint("Screen protection error: $e");
     }
   }
 
@@ -174,7 +191,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           displayText = box.get('phone') ?? box.get('username') ?? '';
         }
       } catch (e) {
-        FirebaseCrashlytics.instance.log("⚠️ Failed to load user data for watermark: $e");
+        debugPrint("Hive Error: $e");
       }
     }
     setState(() {
@@ -197,7 +214,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _parseQualities() {
     if (widget.streams.isEmpty) {
-      FirebaseCrashlytics.instance.log("❌ No streams provided to player");
       setState(() {
         _isError = true;
         _errorMessage = "No video sources available";
@@ -217,7 +233,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
 
     if (_currentQuality.isNotEmpty) {
-      FirebaseCrashlytics.instance.log("▶️ Initial Quality Selected: $_currentQuality");
       _playVideo(widget.streams[_currentQuality]!);
     }
   }
@@ -225,21 +240,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     try {
       String playUrl = url;
-      FirebaseCrashlytics.instance.log("🔄 Preparing to play: $url");
 
       if (!url.startsWith('http')) {
         final file = File(url);
-        if (!await file.exists()) {
-           FirebaseCrashlytics.instance.recordError(
-             Exception("Offline file missing"), 
-             StackTrace.current, 
-             reason: "File path: $url"
-           );
-           throw Exception("Offline file missing");
-        }
-
+        if (!await file.exists()) throw Exception("Offline file missing");
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
-        FirebaseCrashlytics.instance.log("🔗 Proxy URL Generated: $playUrl");
       } 
       
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
@@ -253,10 +258,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
 
       await _player.play();
-      FirebaseCrashlytics.instance.log("✅ Playback started successfully");
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: '📽️ MediaKit Play Failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Play Failed');
       if (mounted) {
         setState(() {
           _isError = true;
@@ -269,11 +273,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _seekRelative(Duration amount) async {
     try {
       final currentPos = _player.state.position;
-      final newPos = currentPos + amount;
-      await _player.seek(newPos);
-    } catch (e) {
-      FirebaseCrashlytics.instance.log("⚠️ Seek Error: $e");
-    }
+      await _player.seek(currentPos + amount);
+    } catch (e) {/*ignore*/}
   }
 
   void _showSettingsSheet() {
@@ -327,7 +328,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
-                FirebaseCrashlytics.instance.log("🔄 Switching Quality to: $q");
                 final currentPos = _player.state.position;
                 setState(() { _currentQuality = q; _isError = false; });
                 _playVideo(widget.streams[q]!, startAt: currentPos);
@@ -363,18 +363,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
-    FirebaseCrashlytics.instance.log("🛑 Disposing Player Screen");
     _watermarkTimer?.cancel();
     _screenRecordingTimer?.cancel();
-    
     _proxyService.stop();
     _player.dispose();
-    
     _exitFullScreenMode();
     ScreenProtector.protectDataLeakageOff();
     ScreenProtector.preventScreenshotOff();
     WakelockPlus.disable();
-    
     super.dispose();
   }
 
@@ -388,110 +384,121 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       child: Scaffold(
         backgroundColor: Colors.black,
         resizeToAvoidBottomInset: false,
-        // ✅ primary: false تمنع Scaffold من حجز مساحة لشريط الحالة، مما يحل مشكلة الإزاحة
+        // ✅ 1. هام: منع Scaffold من التعامل مع المناطق الآمنة لتجنب الإزاحة
         primary: false, 
+        extendBody: true,
+        
+        // ✅ 2. استخدام StackFit.expand لملء الشاشة بالكامل
         body: Stack(
-          // ✅ StackFit.expand يضمن تمدد المحتوى لملء الشاشة بالكامل
-          fit: StackFit.expand, 
+          fit: StackFit.expand,
           children: [
-            _isError
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-                        const SizedBox(height: 16),
-                        Text(_errorMessage, style: const TextStyle(color: Colors.white)),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
+            // في حالة عدم الجاهزية، نعرض مؤشر تحميل أسود
+            if (!_isInitialized)
+              const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+            else if (_isError)
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                    const SizedBox(height: 16),
+                    Text(_errorMessage, style: const TextStyle(color: Colors.white)),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                         setState(() => _isError = false);
+                         _playVideo(widget.streams[_currentQuality]!);
+                      }, 
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
+                      child: const Text("Retry", style: TextStyle(color: Colors.black)),
+                    )
+                  ],
+                ),
+              )
+            else
+              // ✅ 3. توسيط الفيديو لضمان عدم الإزاحة
+              Center(
+                child: MaterialVideoControlsTheme(
+                  normal: MaterialVideoControlsThemeData(
+                    padding: EdgeInsets.zero, // إلغاء الحواف الداخلية
+                    // ✅ 4. تخصيص الشريط السفلي ليكون ضمن مساحة آمنة
+                    bottomButtonBar: [
+                      const SizedBox(width: 24),
+                      const MaterialPositionIndicator(),
+                      const Spacer(),
+                      const MaterialSeekBar(),
+                      const Spacer(),
+                      MaterialCustomButton(
+                        onPressed: _showSettingsSheet,
+                        icon: const Icon(LucideIcons.settings, color: Colors.white),
+                      ),
+                      const SizedBox(width: 10),
+                      MaterialCustomButton(
+                        onPressed: () {
+                          _exitFullScreenMode();
+                          Navigator.pop(context);
+                        },
+                        icon: const Icon(LucideIcons.minimize, color: Colors.white),
+                      ),
+                      // ✅ إضافة مساحة آمنة سفلية إذا لزم الأمر
+                      const SafeArea(top: false, left: false, right: false, child: SizedBox(width: 24)),
+                    ],
+                    topButtonBar: [
+                      // ✅ إضافة مساحة آمنة علوية للأزرار العلوية
+                      const SafeArea(bottom: false, left: false, right: false, child: SizedBox(width: 14)),
+                      SafeArea(
+                        bottom: false, left: false, right: false,
+                        child: MaterialCustomButton(
                           onPressed: () {
-                             FirebaseCrashlytics.instance.log("🔄 User Clicked Retry");
-                             setState(() => _isError = false);
-                             _playVideo(widget.streams[_currentQuality]!);
-                          }, 
-                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
-                          child: const Text("Retry", style: TextStyle(color: Colors.black)),
-                        )
-                      ],
-                    ),
-                  )
-                : Positioned.fill(
-                    child: Center(
-                      child: MaterialVideoControlsTheme(
-                        // ✅ الثيم العادي (الذي هو ملء شاشة في حالتك)
-                        normal: MaterialVideoControlsThemeData(
-                          padding: EdgeInsets.zero,
-                          topButtonBar: [
-                            const SizedBox(width: 14),
-                            MaterialCustomButton(
-                              onPressed: () {
-                                _exitFullScreenMode();
-                                Navigator.pop(context);
-                              },
-                              icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-                            ),
-                            const SizedBox(width: 14),
-                            Text(
-                              widget.title,
-                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                          primaryButtonBar: [
-                            const Spacer(flex: 2),
-                            MaterialCustomButton(
-                              onPressed: () => _seekRelative(const Duration(seconds: -10)),
-                              icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
-                            ),
-                            const SizedBox(width: 24),
-                            const MaterialPlayOrPauseButton(iconSize: 56),
-                            const SizedBox(width: 24),
-                            MaterialCustomButton(
-                              onPressed: () => _seekRelative(const Duration(seconds: 10)),
-                              icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
-                            ),
-                            const Spacer(flex: 2),
-                          ],
-                          bottomButtonBar: [
-                            const SizedBox(width: 24),
-                            const MaterialPositionIndicator(),
-                            const Spacer(),
-                            const MaterialSeekBar(),
-                            const Spacer(),
-                            MaterialCustomButton(
-                              onPressed: _showSettingsSheet,
-                              icon: const Icon(LucideIcons.settings, color: Colors.white),
-                            ),
-                            const SizedBox(width: 10),
-                            // ✅ زر الخروج من وضع ملء الشاشة (تصغير)
-                            MaterialCustomButton(
-                              onPressed: () {
-                                _exitFullScreenMode();
-                                Navigator.pop(context);
-                              },
-                              icon: const Icon(LucideIcons.minimize, color: Colors.white),
-                            ),
-                            const SizedBox(width: 24),
-                          ],
-                          automaticallyImplySkipNextButton: false,
-                          automaticallyImplySkipPreviousButton: false,
-                        ),
-                        // ✅ الثيم الكامل (نفس الإعدادات لضمان التناسق)
-                        fullscreen: const MaterialVideoControlsThemeData(
-                          padding: EdgeInsets.zero,
-                          displaySeekBar: true,
-                          automaticallyImplySkipNextButton: false,
-                          automaticallyImplySkipPreviousButton: false,
-                        ),
-                        child: Video(
-                          controller: _controller,
-                          fit: BoxFit.contain, // يحافظ على النسبة، استخدم cover لملء الشاشة مع قص الأطراف
-                          // ✅ تمت إزالة الأبعاد اليدوية (width/height) لترك الفيديو يأخذ حجم الشاشة الطبيعي
+                            _exitFullScreenMode();
+                            Navigator.pop(context);
+                          },
+                          icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 14),
+                      SafeArea(
+                        bottom: false, left: false, right: false,
+                        child: Text(
+                          widget.title,
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                    primaryButtonBar: [
+                      const Spacer(flex: 2),
+                      MaterialCustomButton(
+                        onPressed: () => _seekRelative(const Duration(seconds: -10)),
+                        icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
+                      ),
+                      const SizedBox(width: 24),
+                      const MaterialPlayOrPauseButton(iconSize: 56),
+                      const SizedBox(width: 24),
+                      MaterialCustomButton(
+                        onPressed: () => _seekRelative(const Duration(seconds: 10)),
+                        icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
+                      ),
+                      const Spacer(flex: 2),
+                    ],
+                    automaticallyImplySkipNextButton: false,
+                    automaticallyImplySkipPreviousButton: false,
                   ),
+                  fullscreen: const MaterialVideoControlsThemeData(
+                    padding: EdgeInsets.zero,
+                    displaySeekBar: true,
+                    automaticallyImplySkipNextButton: false,
+                    automaticallyImplySkipPreviousButton: false,
+                  ),
+                  child: Video(
+                    controller: _controller,
+                    // ✅ 5. إزالة القيود اليدوية والسماح له بأخذ حجم الـ Center
+                    fit: BoxFit.contain, 
+                  ),
+                ),
+              ),
 
-            if (!_isError)
+            // العلامة المائية
+            if (!_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
                 curve: Curves.easeInOut,
