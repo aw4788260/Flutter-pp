@@ -250,8 +250,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                         final String instructor = item['instructor'] ?? 'Instructor';
                         final String code = item['code'] ?? '';
                         final String id = item['id'].toString();
-                        final bool isPartial = item['type'] == 'subject_group';
-
+                        
                         // تجهيز قائمة المواد لتمريرها للشاشة التالية لتسريع الفتح
                         List<dynamic>? subjectsToPass;
                         if (item['owned_subjects'] is List) {
@@ -267,8 +266,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   courseId: id,
                                   courseTitle: title,
                                   courseCode: code,
-                                  instructorName: instructor,
-                                  preLoadedSubjects: subjectsToPass,
+                                  instructorName: instructor, 
+                                  preLoadedSubjects: subjectsToPass, 
                                 ),
                               ),
                             );
@@ -279,11 +278,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             decoration: BoxDecoration(
                               color: AppColors.backgroundSecondary,
                               borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: isPartial 
-                                  ? AppColors.accentOrange.withOpacity(0.3) 
-                                  : Colors.white.withOpacity(0.05)
-                              ),
+                              // ✅ توحيد لون الإطار للجميع
+                              border: Border.all(color: Colors.white.withOpacity(0.05)),
                               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
                             ),
                             child: Row(
@@ -295,9 +291,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                     boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                   ),
-                                  child: Icon(
-                                    isPartial ? LucideIcons.layers : LucideIcons.playCircle, 
-                                    color: isPartial ? AppColors.accentYellow : AppColors.accentOrange, 
+                                  // ✅ توحيد الأيقونة واللون (إلغاء Layers و الأصفر)
+                                  child: const Icon(
+                                    LucideIcons.playCircle, 
+                                    color: AppColors.accentOrange, 
                                     size: 24
                                   ),
                                 ),
@@ -329,20 +326,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                               letterSpacing: 1.5,
                                             ),
                                           ),
-                                          if (isPartial) ...[
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.accentYellow.withOpacity(0.1),
-                                                borderRadius: BorderRadius.circular(4)
-                                              ),
-                                              child: const Text(
-                                                "PARTIAL",
-                                                style: TextStyle(fontSize: 8, color: AppColors.accentYellow, fontWeight: FontWeight.bold),
-                                              ),
-                                            )
-                                          ]
+                                          // ✅ إزالة العلامة المميزة للكورس الجزئي (PARTIAL badge)
                                         ],
                                       ),
                                     ],
