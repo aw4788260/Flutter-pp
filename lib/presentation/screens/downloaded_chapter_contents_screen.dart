@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/local_proxy.dart';
 import 'video_player_screen.dart';
+import 'pdf_viewer_screen.dart'; // ✅ استيراد شاشة عرض PDF
 
 class DownloadedChapterContentsScreen extends StatefulWidget {
   final String courseTitle;
@@ -33,6 +34,19 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
         builder: (_) => VideoPlayerScreen(
           streams: {"Offline": proxyUrl}, 
           title: item['title'] ?? "Offline Video",
+        ),
+      ),
+    );
+  }
+
+  // --- تشغيل PDF أوفلاين ---
+  void _openOfflinePdf(String key, String title) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PdfViewerScreen(
+          pdfId: key, // ✅ نمرر مفتاح Hive كـ ID للملف
+          title: title,
         ),
       ),
     );
@@ -100,7 +114,6 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                           maxLines: 1, overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
-                        // ✅ عرض المسار الكامل في الهيدر (كورس > مادة)
                         Text(
                           "${widget.courseTitle} > ${widget.subjectTitle}",
                           style: TextStyle(fontSize: 10, color: AppColors.textSecondary.withOpacity(0.7)),
@@ -208,80 +221,89 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
         // استخراج البيانات
         final sizeBytes = item['size'] ?? 0;
         final sizeMB = (sizeBytes / (1024 * 1024)).toStringAsFixed(1);
-        final quality = item['quality'] ?? "SD";
+        final quality = item['quality'] ?? "FILE"; // تغيير افتراضي للـ PDF
         final duration = item['duration'] ?? "--:--";
 
-        // ✅ استخدام GestureDetector على كامل البطاقة
         return GestureDetector(
           onTap: () {
              if (activeTab == 'videos') {
                _playOfflineVideo(item);
              } else {
-               // فتح PDF
-               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Opening PDF: ${item['title']}")));
+               // ✅ استدعاء مشغل PDF
+               _openOfflinePdf(key.toString(), item['title'] ?? 'Document');
              }
           },
           child: Container(
-            margin: const EdgeInsets.only(bottom: 12), // تقليل المسافة بين البطاقات
-            padding: const EdgeInsets.all(12), // تقليل الحشو الداخلي لجعل البطاقة أصغر
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16), // ✅ زيادة الحشو قليلاً لراحة العين
             decoration: BoxDecoration(
               color: AppColors.backgroundSecondary,
-              borderRadius: BorderRadius.circular(12), // تقليل نصف قطر الحواف قليلاً
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white.withOpacity(0.05)),
               boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ❌ تم إزالة الهيكل الشجري من داخل البطاقة بناءً على طلبك
-
-                // 2. العنوان والأيقونة وزر الحذف
+                // 1. الصف العلوي (أيقونة - عنوان - حذف)
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  // ✅ هذا السطر يضمن توسط العنوان والأيقونة وزر الحذف عمودياً
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    // الأيقونة
                     Container(
-                      padding: const EdgeInsets.all(8), // أيقونة أصغر
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: AppColors.backgroundPrimary,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(icon, color: activeTab == 'videos' ? AppColors.accentOrange : AppColors.accentYellow, size: 18),
+                      child: Icon(icon, color: activeTab == 'videos' ? AppColors.accentOrange : AppColors.accentYellow, size: 20),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
+                    
+                    // العنوان
                     Expanded(
                       child: Text(
-                        item['title'].toString().toUpperCase(),
+                        item['title'].toString(), // إزالة toUpperCase للقراءة الأفضل
                         style: const TextStyle(
-                          fontSize: 13, // خط أصغر قليلاً للعنوان
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,
                           height: 1.2
                         ),
-                        maxLines: 2, overflow: TextOverflow.ellipsis,
+                        maxLines: 2, 
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    // زر الحذف (مفصول عن ضغطة البطاقة)
+                    
+                    // زر الحذف
                     GestureDetector(
                       onTap: () => _deleteFile(key.toString()),
-                      child: const Padding(
-                        padding: EdgeInsets.only(left: 8),
-                        child: Icon(LucideIcons.trash2, size: 16, color: AppColors.error),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        color: Colors.transparent, // منطقة لمس أكبر
+                        child: const Icon(LucideIcons.trash2, size: 18, color: AppColors.error),
                       ),
                     ),
                   ],
                 ),
                 
-                const SizedBox(height: 8), // تقليل المسافة
+                const SizedBox(height: 12),
                 const Divider(color: Colors.white10, height: 1),
-                const SizedBox(height: 8), // تقليل المسافة
+                const SizedBox(height: 10),
 
-                // 3. شريط المعلومات (جودة | مدة | حجم)
+                // 2. شريط المعلومات السفلي
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildMetaTag(LucideIcons.monitor, quality),
-                    if(activeTab == 'videos') _buildMetaTag(LucideIcons.clock, duration),
                     _buildMetaTag(LucideIcons.hardDrive, "$sizeMB MB"),
+                    const SizedBox(width: 16),
+                    if(activeTab == 'videos') ...[
+                      _buildMetaTag(LucideIcons.clock, duration),
+                      const SizedBox(width: 16),
+                      _buildMetaTag(LucideIcons.monitor, quality),
+                    ] else ...[
+                       _buildMetaTag(LucideIcons.fileText, "PDF Document"),
+                    ]
                   ],
                 ),
               ],
@@ -294,12 +316,13 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
 
   Widget _buildMetaTag(IconData icon, String text) {
     return Row(
+      mainAxisSize: MainAxisSize.min, // مهم لعدم أخذ مساحة زائدة
       children: [
-        Icon(icon, size: 10, color: AppColors.accentYellow), // أيقونة أصغر
-        const SizedBox(width: 4),
+        Icon(icon, size: 12, color: AppColors.textSecondary.withOpacity(0.7)),
+        const SizedBox(width: 6),
         Text(
           text,
-          style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.bold), // خط أصغر
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary.withOpacity(0.9), fontWeight: FontWeight.w500),
         ),
       ],
     );
