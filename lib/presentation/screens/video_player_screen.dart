@@ -10,11 +10,9 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:screen_protector/screen_protector.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/utils/encryption_helper.dart';
-import '../../core/services/app_state.dart'; // ✅ تمت إضافة هذا الاستيراد للوصول لبيانات المستخدم
+import '../../core/services/app_state.dart'; 
 // ✅ استيراد خدمة البروكسي المحلي
 import '../../core/services/local_proxy.dart';
 
@@ -61,8 +59,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
     FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Started");
 
-    // تفعيل ملء الشاشة فوراً
-    _enterFullScreenMode();
+    // ✅ تفعيل ملء الشاشة فوراً عند الدخول
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
 
     // ✅ بدء تشغيل البروكسي
     _startProxyServer();
@@ -74,6 +76,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _player,
       configuration: const VideoControllerConfiguration(
         enableHardwareAcceleration: true,
+        // ✅ هذا الخيار مهم لمنع تداخل تحكم المكتبة مع تحكمنا اليدوي في الواجهة
+        androidAttachSurfaceAfterVideoParameters: true,
       ),
     );
 
@@ -109,17 +113,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Future<void> _enterFullScreenMode() async {
-    // ✅ استخدام immersiveSticky لإخفاء أشرطة النظام بالكامل
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-  }
-
   Future<void> _exitFullScreenMode() async {
-    // ✅ العودة للوضع اليدوي الطبيعي بدلاً من edgeToEdge لمنع تداخل الواجهة في الصفحات الأخرى
+    // ✅ العودة للوضع اليدوي الطبيعي مع إعادة إظهار أشرطة النظام
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -167,28 +162,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ تعديل: جلب رقم الهاتف بشكل أولي من AppState ثم Hive
   void _loadUserData() {
     String displayText = '';
-    
-    // 1. المحاولة الأولى: من الذاكرة الحية (AppState)
     if (AppState().userData != null) {
       displayText = AppState().userData!['phone'] ?? '';
     }
-
-    // 2. المحاولة الثانية: من التخزين المحلي (Hive)
     if (displayText.isEmpty) {
       try {
         if (Hive.isBoxOpen('auth_box')) {
           var box = Hive.box('auth_box');
-          // الأولوية لرقم الهاتف، ثم اسم المستخدم
           displayText = box.get('phone') ?? box.get('username') ?? '';
         }
       } catch (e) {
         FirebaseCrashlytics.instance.log("⚠️ Failed to load user data for watermark: $e");
       }
     }
-
     setState(() {
       _watermarkText = displayText.isNotEmpty ? displayText : 'User';
     });
@@ -399,98 +387,109 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        // ✅ إضافة هذا السطر لمنع تغير حجم الواجهة عند ظهور الكيبورد أو التداخلات
         resizeToAvoidBottomInset: false,
-        // ✅ استخدام Stack مباشرة لملء الشاشة بالكامل
+        // ✅ primary: false تمنع Scaffold من حجز مساحة لشريط الحالة، مما يحل مشكلة الإزاحة
+        primary: false, 
         body: Stack(
+          // ✅ StackFit.expand يضمن تمدد المحتوى لملء الشاشة بالكامل
+          fit: StackFit.expand, 
           children: [
-            Positioned.fill(
-              // ✅ 1. إزالة Center لضمان أن عناصر التحكم تملأ الشاشة كاملة ولا تتقيد بأبعاد الفيديو فقط
-              child: _isError
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-                          const SizedBox(height: 16),
-                          Text(_errorMessage, style: const TextStyle(color: Colors.white)),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: () {
-                               FirebaseCrashlytics.instance.log("🔄 User Clicked Retry");
-                               setState(() => _isError = false);
-                               _playVideo(widget.streams[_currentQuality]!);
-                            }, 
-                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
-                            child: const Text("Retry", style: TextStyle(color: Colors.black)),
-                          )
-                        ],
-                      ),
-                    )
-                  : MaterialVideoControlsTheme(
-                      // ✅ 2. ضبط الحشوة (Padding) إلى صفر في كلا الوضعين لمنع المكتبة من إضافة مساحة للنوتش المخفي
-                      normal: MaterialVideoControlsThemeData(
-                        padding: EdgeInsets.zero, 
-                        topButtonBar: [
-                          const SizedBox(width: 14),
-                          MaterialCustomButton(
-                            onPressed: () {
-                              _exitFullScreenMode();
-                              Navigator.pop(context);
-                            },
-                            icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-                          ),
-                          const SizedBox(width: 14),
-                          Text(
-                            widget.title,
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                        primaryButtonBar: [
-                          const Spacer(flex: 2),
-                          MaterialCustomButton(
-                            onPressed: () => _seekRelative(const Duration(seconds: -10)),
-                            icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
-                          ),
-                          const SizedBox(width: 24),
-                          const MaterialPlayOrPauseButton(iconSize: 56),
-                          const SizedBox(width: 24),
-                          MaterialCustomButton(
-                            onPressed: () => _seekRelative(const Duration(seconds: 10)),
-                            icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
-                          ),
-                          const Spacer(flex: 2),
-                        ],
-                        bottomButtonBar: [
-                          const SizedBox(width: 24),
-                          const MaterialPositionIndicator(),
-                          const Spacer(),
-                          const MaterialSeekBar(),
-                          const Spacer(),
-                          MaterialCustomButton(
-                            onPressed: _showSettingsSheet,
-                            icon: const Icon(LucideIcons.settings, color: Colors.white),
-                          ),
-                          const SizedBox(width: 24),
-                        ],
-                        automaticallyImplySkipNextButton: false,
-                        automaticallyImplySkipPreviousButton: false,
-                      ),
-                      fullscreen: const MaterialVideoControlsThemeData(
-                        padding: EdgeInsets.zero, // ✅ هام جداً لمنع الإزاحة
-                        displaySeekBar: true,
-                        automaticallyImplySkipNextButton: false,
-                        automaticallyImplySkipPreviousButton: false,
-                      ),
-                      child: Video(
-                        controller: _controller,
-                        fit: BoxFit.contain,
-                        // ✅ 3. إجبار الفيديو على أخذ أبعاد الشاشة بالكامل لضمان تموضع عناصر التحكم في الحواف
-                        width: MediaQuery.of(context).size.width,
-                        height: MediaQuery.of(context).size.height,
+            _isError
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                        const SizedBox(height: 16),
+                        Text(_errorMessage, style: const TextStyle(color: Colors.white)),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () {
+                             FirebaseCrashlytics.instance.log("🔄 User Clicked Retry");
+                             setState(() => _isError = false);
+                             _playVideo(widget.streams[_currentQuality]!);
+                          }, 
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
+                          child: const Text("Retry", style: TextStyle(color: Colors.black)),
+                        )
+                      ],
+                    ),
+                  )
+                : Positioned.fill(
+                    child: Center(
+                      child: MaterialVideoControlsTheme(
+                        // ✅ الثيم العادي (الذي هو ملء شاشة في حالتك)
+                        normal: MaterialVideoControlsThemeData(
+                          padding: EdgeInsets.zero,
+                          topButtonBar: [
+                            const SizedBox(width: 14),
+                            MaterialCustomButton(
+                              onPressed: () {
+                                _exitFullScreenMode();
+                                Navigator.pop(context);
+                              },
+                              icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+                            ),
+                            const SizedBox(width: 14),
+                            Text(
+                              widget.title,
+                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                          primaryButtonBar: [
+                            const Spacer(flex: 2),
+                            MaterialCustomButton(
+                              onPressed: () => _seekRelative(const Duration(seconds: -10)),
+                              icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
+                            ),
+                            const SizedBox(width: 24),
+                            const MaterialPlayOrPauseButton(iconSize: 56),
+                            const SizedBox(width: 24),
+                            MaterialCustomButton(
+                              onPressed: () => _seekRelative(const Duration(seconds: 10)),
+                              icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
+                            ),
+                            const Spacer(flex: 2),
+                          ],
+                          bottomButtonBar: [
+                            const SizedBox(width: 24),
+                            const MaterialPositionIndicator(),
+                            const Spacer(),
+                            const MaterialSeekBar(),
+                            const Spacer(),
+                            MaterialCustomButton(
+                              onPressed: _showSettingsSheet,
+                              icon: const Icon(LucideIcons.settings, color: Colors.white),
+                            ),
+                            const SizedBox(width: 10),
+                            // ✅ زر الخروج من وضع ملء الشاشة (تصغير)
+                            MaterialCustomButton(
+                              onPressed: () {
+                                _exitFullScreenMode();
+                                Navigator.pop(context);
+                              },
+                              icon: const Icon(LucideIcons.minimize, color: Colors.white),
+                            ),
+                            const SizedBox(width: 24),
+                          ],
+                          automaticallyImplySkipNextButton: false,
+                          automaticallyImplySkipPreviousButton: false,
+                        ),
+                        // ✅ الثيم الكامل (نفس الإعدادات لضمان التناسق)
+                        fullscreen: const MaterialVideoControlsThemeData(
+                          padding: EdgeInsets.zero,
+                          displaySeekBar: true,
+                          automaticallyImplySkipNextButton: false,
+                          automaticallyImplySkipPreviousButton: false,
+                        ),
+                        child: Video(
+                          controller: _controller,
+                          fit: BoxFit.contain, // يحافظ على النسبة، استخدم cover لملء الشاشة مع قص الأطراف
+                          // ✅ تمت إزالة الأبعاد اليدوية (width/height) لترك الفيديو يأخذ حجم الشاشة الطبيعي
+                        ),
                       ),
                     ),
-            ),
+                  ),
 
             if (!_isError)
               AnimatedAlign(
@@ -501,17 +500,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      // ✅ زيادة التباين (أغمق قليلاً)
-                      color: Colors.black.withOpacity(0.6), 
+                      color: Colors.black.withOpacity(0.3), 
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       _watermarkText,
                       style: TextStyle(
-                        // ✅ زيادة وضوح النص
-                        color: Colors.white.withOpacity(0.9), 
+                        color: Colors.white.withOpacity(0.4), 
                         fontWeight: FontWeight.bold,
-                        fontSize: 12, // الحفاظ على الحجم
+                        fontSize: 12, 
                         decoration: TextDecoration.none,
                       ),
                     ),
