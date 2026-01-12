@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/encryption_helper.dart';
+import '../../core/services/app_state.dart'; // ✅ تمت إضافة هذا الاستيراد للوصول لبيانات المستخدم
 // ✅ استيراد خدمة البروكسي المحلي
 import '../../core/services/local_proxy.dart';
 
@@ -166,17 +167,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  // ✅ تعديل: جلب رقم الهاتف بشكل أولي من AppState ثم Hive
   void _loadUserData() {
-    try {
-      if (Hive.isBoxOpen('auth_box')) {
-        var box = Hive.box('auth_box');
-        setState(() {
-          _watermarkText = box.get('phone') ?? box.get('username') ?? 'User';
-        });
-      }
-    } catch (e) {
-      FirebaseCrashlytics.instance.log("⚠️ Failed to load user data for watermark: $e");
+    String displayText = '';
+    
+    // 1. المحاولة الأولى: من الذاكرة الحية (AppState)
+    if (AppState().userData != null) {
+      displayText = AppState().userData!['phone'] ?? '';
     }
+
+    // 2. المحاولة الثانية: من التخزين المحلي (Hive)
+    if (displayText.isEmpty) {
+      try {
+        if (Hive.isBoxOpen('auth_box')) {
+          var box = Hive.box('auth_box');
+          // الأولوية لرقم الهاتف، ثم اسم المستخدم
+          displayText = box.get('phone') ?? box.get('username') ?? '';
+        }
+      } catch (e) {
+        FirebaseCrashlytics.instance.log("⚠️ Failed to load user data for watermark: $e");
+      }
+    }
+
+    setState(() {
+      _watermarkText = displayText.isNotEmpty ? displayText : 'User';
+    });
   }
 
   void _startWatermarkAnimation() {
@@ -486,15 +501,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.3), 
+                      // ✅ زيادة التباين (أغمق قليلاً)
+                      color: Colors.black.withOpacity(0.6), 
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       _watermarkText,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.4), 
+                        // ✅ زيادة وضوح النص
+                        color: Colors.white.withOpacity(0.9), 
                         fontWeight: FontWeight.bold,
-                        fontSize: 12, 
+                        fontSize: 12, // الحفاظ على الحجم
                         decoration: TextDecoration.none,
                       ),
                     ),
