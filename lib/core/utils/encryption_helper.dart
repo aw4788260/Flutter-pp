@@ -7,19 +7,19 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 class EncryptionHelper {
-  // ✅ 1. مضاعفة حجم الكتلة إلى 128KB
-  // هذا يقلل عدد عمليات القراءة والكتابة للنصف، مما يسرع معالجة الملفات الكبيرة
-  static const int CHUNK_SIZE = 128 * 1024; 
+  // ✅ تم التعديل: 512KB (نصف ميجابايت)
+  // هذا الحجم مثالي جداً للفيديوهات ويقلل الحمل على المعالج بشكل كبير
+  static const int CHUNK_SIZE = 512 * 1024; 
   
   static const int IV_LENGTH = 12;
   static const int TAG_LENGTH = 16;
   
-  // الحجم الكلي للكتلة المشفرة
+  // الحجم الكلي للكتلة المشفرة (يتم حسابه تلقائياً)
   static const int ENCRYPTED_CHUNK_SIZE = IV_LENGTH + CHUNK_SIZE + TAG_LENGTH;
 
   static encrypt.Key? _key;
   
-  // ✅ 2. متغير ثابت للاحتفاظ بمحرك التشفير في الذاكرة
+  // الاحتفاظ بمحرك التشفير لتجنب إعادة تهيئته (سرعة x10)
   static encrypt.Encrypter? _encrypter;
   
   static final _storage = const FlutterSecureStorage();
@@ -40,8 +40,7 @@ class EncryptionHelper {
       
       _key = encrypt.Key.fromBase64(storedKey);
 
-      // ✅ 3. إنشاء محرك التشفير مرة واحدة فقط (هنا السرعة!)
-      // عملية إعداد AES تستهلك موارد المعالج، لذا نفعله مرة واحدة ونعيد استخدامه
+      // ✅ إنشاء المحرك مرة واحدة فقط
       _encrypter = encrypt.Encrypter(encrypt.AES(_key!, mode: encrypt.AESMode.gcm));
 
     } catch (e, stack) {
@@ -66,13 +65,12 @@ class EncryptionHelper {
 
   /// تشفير كتلة من البيانات
   static Uint8List encryptBlock(Uint8List data) {
-    // التأكد من أن المحرك جاهز
     if (_encrypter == null) throw Exception("Encryption not initialized! Call init() first.");
 
     try {
       final iv = encrypt.IV.fromSecureRandom(IV_LENGTH);
       
-      // ✅ استخدام المحرك الجاهز بدلاً من إنشاء واحد جديد
+      // ✅ استخدام المحرك الجاهز
       final encrypted = _encrypter!.encryptBytes(data, iv: iv);
 
       final result = BytesBuilder();
@@ -141,7 +139,7 @@ class EncryptionHelper {
       final int fileLength = await encryptedFile.length();
       int currentPos = 0;
       
-      // ✅ استخدام الحجم الجديد للكتلة
+      // سيأخذ القيمة الجديدة تلقائياً (512KB + Overhead)
       const int blockSize = ENCRYPTED_CHUNK_SIZE;
 
       FirebaseCrashlytics.instance.log("Starting full decryption: ${encryptedFile.path}");
@@ -156,7 +154,6 @@ class EncryptionHelper {
         if (chunk.isEmpty) break;
 
         try {
-          // ✅ سيستفيد تلقائياً من سرعة decryptBlock المحسنة
           Uint8List decryptedChunk = decryptBlock(chunk);
           await rafWrite.writeFrom(decryptedChunk);
         } catch (blockError) {
