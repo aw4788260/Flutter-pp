@@ -1,14 +1,16 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:math'; 
-import 'dart:typed_data'; 
-import 'package:flutter/foundation.dart'; 
+import 'dart:math';
+import 'dart:typed_data';
+import 'dart:convert'; // ✅ ضروري لـ base64UrlEncode
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:encrypt/encrypt.dart' as encrypt; 
+import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart'; // ✅ ضروري لتشفير PDF
 
 import '../utils/encryption_helper.dart';
 import 'notification_service.dart';
@@ -30,6 +32,13 @@ class DownloadManager {
   bool isFileDownloaded(String id) {
     if (!Hive.isBoxOpen('downloads_box')) return false;
     return Hive.box('downloads_box').containsKey(id);
+  }
+
+  // ✅ دالة لتوليد كلمة سر عشوائية قوية (32 بايت -> Base64)
+  String _generateRandomPassword() {
+    final random = Random.secure();
+    final values = List<int>.generate(24, (i) => random.nextInt(256));
+    return base64UrlEncode(values);
   }
 
   String _extractDurationFromUrl(String url) {
@@ -249,19 +258,37 @@ class DownloadManager {
       await notifService.showProgressNotification(
         id: notificationId,
         title: "Processing: $videoTitle",
-        body: "Encrypting...",
+        body: isPdf ? "Securing PDF..." : "Encrypting...",
         progress: 0,
         maxProgress: 0,
       );
 
+      // ✅ توليد كلمة سر عشوائية فريدة لهذا الملف
+      String uniquePassword = _generateRandomPassword();
+
       if (await tempFile.exists()) {
-        if ((await tempFile.length()) < (isPdf ? 100 : 10240)) { 
-          // ✅ تصحيح: حذف آمن
-          try { await tempFile.delete(); } catch(e) {}
-          throw Exception("File too small");
+        if (isPdf) {
+           // ✅ منطق تشفير PDF الجديد (Password Protection)
+           final List<int> bytes = await tempFile.readAsBytes();
+           final PdfDocument document = PdfDocument(inputBytes: bytes);
+
+           // تعيين كلمة السر العشوائية التي تم توليدها
+           document.security.userPassword = uniquePassword;
+           document.security.ownerPassword = _generateRandomPassword(); // كلمة سر للمالك مختلفة
+           document.security.algorithm = PdfEncryptionAlgorithm.aesx256Bit; // تشفير قوي
+
+           await File(savePath).writeAsBytes(await document.save());
+           document.dispose();
+        } else {
+           // ✅ منطق تشفير الفيديو (يبقى كما هو AES-GCM Chunks)
+           if ((await tempFile.length()) < 10240) { 
+             try { await tempFile.delete(); } catch(e) {}
+             throw Exception("File too small");
+           }
+           await _encryptFileStream(tempFile, File(savePath));
         }
-        await _encryptFileStream(tempFile, File(savePath));
-        // ✅ تصحيح: حذف آمن
+        
+        // حذف الملف المؤقت
         try { await tempFile.delete(); } catch(e) {} 
       } else {
         throw Exception("Temp file missing");
@@ -281,6 +308,8 @@ class DownloadManager {
         'duration': duration, 
         'date': DateTime.now().toIso8601String(),
         'size': File(savePath).lengthSync(),
+        // ✅ تخزين كلمة السر الخاصة بهذا الملف (فقط للـ PDF)
+        'file_password': isPdf ? uniquePassword : null, 
       });
 
       // 1. إلغاء إشعار التقدم
