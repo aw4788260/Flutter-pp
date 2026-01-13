@@ -3,14 +3,17 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+// ✅ مكتبات MediaKit
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; // ✅ تم الاحتفاظ به لإبقاء الشاشة مضاءة
+import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:screen_protector/screen_protector.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart'; 
+// ✅ استيراد خدمة البروكسي المحلي
 import '../../core/services/local_proxy.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -30,9 +33,8 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _controller;
+
   final LocalProxyService _proxyService = LocalProxyService();
-  
-  // ❌ تم حذف ScreenProtector لأنه مفعل في main.dart
 
   String _currentQuality = "";
   List<String> _sortedQualities = [];
@@ -46,6 +48,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
 
+  Timer? _screenRecordingTimer;
+
   final Map<String, String> _nativeHeaders = {
     'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
   };
@@ -57,18 +61,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _initializePlayerScreen() async {
-    FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init");
+    FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Sequence Started");
 
     try {
-      // إعدادات الشاشة (الوضع الأفقي)
+      // 1. ✅ تفعيل وضع الغامرة
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+      // 2. ✅ إجبار الوضع الأفقي فور الفتح
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
-      
-      // ✅ تفعيل إبقاء الشاشة مضاءة (نقلناها هنا)
-      await WakelockPlus.enable();
 
       await _startProxyServer();
 
@@ -82,7 +85,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
 
       _player.stream.error.listen((error) {
-        FirebaseCrashlytics.instance.recordError(Exception(error), StackTrace.current);
+        FirebaseCrashlytics.instance.recordError(
+          Exception(error), 
+          StackTrace.current, 
+          reason: "🚨 MediaKit Stream Error"
+        );
         if (mounted) {
           setState(() {
             _isError = true;
@@ -90,23 +97,84 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           });
         }
       });
-      
+
+      _setupScreenProtection();
       _loadUserData();
       _startWatermarkAnimation();
 
       if (mounted) {
-        setState(() => _isInitialized = true);
+        setState(() {
+          _isInitialized = true;
+        });
         _parseQualities();
       }
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack);
-      if (mounted) setState(() { _isError = true; _errorMessage = "Init Failed: $e"; });
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: "Initialization Failed");
+      if (mounted) {
+        setState(() {
+          _isError = true;
+          _errorMessage = "Init Failed: $e";
+        });
+      }
     }
   }
 
   Future<void> _startProxyServer() async {
-    try { await _proxyService.start(); } catch (e) { debugPrint("Proxy Error: $e"); }
+    try {
+      await _proxyService.start();
+    } catch (e) {
+      debugPrint("Proxy Error: $e");
+    }
+  }
+
+  Future<void> _restoreSystemUI() async {
+    // ✅ إيقاف الفيديو واستعادة الوضع الرأسي الطبيعي عند الخروج
+    await _player.stop();
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+  }
+
+  Future<void> _setupScreenProtection() async {
+    try {
+      await WakelockPlus.enable();
+      await ScreenProtector.protectDataLeakageOn();
+      await ScreenProtector.preventScreenshotOn();
+
+      _screenRecordingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+        final isRecording = await ScreenProtector.isRecording();
+        if (isRecording) {
+          _handleScreenRecordingDetected();
+        }
+      });
+    } catch (e) {
+      debugPrint("Screen protection error: $e");
+    }
+  }
+
+  void _handleScreenRecordingDetected() {
+    _player.pause();
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text("⚠️ Security Alert", style: TextStyle(color: Colors.red)),
+          content: const Text("Screen recording is not allowed."),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pop(context);
+              },
+              child: const Text("Exit"),
+            )
+          ],
+        ),
+      );
+    }
   }
 
   void _loadUserData() {
@@ -120,7 +188,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           var box = Hive.box('auth_box');
           displayText = box.get('phone') ?? box.get('username') ?? '';
         }
-      } catch (e) {}
+      } catch (e) {
+        debugPrint("Hive Error: $e");
+      }
     }
     setState(() {
       _watermarkText = displayText.isNotEmpty ? displayText : 'User';
@@ -142,47 +212,71 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _parseQualities() {
     if (widget.streams.isEmpty) {
-      setState(() { _isError = true; _errorMessage = "No video sources"; });
+      setState(() {
+        _isError = true;
+        _errorMessage = "No video sources available";
+      });
       return;
     }
+
     _sortedQualities = widget.streams.keys.toList();
     _sortedQualities.sort((a, b) {
       int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       int valB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       return valA.compareTo(valB);
     });
-    _currentQuality = _sortedQualities.contains("480p") ? "480p" : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
-    if (_currentQuality.isNotEmpty) _playVideo(widget.streams[_currentQuality]!);
+
+    _currentQuality = _sortedQualities.contains("480p") 
+        ? "480p" 
+        : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
+
+    if (_currentQuality.isNotEmpty) {
+      _playVideo(widget.streams[_currentQuality]!);
+    }
   }
 
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     try {
       String playUrl = url;
+
       if (!url.startsWith('http')) {
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       }
       
+      // ✅ 1. إيقاف الفيديو الحالي تماماً (هذا يحل مشكلة أول تغيير للجودة)
+      await _player.stop();
+      
+      // 2. فتح الفيديو الجديد مع تجميد التشغيل
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
-      // استعادة الموضع بالطريقة المثالية (Completer)
+      // 3. انتظار تحميل البيانات الوصفية (Metadata) لضمان نجاح القفز
       if (startAt != null && startAt != Duration.zero) {
-        final completer = Completer<void>();
-        final subscription = _player.stream.duration.listen((duration) {
-          if (duration > Duration.zero && !completer.isCompleted) completer.complete();
-        });
-        await completer.future.timeout(const Duration(seconds: 5), onTimeout: () => {});
-        await subscription.cancel();
+        int retries = 0;
+        // الانتظار حتى تصبح المدة معروفة (بعد الـ stop ستكون 0، لذا ننتظر حتى تتغير)
+        while (_player.state.duration == Duration.zero && retries < 40) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          retries++;
+        }
+        
+        // الآن القفز آمن
         await _player.seek(startAt);
       }
 
-      if (_currentSpeed != 1.0) await _player.setRate(_currentSpeed);
+      if (_currentSpeed != 1.0) {
+        await _player.setRate(_currentSpeed);
+      }
+
       await _player.play();
 
-    } catch (e) {
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Play Failed');
       if (mounted) {
-        setState(() { _isError = true; _errorMessage = "Load Error: $e"; });
+        setState(() {
+          _isError = true;
+          _errorMessage = "Failed to load video.";
+        });
       }
     }
   }
@@ -191,11 +285,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       final currentPos = _player.state.position;
       await _player.seek(currentPos + amount);
-    } catch (e) {}
+    } catch (e) {/*ignore*/}
   }
 
   void _showSettingsSheet() {
-     showModalBottomSheet(
+    showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
@@ -208,15 +302,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               child: Text("Settings", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))
             ),
             const Divider(color: Colors.white24),
+            
             ListTile(
               leading: const Icon(LucideIcons.monitor, color: Colors.white),
               title: Text("Quality: $_currentQuality", style: const TextStyle(color: Colors.white)),
-              onTap: () { Navigator.pop(ctx); _showQualitySelection(); },
+              onTap: () {
+                Navigator.pop(ctx);
+                _showQualitySelection();
+              },
             ),
+
             ListTile(
               leading: const Icon(LucideIcons.gauge, color: Colors.white),
               title: Text("Speed: ${_currentSpeed}x", style: const TextStyle(color: Colors.white)),
-              onTap: () { Navigator.pop(ctx); _showSpeedSelection(); },
+              onTap: () {
+                Navigator.pop(ctx);
+                _showSpeedSelection();
+              },
             ),
           ],
         ),
@@ -237,8 +339,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
+                // حفظ الموضع الحالي
                 final currentPos = _player.state.position;
                 setState(() { _currentQuality = q; _isError = false; });
+                // استدعاء التشغيل مع الموضع المحفوظ
                 _playVideo(widget.streams[q]!, startAt: currentPos);
               }
             },
@@ -270,14 +374,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
-  Future<void> _restoreSystemUI() async {
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
-    await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-  }
-
   @override
   void dispose() {
     _watermarkTimer?.cancel();
+    _screenRecordingTimer?.cancel();
     _proxyService.stop();
     _player.dispose();
     _restoreSystemUI();
@@ -288,8 +388,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // حساب المناطق الآمنة
     final padding = MediaQuery.of(context).viewPadding;
     
+    // إعداد الثيم
     final controlsTheme = MaterialVideoControlsThemeData(
       displaySeekBar: false,
       padding: EdgeInsets.only(
@@ -303,22 +405,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         const SizedBox(width: 10),
         const Expanded(child: MaterialSeekBar()),
         const SizedBox(width: 10),
-        MaterialCustomButton(onPressed: _showSettingsSheet, icon: const Icon(LucideIcons.settings, color: Colors.white)),
+        MaterialCustomButton(
+          onPressed: _showSettingsSheet,
+          icon: const Icon(LucideIcons.settings, color: Colors.white),
+        ),
         const SizedBox(width: 10),
-        MaterialCustomButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.minimize, color: Colors.white)),
+        MaterialCustomButton(
+          onPressed: () {
+            _restoreSystemUI();
+            Navigator.pop(context);
+          },
+          icon: const Icon(LucideIcons.minimize, color: Colors.white),
+        ),
       ],
       topButtonBar: [
-        MaterialCustomButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.arrowLeft, color: Colors.white)),
+        MaterialCustomButton(
+          onPressed: () {
+            _restoreSystemUI();
+            Navigator.pop(context);
+          },
+          icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+        ),
         const SizedBox(width: 14),
-        Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(
+          widget.title,
+          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+        ),
       ],
       primaryButtonBar: [
         const Spacer(flex: 2),
-        MaterialCustomButton(onPressed: () => _seekRelative(const Duration(seconds: -10)), icon: const Icon(Icons.replay_10, size: 36, color: Colors.white)),
+        MaterialCustomButton(
+          onPressed: () => _seekRelative(const Duration(seconds: -10)),
+          icon: const Icon(Icons.replay_10, size: 36, color: Colors.white),
+        ),
         const SizedBox(width: 24),
         const MaterialPlayOrPauseButton(iconSize: 56),
         const SizedBox(width: 24),
-        MaterialCustomButton(onPressed: () => _seekRelative(const Duration(seconds: 10)), icon: const Icon(Icons.forward_10, size: 36, color: Colors.white)),
+        MaterialCustomButton(
+          onPressed: () => _seekRelative(const Duration(seconds: 10)),
+          icon: const Icon(Icons.forward_10, size: 36, color: Colors.white),
+        ),
         const Spacer(flex: 2),
       ],
       automaticallyImplySkipNextButton: false,
@@ -327,7 +453,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     return PopScope(
       canPop: true,
-      onPopInvoked: (didPop) { if (didPop) _restoreSystemUI(); },
+      onPopInvoked: (didPop) {
+        if (didPop) _restoreSystemUI();
+      },
       child: Scaffold(
         backgroundColor: Colors.black,
         resizeToAvoidBottomInset: false,
@@ -363,10 +491,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 child: MaterialVideoControlsTheme(
                   normal: controlsTheme,
                   fullscreen: controlsTheme,
-                  child: Video(controller: _controller, fit: BoxFit.contain),
+                  child: Video(
+                    controller: _controller,
+                    fit: BoxFit.contain, 
+                  ),
                 ),
               ),
 
+            // ✅ العلامة المائية المعدلة (تباين أعلى + ارتفاع أقل)
             if (!_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
@@ -374,11 +506,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 alignment: _watermarkAlignment,
                 child: IgnorePointer(
                   child: Container(
+                    // تقليل الحشوة الرأسية لتقليل الارتفاع
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(
+                      // زيادة شفافية الخلفية لتصبح أغمق (تباين أعلى)
+                      color: Colors.black.withOpacity(0.6), 
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     child: Text(
                       _watermarkText,
-                      style: TextStyle(color: Colors.white.withOpacity(0.85), fontWeight: FontWeight.bold, fontSize: 12, decoration: TextDecoration.none),
+                      style: TextStyle(
+                        // زيادة شفافية النص ليصبح أكثر وضوحاً
+                        color: Colors.white.withOpacity(0.85), 
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12, 
+                        decoration: TextDecoration.none,
+                      ),
                     ),
                   ),
                 ),
