@@ -29,14 +29,22 @@ dependencies:
   device_info_plus: ^10.1.0
   android_id: ^0.4.0
   wakelock_plus: ^1.1.0        # لإبقاء الشاشة تعمل
-  screen_protector: ^1.4.13     # لحماية الشاشة (منع التصوير/لقطات الشاشة)
+  
+  # ✅ التعديل 1: استخدام نسخة GitHub للحصول على دوال الاستماع (addListener)
+  screen_protector:
+    git:
+      url: https://github.com/prongbang/screen_protector.git
+      ref: master
+
   media_kit: ^1.1.10
   media_kit_video: ^1.2.4
   media_kit_libs_video: ^1.0.4
   safe_device: ^1.1.4
   flutter_local_notifications: ^17.0.0
   flutter_background_service: ^5.0.0
-  audio_session: ^0.1.21
+  
+  # ✅ التعديل 2: تحديث الإصدار لدعم منع تسجيل الصوت
+  audio_session: ^0.2.2 
   
 
   # Security & Privacy
@@ -86,4 +94,4 @@ flutter:
   uses-material-design: true
   # مسار الصور
   assets:
-    - assets/images/
+    - assets/images/app_icon.png
