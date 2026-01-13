@@ -85,12 +85,6 @@ class LocalProxyService {
       return Response.notFound('File not found');
     }
 
-    // ✅ تحديد نوع المحتوى ديناميكياً لدعم PDF
-    String contentType = 'video/mp4';
-    if (path.toLowerCase().endsWith('.pdf')) {
-      contentType = 'application/pdf';
-    }
-
     try {
       final encryptedLength = await file.length();
       
@@ -138,7 +132,7 @@ class LocalProxyService {
         206,
         body: stream,
         headers: {
-          'Content-Type': contentType, // ✅ استخدام النوع المحدد
+          'Content-Type': 'video/mp4',
           'Content-Length': contentLength.toString(),
           'Content-Range': 'bytes $start-$end/$originalFileSize',
           'Accept-Ranges': 'bytes',
