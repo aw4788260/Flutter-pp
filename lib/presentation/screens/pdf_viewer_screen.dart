@@ -4,14 +4,14 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // ✅ العارض السريع
-import 'package:syncfusion_flutter_pdf/pdf.dart'; // ✅ لتشفير الملفات
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // ✅ العارض
+import 'package:syncfusion_flutter_pdf/pdf.dart'; // ✅ للتشفير (للأونلاين فقط)
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:percent_indicator/percent_indicator.dart'; // ✅ شريط التقدم
+import 'package:percent_indicator/percent_indicator.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 
@@ -32,11 +32,11 @@ class PdfViewerScreen extends StatefulWidget {
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // متغيرات المسار وكلمة السر
   String? _localFilePath;
-  String _filePassword = ""; // ✅ كلمة السر التي سيتم استخدامها لفتح الملف
+  String _filePassword = ""; // كلمة السر التي سيتم استخدامها لفك التشفير
   
   bool _loading = true;
   double _downloadProgress = 0.0;
-  bool _isOnlineDownload = false;
+  bool _isOnlineDownload = false; // لتحديد ما إذا كان الملف مؤقتاً
   
   String? _error;
   int _totalPages = 0;
@@ -48,28 +48,30 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   @override
   void initState() {
     super.initState();
-    FirebaseCrashlytics.instance.log("📄 PDF Screen: ${widget.title}");
+    // 📝 تسجيل دخول الشاشة
+    FirebaseCrashlytics.instance.log("📄 PDF View: Started for ${widget.pdfId}");
     _initWatermarkText();
     _loadPdf();
   }
 
   @override
   void dispose() {
-    // ✅ تنظيف الملفات المؤقتة عند الخروج (للأونلاين فقط)
+    // ✅ تنظيف الملفات المؤقتة فقط (في حالة الأونلاين)
     if (_isOnlineDownload && _localFilePath != null) {
       final file = File(_localFilePath!);
       if (file.existsSync()) {
         try {
           file.deleteSync();
+          FirebaseCrashlytics.instance.log("🗑️ Temp online PDF deleted.");
         } catch (e) {
-          debugPrint("Error deleting temp file: $e");
+          FirebaseCrashlytics.instance.log("⚠️ Error deleting temp file: $e");
         }
       }
     }
     super.dispose();
   }
 
-  // توليد كلمة سر عشوائية قوية للملفات المؤقتة
+  // توليد كلمة سر عشوائية (للأونلاين فقط)
   String _generateRandomPassword() {
     final random = Random.secure();
     final values = List<int>.generate(32, (i) => random.nextInt(256));
@@ -88,7 +90,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
            displayText = box.get('phone') ?? box.get('username') ?? '';
          }
        } catch(e) {
-         // ignore
+         FirebaseCrashlytics.instance.log("⚠️ Watermark Hive Error: $e");
        }
     }
     setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
@@ -98,46 +100,68 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     setState(() => _loading = true);
     try {
       // ============================================================
-      // 1. محاولة الفتح من الأوفلاين (الملفات المحملة سابقاً)
+      // 1. الأوفلاين: البحث عن الملف وكلمة السر المخزنة
       // ============================================================
-      final downloadsBox = await Hive.openBox('downloads_box');
+      if (!Hive.isBoxOpen('downloads_box')) {
+        await Hive.openBox('downloads_box');
+      }
+      final downloadsBox = Hive.box('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
 
-      if (downloadItem != null && downloadItem['path'] != null) {
-        final File file = File(downloadItem['path']);
-        if (await file.exists()) {
-          // ✅ جلب كلمة السر المخزنة الخاصة بهذا الملف
-          String? storedPassword = downloadItem['file_password'];
-          
-          if (storedPassword == null || storedPassword.isEmpty) {
-             // ⚠️ تعامل مع الملفات القديمة (قبل التحديث)
-             // يمكنك هنا وضع كلمة سر افتراضية أو إظهار رسالة خطأ تطلب إعادة التحميل
-             _error = "Old file format. Please delete and re-download.";
-             setState(() => _loading = false);
-             return;
-          }
+      if (downloadItem != null) {
+        final String? path = downloadItem['path'];
+        // ✅ الخطوة الحاسمة: جلب كلمة السر المخزنة لهذا الملف
+        final String? storedPassword = downloadItem['file_password']; 
 
-          if (mounted) {
-            setState(() {
-              _localFilePath = file.path;
-              _filePassword = storedPassword; // استخدام كلمة السر المخزنة
-              _loading = false;
-            });
+        if (path != null) {
+          final File file = File(path);
+          if (await file.exists()) {
+            FirebaseCrashlytics.instance.log("📂 Offline PDF Found: $path");
+
+            if (storedPassword != null && storedPassword.isNotEmpty) {
+              // ✅ الحالة المثالية: الملف موجود وكلمة السر موجودة
+              if (mounted) {
+                setState(() {
+                  _localFilePath = path;
+                  _filePassword = storedPassword; // استخدام كلمة السر المخزنة لفك التشفير
+                  _loading = false;
+                  _isOnlineDownload = false; // لا نحذف الملف عند الخروج
+                });
+              }
+              return; // انتهينا، لا تكمل للأونلاين
+            } else {
+              // ⚠️ الملف موجود لكن بدون كلمة سر (ملفات قديمة قبل التحديث)
+              FirebaseCrashlytics.instance.recordError(
+                Exception("Legacy PDF found without password"), 
+                null, 
+                reason: "Legacy File Support"
+              );
+              
+              if (mounted) {
+                setState(() {
+                  _error = "Old file version. Please delete and re-download.";
+                  _loading = false;
+                });
+              }
+              return;
+            }
+          } else {
+            FirebaseCrashlytics.instance.log("⚠️ Record exists but file missing: $path");
           }
-          return; 
         }
       }
 
       // ============================================================
-      // 2. الأونلاين: تحميل + تشفير مؤقت + عرض
+      // 2. الأونلاين: التحميل والتشفير المؤقت
       // ============================================================
+      FirebaseCrashlytics.instance.log("☁️ Switching to Online Download...");
       await _downloadAndSecurePdf();
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF Load Failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'CRITICAL: _loadPdf Failed');
       if (mounted) {
         setState(() { 
-          _error = "Failed to open PDF: $e"; 
+          _error = "Error loading PDF: $e"; 
           _loading = false; 
         });
       }
@@ -159,7 +183,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       final rawPath = '${dir.path}/raw_${widget.pdfId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
       final securePath = '${dir.path}/secure_${widget.pdfId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
 
-      // 1. تحميل الملف الخام
+      // 1. تحميل
+      FirebaseCrashlytics.instance.log("⬇️ Downloading raw PDF...");
       await dio.download(
         'https://courses.aw478260.dpdns.org/api/secure/get-pdf',
         rawPath,
@@ -178,41 +203,41 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         },
       );
 
-      // 2. تشفير الملف بكلمة سر عشوائية
-      if (mounted) setState(() => _downloadProgress = 1.0); // مرحلة المعالجة
+      // 2. تشفير (للأونلاين فقط)
+      if (mounted) setState(() => _downloadProgress = 1.0); 
+      FirebaseCrashlytics.instance.log("🔐 Encrypting Online PDF...");
       
       final File rawFile = File(rawPath);
       final List<int> bytes = await rawFile.readAsBytes();
       
-      // إنشاء مستند PDF ومعالجته
       final PdfDocument document = PdfDocument(inputBytes: bytes);
       
-      // توليد كلمة سر عشوائية لهذه الجلسة فقط
+      // توليد كلمة سر عشوائية لهذه الجلسة
       final String sessionPassword = _generateRandomPassword();
       
       document.security.userPassword = sessionPassword;
-      document.security.ownerPassword = _generateRandomPassword(); // كلمة مالك مختلفة
+      document.security.ownerPassword = _generateRandomPassword(); 
       document.security.algorithm = PdfEncryptionAlgorithm.aesx256Bit;
       
-      // حفظ النسخة المشفرة
       final List<int> encryptedBytes = await document.save();
       document.dispose();
       
       await File(securePath).writeAsBytes(encryptedBytes);
       
-      // حذف النسخة الخام فوراً
+      // حذف الخام
       if (await rawFile.exists()) await rawFile.delete();
 
       if (mounted) {
         setState(() {
           _localFilePath = securePath;
-          _filePassword = sessionPassword; // تعيين كلمة السر للعرض
+          _filePassword = sessionPassword; // استخدام كلمة السر المؤقتة
           _loading = false;
         });
       }
 
-    } catch (e) {
-      throw Exception("Download/Encryption failed: $e");
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Online Download/Encrypt Failed');
+      throw Exception("Download failed: $e");
     }
   }
 
@@ -277,28 +302,40 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // ✅ 1. العارض (يستخدم كلمة السر مباشرة)
+          // ✅ 1. العارض (يفتح الملف باستخدام كلمة السر)
           if (_localFilePath != null)
             SfPdfViewer.file(
               File(_localFilePath!),
               key: _pdfViewerKey,
-              password: _filePassword, // 🔐 المفتاح السحري للسرعة
+              password: _filePassword, // 🔐 المفتاح لفك التشفير
               enableDoubleTapZooming: true,
               enableTextSelection: false,
               pageLayoutMode: PdfPageLayoutMode.continuous,
               onDocumentLoaded: (details) {
+                FirebaseCrashlytics.instance.log("✅ PDF Rendered Successfully");
                 setState(() => _totalPages = details.document.pages.count);
               },
               onPageChanged: (details) {
                 setState(() => _currentPage = details.newPageNumber - 1);
               },
               onDocumentLoadFailed: (details) {
-                setState(() => _error = "Failed to render: ${details.error}");
-                FirebaseCrashlytics.instance.recordError(details.error, null, reason: 'SfPdfViewer Failed');
+                String err = "Failed to render: ${details.error}";
+                // 🚨 تسجيل خطأ العرض (مثل كلمة سر خاطئة)
+                FirebaseCrashlytics.instance.recordError(
+                  details.error, 
+                  null, 
+                  reason: 'SfPdfViewer Load Failed',
+                  information: [
+                    'File Path: $_localFilePath',
+                    'Is Online Download: $_isOnlineDownload',
+                    'Password Length: ${_filePassword.length}'
+                  ]
+                );
+                setState(() => _error = err);
               },
             ),
 
-          // ✅ 2. العلامة المائية (ثابتة)
+          // ✅ 2. العلامة المائية
           IgnorePointer(
             child: Container(
               width: double.infinity,
