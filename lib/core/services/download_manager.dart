@@ -1,13 +1,13 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:math'; 
-import 'dart:typed_data'; 
-import 'package:flutter/foundation.dart'; 
+import 'dart:math';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:encrypt/encrypt.dart' as encrypt; 
+import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../utils/encryption_helper.dart';
@@ -325,8 +325,11 @@ class DownloadManager {
     try {
        int len = await inputFile.length();
        int read = 0;
+       
+       // ✅ التغيير هنا: استخدام EncryptionHelper.CHUNK_SIZE بدلاً من القيمة الثابتة
+       // هذا يجعل العملية تستخدم 512KB (أو أي قيمة نحددها هناك) تلقائياً
        while(read < len) {
-         var chunk = await rafRead.read(min(64*1024, len - read));
+         var chunk = await rafRead.read(min(EncryptionHelper.CHUNK_SIZE, len - read));
          if(chunk.isEmpty) break;
          await rafWrite.writeFrom(EncryptionHelper.encryptBlock(chunk));
          read += chunk.length;
