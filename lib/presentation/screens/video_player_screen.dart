@@ -128,12 +128,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  // ✅ تم تصحيح هذه الدالة لمنع الكراش وإتاحة التدوير
   Future<void> _restoreSystemUI() async {
-    // ✅ إيقاف الفيديو واستعادة الوضع الرأسي الطبيعي عند الخروج
-    await _player.stop();
+    // ❌ تم حذف: await _player.stop(); (لأنها تسبب كراش إذا تم التخلص من المشغل أولاً)
+    
+    // استعادة أشرطة النظام
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
+    
+    // ✅ استعادة جميع الاتجاهات (للسماح بالتدوير الحر كما كان قبل الدخول)
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
     ]);
   }
 
@@ -235,9 +242,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // =========================================================
-  // ✅ التعديل هنا: إصلاح مشكلة إعادة التشغيل عند تغيير الجودة
-  // =========================================================
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     try {
       String playUrl = url;
@@ -248,7 +252,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       }
       
-      // ✅ 1. تعطيل الإيقاف القسري للحفاظ على الحالة
+      // ✅ 1. تعطيل الإيقاف القسري للحفاظ على الحالة (إصلاح مشكلة إعادة البدء)
       // await _player.stop(); 
       
       // 2. فتح الفيديو الجديد مع تجميد التشغيل (play: false)
@@ -256,9 +260,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       // 3. استعادة الموضع (Seek) مع انتظار ذكي
       if (startAt != null && startAt != Duration.zero) {
-        // ننتظر قليلاً للتأكد من أن المشغل قد حمل الميتاداتا وعرف المدة الزمنية
         int retries = 0;
-        // زيادة عدد المحاولات وتقليل زمن الانتظار لاستجابة أسرع ودقة أعلى
+        // زيادة عدد المحاولات وتقليل زمن الانتظار لاستجابة أسرع
         while (_player.state.duration == Duration.zero && retries < 50) { 
           await Future.delayed(const Duration(milliseconds: 50));
           retries++;
@@ -385,6 +388,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _screenRecordingTimer?.cancel();
     _proxyService.stop();
     _player.dispose();
+    
+    // ✅ استعادة إعدادات النظام (بدون إيقاف المشغل لأنه تم التخلص منه)
     _restoreSystemUI();
     
     WakelockPlus.disable();
