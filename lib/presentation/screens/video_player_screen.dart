@@ -235,6 +235,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  // =========================================================
+  // ✅ التعديل هنا: إصلاح مشكلة إعادة التشغيل عند تغيير الجودة
+  // =========================================================
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     try {
       String playUrl = url;
@@ -245,25 +248,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       }
       
-      // ✅ 1. إيقاف الفيديو الحالي تماماً (هذا يحل مشكلة أول تغيير للجودة)
-      await _player.stop();
+      // ✅ 1. تعطيل الإيقاف القسري للحفاظ على الحالة
+      // await _player.stop(); 
       
-      // 2. فتح الفيديو الجديد مع تجميد التشغيل
+      // 2. فتح الفيديو الجديد مع تجميد التشغيل (play: false)
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
-      // 3. انتظار تحميل البيانات الوصفية (Metadata) لضمان نجاح القفز
+      // 3. استعادة الموضع (Seek) مع انتظار ذكي
       if (startAt != null && startAt != Duration.zero) {
+        // ننتظر قليلاً للتأكد من أن المشغل قد حمل الميتاداتا وعرف المدة الزمنية
         int retries = 0;
-        // الانتظار حتى تصبح المدة معروفة (بعد الـ stop ستكون 0، لذا ننتظر حتى تتغير)
-        while (_player.state.duration == Duration.zero && retries < 40) {
-          await Future.delayed(const Duration(milliseconds: 100));
+        // زيادة عدد المحاولات وتقليل زمن الانتظار لاستجابة أسرع ودقة أعلى
+        while (_player.state.duration == Duration.zero && retries < 50) { 
+          await Future.delayed(const Duration(milliseconds: 50));
           retries++;
         }
         
-        // الآن القفز آمن
+        // القفز للموضع المحفوظ
         await _player.seek(startAt);
       }
 
+      // 4. استعادة السرعة إذا كانت متغيرة
       if (_currentSpeed != 1.0) {
         await _player.setRate(_currentSpeed);
       }
