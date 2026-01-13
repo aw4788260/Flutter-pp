@@ -78,10 +78,13 @@ class DownloadManager {
     // إرسال إشارة "أنا أعمل" للخدمة (Watchdog) وتحديث الإشعار الرئيسي للخدمة
     _keepAliveTimer?.cancel();
     _keepAliveTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      // إذا لم تكن هناك تحميلات نشطة، لا داعي لتحديث الإشعار أو إبقاء الخدمة حية هنا
+      // (سيتم إيقافها من دالة _stopBackgroundService عند انتهاء التحميل)
+      if (_activeDownloads.isEmpty) return;
+
       service.invoke('keepAlive');
       
-      // ✅ تحديث إشعار الخدمة الرئيسي (888) ليعكس عدد التحميلات الجارية
-      // هذا الإشعار ضروري للنظام ولكنه الآن مفيد للمستخدم أيضاً
+      // ✅ تحديث إشعار الخدمة الرئيسي (888) ليظهر عدد الملفات
       NotificationService().showProgressNotification(
         id: 888, 
         title: "مــــداد Service",
@@ -92,15 +95,17 @@ class DownloadManager {
     });
   }
 
-  void _stopBackgroundService() {
+  void _stopBackgroundService() async {
     // نوقف الخدمة فقط إذا لم يعد هناك أي تحميل نشط
     if (_activeDownloads.isEmpty) {
       _keepAliveTimer?.cancel();
       final service = FlutterBackgroundService();
+      
+      // إيقاف الخدمة
       service.invoke('stopService');
       
-      // إلغاء إشعار الخدمة الرئيسي (888) فوراً
-      NotificationService().cancelNotification(888);
+      // ✅ إلغاء إشعار الخدمة الرئيسي (888) فوراً ليختفي من شريط الإشعارات
+      await NotificationService().cancelNotification(888);
     }
   }
 
@@ -124,7 +129,7 @@ class DownloadManager {
     
     _activeDownloads.add(lessonId);
     
-    // ✅ تشغيل الخدمة لضمان البقاء في الخلفية
+    // ✅ تشغيل الخدمة لضمان البقاء في الخلفية وإظهار الإشعار المجمع
     _startBackgroundService();
     
     var currentProgress = Map<String, double>.from(downloadingProgress.value);
@@ -133,8 +138,7 @@ class DownloadManager {
 
     final notifService = NotificationService();
     
-    // ✅ إنشاء ID فريد لهذا الملف تحديداً (وليس للخدمة)
-    // هذا يسمح بظهور إشعار منفصل لكل ملف
+    // ✅ إنشاء ID فريد لهذا الملف تحديداً
     final int notificationId = lessonId.hashCode;
 
     // إظهار إشعار البدء لهذا الملف
@@ -278,7 +282,7 @@ class DownloadManager {
       // ✅ 1. إلغاء إشعار التقدم لهذا الملف
       await notifService.cancelNotification(notificationId);
 
-      // ✅ 2. إظهار إشعار النجاح النهائي (بـ ID جديد ليبقى في السجل)
+      // ✅ 2. إظهار إشعار النجاح النهائي
       await notifService.showCompletionNotification(
         id: DateTime.now().millisecondsSinceEpoch,
         title: videoTitle,
@@ -306,6 +310,7 @@ class DownloadManager {
       downloadingProgress.value = prog;
       
       // ✅ محاولة إيقاف الخدمة إذا لم تعد هناك تحميلات أخرى
+      // هذا هو الجزء الذي سيقوم بإخفاء الإشعار الثابت (888) عندما يفرغ العداد
       _stopBackgroundService();
     }
   }
