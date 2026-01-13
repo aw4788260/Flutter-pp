@@ -94,4 +94,4 @@ flutter:
   uses-material-design: true
   # مسار الصور
   assets:
-    - assets/images/app_icon.png
+    - assets/images/
