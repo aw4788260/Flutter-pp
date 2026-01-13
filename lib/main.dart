@@ -10,6 +10,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:safe_device/safe_device.dart'; // فحص الروت
 import 'package:screen_protector/screen_protector.dart'; // ✅ فحص تسجيل الشاشة
 import 'package:lucide_icons/lucide_icons.dart'; 
+import 'package:audio_session/audio_session.dart'; // ✅ 1. استيراد مكتبة الصوت
 
 import 'core/services/notification_service.dart'; 
 import 'core/theme/app_theme.dart';
@@ -22,6 +23,25 @@ void main() async {
     WidgetsFlutterBinding.ensureInitialized();
 
     MediaKit.ensureInitialized();
+
+    // ✅ 2. إعداد جلسة الصوت لمنع التسجيل (Android Audio Protection)
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration(
+      avAudioSessionCategory: AVAudioSessionCategory.playback,
+      avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.none,
+      avAudioSessionMode: AVAudioSessionMode.defaultMode,
+      avAudioSessionRouteSharingPolicy: AVAudioSessionRouteSharingPolicy.defaultPolicy,
+      avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+      androidAudioAttributes: AndroidAudioAttributes(
+        contentType: AndroidAudioContentType.movie,
+        flags: AndroidAudioFlags.none,
+        usage: AndroidAudioUsage.media,
+        // ⛔ هذا السطر هو الأهم: يمنع التطبيقات الأخرى من التقاط صوت تطبيقك
+        allowedCapturePolicy: AndroidAudioAllowedCapturePolicy.none, 
+      ),
+      androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+      androidWillPauseWhenDucked: true,
+    ));
 
     await NotificationService().init();
     await initializeService();
@@ -42,7 +62,7 @@ void main() async {
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
     // تشغيل الحماية
-    // ✅ التعديل 1: إضافة المستمعين لالتقاط التسجيل فوراً
+    // إضافة المستمعين لالتقاط التسجيل فوراً
     SecurityManager.instance.initListeners(); 
     SecurityManager.instance.checkSecurity();
     SecurityManager.instance.startPeriodicCheck();
@@ -62,10 +82,10 @@ class SecurityManager {
 
   bool _isAlertVisible = false;
   
-  // ✅ التعديل 2: كاشف للحالة لاستخدامه في Splash Screen لمنع الانتقال
+  // كاشف للحالة لاستخدامه في Splash Screen لمنع الانتقال
   bool get isBlocked => _isAlertVisible;
 
-  // ✅ التعديل 3: دالة تهيئة المستمعين (Screen Recording Listener)
+  // دالة تهيئة المستمعين (Screen Recording Listener)
   void initListeners() {
     ScreenProtector.addListener(() {
       // عند بدء التسجيل أو أخذ لقطة شاشة
@@ -76,7 +96,7 @@ class SecurityManager {
   }
 
   // دالة الفحص الموحدة
-  // ✅ التعديل 4: إرجاع قيمة bool لمعرفة النتيجة
+  // إرجاع قيمة bool لمعرفة النتيجة
   Future<bool> checkSecurity() async {
     // إذا كانت النافذة ظاهرة بالفعل، نعتبره غير آمن
     if (_isAlertVisible) return false;
@@ -86,7 +106,7 @@ class SecurityManager {
       bool isJailBroken = await SafeDevice.isJailBroken;
       bool isDevMode = await SafeDevice.isDevelopmentModeEnable;
       
-      // 2. ✅ فحص تسجيل الشاشة
+      // 2. فحص تسجيل الشاشة
       // هذه الدالة تكتشف إذا كان هناك تطبيق خارجي يسجل الشاشة أو يتم مشاركتها
       bool isRecording = await ScreenProtector.isRecording();
 
@@ -103,13 +123,13 @@ class SecurityManager {
   }
 
   void startPeriodicCheck() {
-    // ✅ التعديل 5: تقليل الوقت لثانية واحدة لزيادة سرعة الكشف
+    // تقليل الوقت لثانية واحدة لزيادة سرعة الكشف
     Timer.periodic(const Duration(seconds: 1), (timer) async {
       await checkSecurity();
     });
   }
 
-  // ✅ عرض نافذة الحظر مع الأسباب المختلفة
+  // عرض نافذة الحظر مع الأسباب المختلفة
   void _showBlockDialog(bool isRoot, bool isDev, bool isRecording) {
     String arabicReason = "";
     String englishReason = "";
@@ -137,7 +157,7 @@ class SecurityManager {
       showDialog(
         context: navigatorKey.currentContext!,
         barrierDismissible: false,
-        useRootNavigator: true, // ✅ التعديل 6: جعل النافذة فوق كل شيء (Root Navigator)
+        useRootNavigator: true, // جعل النافذة فوق كل شيء (Root Navigator)
         builder: (context) => PopScope(
           canPop: false,
           child: AlertDialog(
@@ -152,7 +172,7 @@ class SecurityManager {
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end, // ✅ محاذاة لليمين للنص العربي
+                crossAxisAlignment: CrossAxisAlignment.end, // محاذاة لليمين للنص العربي
                 children: [
                   const Text(
                     "تم إيقاف التطبيق لأسباب أمنية:",
@@ -164,7 +184,7 @@ class SecurityManager {
                     arabicReason,
                     style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 13, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.right,
-                    textDirection: TextDirection.rtl, // ✅ اتجاه النص
+                    textDirection: TextDirection.rtl, // اتجاه النص
                   ),
                   const Divider(color: Colors.white24),
                   Align( // محاذاة اليسار للإنجليزي
