@@ -64,18 +64,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Sequence Started");
 
     try {
-      // 1. ✅ تفعيل وضع الغامرة
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-
-      // 2. ✅ إجبار الوضع الأفقي فور الفتح
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
+      // ✅ 1. التنفيذ المتوازي: إعداد النظام والبروكسي في نفس الوقت لسرعة الإقلاع
+      await Future.wait([
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]),
+        _startProxyServer(),
       ]);
 
-      await _startProxyServer();
-
-      _player = Player();
+      // ✅ 2. إعداد المشغل مع زيادة الـ Buffer لضمان السلاسة (32MB)
+      _player = Player(
+        configuration: const PlayerConfiguration(
+          bufferSize: 32 * 1024 * 1024, // زيادة حجم البفر للأونلاين والأوفلاين
+        ),
+      );
+      
       _controller = VideoController(
         _player,
         configuration: const VideoControllerConfiguration(
@@ -98,6 +103,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       });
 
+      // ✅ 3. تشغيل المهام غير الحرجة دون انتظارها (Non-blocking)
       _setupScreenProtection();
       _loadUserData();
       _startWatermarkAnimation();
@@ -106,6 +112,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         setState(() {
           _isInitialized = true;
         });
+        // بدء التشغيل فوراً
         _parseQualities();
       }
 
@@ -128,17 +135,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Future<void> _restoreSystemUI() async {
-    // ✅ إيقاف الفيديو واستعادة الوضع الرأسي الطبيعي عند الخروج
-    await _player.stop();
+  // ✅ دالة استعادة النظام الآمنة (لمنع الكراش)
+  Future<void> _resetSystemChrome() async {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
   }
 
+  Future<void> _restoreSystemUI() async {
+    // إيقاف الفيديو ثم استعادة النظام
+    await _player.stop();
+    await _resetSystemChrome();
+  }
+
   Future<void> _setupScreenProtection() async {
     try {
+      // تنفيذ هذه الأوامر بشكل متسلسل لكن الدالة نفسها تم استدعاؤها دون await في الـ init
       await WakelockPlus.enable();
       await ScreenProtector.protectDataLeakageOn();
       await ScreenProtector.preventScreenshotOn();
@@ -245,22 +258,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       }
       
-      // ✅ 1. إيقاف الفيديو الحالي تماماً (هذا يحل مشكلة أول تغيير للجودة)
+      // إيقاف الفيديو الحالي تماماً
       await _player.stop();
       
-      // 2. فتح الفيديو الجديد مع تجميد التشغيل
+      // فتح الفيديو الجديد
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
-      // 3. انتظار تحميل البيانات الوصفية (Metadata) لضمان نجاح القفز
       if (startAt != null && startAt != Duration.zero) {
         int retries = 0;
-        // الانتظار حتى تصبح المدة معروفة (بعد الـ stop ستكون 0، لذا ننتظر حتى تتغير)
+        // تقليل زمن الانتظار قليلاً لتسريع الاستجابة
         while (_player.state.duration == Duration.zero && retries < 40) {
-          await Future.delayed(const Duration(milliseconds: 100));
+          await Future.delayed(const Duration(milliseconds: 50)); // كان 100
           retries++;
         }
-        
-        // الآن القفز آمن
         await _player.seek(startAt);
       }
 
@@ -339,10 +349,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
-                // حفظ الموضع الحالي
                 final currentPos = _player.state.position;
                 setState(() { _currentQuality = q; _isError = false; });
-                // استدعاء التشغيل مع الموضع المحفوظ
                 _playVideo(widget.streams[q]!, startAt: currentPos);
               }
             },
@@ -379,8 +387,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _watermarkTimer?.cancel();
     _screenRecordingTimer?.cancel();
     _proxyService.stop();
-    _player.dispose();
-    _restoreSystemUI();
+    _player.dispose(); // ✅ إنهاء المشغل
+    
+    // ✅ استعادة النظام الآمنة لمنع الكراش
+    _resetSystemChrome();
     
     WakelockPlus.disable();
     super.dispose();
@@ -388,10 +398,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // حساب المناطق الآمنة
     final padding = MediaQuery.of(context).viewPadding;
     
-    // إعداد الثيم
     final controlsTheme = MaterialVideoControlsThemeData(
       displaySeekBar: false,
       padding: EdgeInsets.only(
@@ -498,7 +506,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-            // ✅ العلامة المائية المعدلة (تباين أعلى + ارتفاع أقل)
             if (!_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
@@ -506,17 +513,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 alignment: _watermarkAlignment,
                 child: IgnorePointer(
                   child: Container(
-                    // تقليل الحشوة الرأسية لتقليل الارتفاع
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                     decoration: BoxDecoration(
-                      // زيادة شفافية الخلفية لتصبح أغمق (تباين أعلى)
                       color: Colors.black.withOpacity(0.6), 
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       _watermarkText,
                       style: TextStyle(
-                        // زيادة شفافية النص ليصبح أكثر وضوحاً
                         color: Colors.white.withOpacity(0.85), 
                         fontWeight: FontWeight.bold,
                         fontSize: 12, 
