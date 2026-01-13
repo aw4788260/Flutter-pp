@@ -2,23 +2,24 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // ✅ المكتبة الجديدة
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:percent_indicator/percent_indicator.dart'; // ✅ لاستخدام شريط التقدم الدائري
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../core/utils/encryption_helper.dart'; // ✅ ضروري لفك التشفير
+import '../../core/services/local_proxy.dart'; // ✅ استيراد خدمة البروكسي
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfId;
   final String title;
 
   const PdfViewerScreen({
-    super.key, 
-    required this.pdfId, 
+    super.key,
+    required this.pdfId,
     required this.title
   });
 
@@ -27,15 +28,23 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
-  String? _localPath;
-  File? _tempDecryptedFile; // ✅ مرجع للملف المؤقت لحذفه عند الخروج
+  // ✅ استخدام خدمة البروكسي للبث المباشر للملفات المشفرة
+  final LocalProxyService _proxyService = LocalProxyService();
+  
+  // متغيرات الحالة
+  String? _proxyUrl;      // رابط التشغيل للأوفلاين (عبر البروكسي)
+  String? _localFilePath; // مسار الملف للأونلاين (بعد التحميل)
+  
   bool _loading = true;
+  double _downloadProgress = 0.0; // ✅ نسبة التحميل للأونلاين
+  bool _isOnlineDownload = false; // لتحديد نوع التحميل
+  
   String? _error;
   int _totalPages = 0;
   int _currentPage = 0;
-  bool _isReady = false;
   
   String _watermarkText = '';
+  final GlobalKey<SfPdfViewerState> _pdfViewerKey = GlobalKey();
 
   @override
   void initState() {
@@ -47,13 +56,19 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   void dispose() {
-    // ✅ تنظيف أمني: حذف الملف المفكوك عند الخروج من الشاشة
-    if (_tempDecryptedFile != null && _tempDecryptedFile!.existsSync()) {
-      try {
-        _tempDecryptedFile!.deleteSync();
-        FirebaseCrashlytics.instance.log("🔒 Temp decrypted PDF deleted successfully.");
-      } catch (e) {
-        FirebaseCrashlytics.instance.log("⚠️ Failed to delete temp PDF: $e");
+    // ✅ إيقاف البروكسي عند الخروج
+    _proxyService.stop();
+    
+    // ✅ حذف الملف المؤقت (فقط في حالة الأونلاين لأنه تم تحميله)
+    if (_localFilePath != null) {
+      final file = File(_localFilePath!);
+      if (file.existsSync()) {
+        try {
+          file.deleteSync();
+          FirebaseCrashlytics.instance.log("🔒 Temp online PDF deleted.");
+        } catch (e) {
+          FirebaseCrashlytics.instance.log("⚠️ Failed to delete temp PDF: $e");
+        }
       }
     }
     super.dispose();
@@ -61,12 +76,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   void _initWatermarkText() {
     String displayText = '';
-    
-    // 1. المحاولة الأولى: من الذاكرة الحية (الأسرع)
+    // 1. المحاولة الأولى: من الذاكرة الحية
     if (AppState().userData != null) {
       displayText = AppState().userData!['phone'] ?? '';
-    } 
-    
+    }
     // 2. المحاولة الثانية: من التخزين المحلي
     if (displayText.isEmpty) {
        try {
@@ -78,17 +91,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
          FirebaseCrashlytics.instance.log("⚠️ Watermark load error: $e");
        }
     }
-
-    setState(() {
-      _watermarkText = displayText.isNotEmpty ? displayText : 'User';
-    });
+    setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
   }
 
   Future<void> _loadPdf() async {
     setState(() => _loading = true);
     try {
       // ============================================================
-      // 1. محاولة الفتح من الملفات المحملة محلياً (Offline)
+      // 1. الأوفلاين: استخدام البروكسي (أخف وأسرع)
       // ============================================================
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
@@ -98,84 +108,75 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         final File encryptedFile = File(encryptedPath);
         
         if (await encryptedFile.exists()) {
-          FirebaseCrashlytics.instance.log("📂 Found encrypted PDF offline at: $encryptedPath");
+          FirebaseCrashlytics.instance.log("📂 Opening Offline PDF via Proxy: $encryptedPath");
           
-          // تحديد مسار مؤقت لفك التشفير
-          final tempDir = await getTemporaryDirectory();
-          // استخدام timestamp لضمان اسم فريد وتجنب التداخل
-          final tempPath = '${tempDir.path}/temp_${widget.pdfId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
-          final tempFile = File(tempPath);
-
-          try {
-            // ✅ فك التشفير
-            await EncryptionHelper.init();
-            await EncryptionHelper.decryptFileFull(encryptedFile, tempPath);
-            FirebaseCrashlytics.instance.log("🔓 PDF Decrypted successfully to: $tempPath");
-            
-            if (mounted) {
-              setState(() {
-                _localPath = tempPath;
-                _tempDecryptedFile = tempFile; // حفظ المرجع للحذف لاحقاً
-                _loading = false;
-              });
-            }
-            return; // ✅ تم الفتح بنجاح من الأوفلاين، نخرج من الدالة
-          } catch (e, stack) {
-            FirebaseCrashlytics.instance.recordError(e, stack, reason: '🔥 PDF Decryption Failed');
-            // لا نتوقف هنا، نحاول التحميل من السيرفر كخيار بديل (Fallback)
+          // تشغيل البروكسي
+          await _proxyService.start();
+          
+          // تكوين رابط البروكسي (مثل الفيديو تماماً)
+          final url = "http://127.0.0.1:8080/video?path=${Uri.encodeComponent(encryptedPath)}";
+          
+          if (mounted) {
+            setState(() {
+              _proxyUrl = url;
+              _loading = false;
+            });
           }
-        } else {
-          FirebaseCrashlytics.instance.log("⚠️ Offline record found but file missing on disk: $encryptedPath");
+          return; // ✅ انتهينا، لا داعي للتحميل من النت
         }
       }
 
       // ============================================================
-      // 2. التحميل المباشر من السيرفر (Online Fallback)
+      // 2. الأونلاين: تحميل مع شريط تقدم
       // ============================================================
-      FirebaseCrashlytics.instance.log("☁️ Fetching PDF from Online API...");
+      FirebaseCrashlytics.instance.log("☁️ Downloading Online PDF...");
       
+      if (mounted) setState(() => _isOnlineDownload = true); // تفعيل وضع شريط التقدم
+
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
       final deviceId = box.get('device_id');
 
       final dio = Dio();
-      final response = await dio.get(
+      final dir = await getTemporaryDirectory();
+      // استخدام timestamp لضمان اسم فريد
+      final savePath = '${dir.path}/online_${widget.pdfId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+      await dio.download(
         'https://courses.aw478260.dpdns.org/api/secure/get-pdf',
+        savePath,
         queryParameters: {'pdfId': widget.pdfId},
         options: Options(
-          responseType: ResponseType.bytes,
           headers: {
             'x-user-id': userId,
             'x-device-id': deviceId,
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
         ),
+        // ✅ تحديث شريط التقدم
+        onReceiveProgress: (received, total) {
+          if (total != -1) {
+            if (mounted) {
+              setState(() {
+                _downloadProgress = received / total;
+              });
+            }
+          }
+        },
       );
 
-      if (response.statusCode == 200) {
-        final bytes = response.data as Uint8List;
-        final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/online_${widget.pdfId}_${DateTime.now().millisecondsSinceEpoch}.pdf');
-        await file.writeAsBytes(bytes, flush: true);
-
-        FirebaseCrashlytics.instance.log("✅ PDF Downloaded Online: ${bytes.length} bytes");
-
-        if (mounted) {
-          setState(() {
-            _localPath = file.path;
-            _tempDecryptedFile = file; // أيضاً نحذفه عند الخروج
-            _loading = false;
-          });
-        }
-      } else {
-        throw Exception("Server Error: ${response.statusCode}");
+      if (mounted) {
+        setState(() {
+          _localFilePath = savePath;
+          _loading = false;
+        });
       }
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: '🚨 Final PDF Load Failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF Load Failed');
       if (mounted) {
         setState(() { 
-          _error = "Failed to load PDF. Please check your connection."; 
+          _error = "Failed to load PDF. Please check internet."; 
           _loading = false; 
         });
       }
@@ -184,9 +185,49 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
-    if (_error != null) return Scaffold(backgroundColor: AppColors.backgroundPrimary, appBar: AppBar(backgroundColor: Colors.transparent, leading: const BackButton(color: Colors.white)), body: Center(child: Text(_error!, style: const TextStyle(color: AppColors.error))));
+    // 1. حالة التحميل
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: AppColors.backgroundPrimary,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // إذا كان تحميل أونلاين نعرض شريط التقدم والنسبة
+              if (_isOnlineDownload) ...[
+                CircularPercentIndicator(
+                  radius: 40.0,
+                  lineWidth: 5.0,
+                  percent: _downloadProgress,
+                  center: Text(
+                    "${(_downloadProgress * 100).toInt()}%",
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
+                  ),
+                  progressColor: AppColors.accentYellow,
+                  backgroundColor: Colors.white10,
+                ),
+                const SizedBox(height: 16),
+                const Text("Downloading PDF...", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              ] else ...[
+                // تحميل أوفلاين (سريع)
+                const CircularProgressIndicator(color: AppColors.accentYellow),
+              ]
+            ],
+          ),
+        ),
+      );
+    }
 
+    // 2. حالة الخطأ
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: AppColors.backgroundPrimary, 
+        appBar: AppBar(backgroundColor: Colors.transparent, leading: const BackButton(color: Colors.white)), 
+        body: Center(child: Text(_error!, style: const TextStyle(color: AppColors.error)))
+      );
+    }
+
+    // 3. العرض (النجاح)
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       appBar: AppBar(
@@ -197,32 +238,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           icon: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow), 
           onPressed: () => Navigator.pop(context)
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(LucideIcons.search, color: Colors.white),
+            onPressed: () {
+              _pdfViewerKey.currentState?.openBookmarkView();
+            },
+          ),
+        ],
       ),
       body: Stack(
         children: [
-          // 1. عارض PDF
-          PDFView(
-            filePath: _localPath,
-            enableSwipe: true,
-            swipeHorizontal: false, // التمرير العمودي أفضل للقراءة
-            autoSpacing: false,
-            pageFling: false,
-            backgroundColor: AppColors.backgroundPrimary,
-            onRender: (pages) {
-              setState(() { _totalPages = pages!; _isReady = true; });
-              FirebaseCrashlytics.instance.log("📄 PDF Rendered: $pages pages");
-            },
-            onPageChanged: (page, total) => setState(() => _currentPage = page!),
-            onError: (error) {
-              FirebaseCrashlytics.instance.recordError(error, null, reason: 'PDFView Widget Error');
-              setState(() => _error = error.toString());
-            },
-            onPageError: (page, error) {
-              FirebaseCrashlytics.instance.log("⚠️ Error on page $page: $error");
-            },
-          ),
+          // ✅ العارض الجديد (SfPdfViewer)
+          _buildPdfViewer(),
 
-          // 2. العلامة المائية (طبقة متكررة)
+          // 2. العلامة المائية (طبقة متكررة) - ✅ تم الحفاظ عليها كما هي
           IgnorePointer(
             child: Container(
               width: double.infinity,
@@ -241,24 +271,62 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           ),
 
           // 3. عداد الصفحات
-          if (_isReady)
-            Positioned(
-              bottom: 20, right: 20,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  "${_currentPage + 1} / $_totalPages",
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                ),
+          Positioned(
+            bottom: 20, right: 20,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                _totalPages > 0 ? "${_currentPage + 1} / $_totalPages" : "${_currentPage + 1}",
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
               ),
             ),
+          ),
         ],
       ),
     );
+  }
+
+  // دالة اختيار نوع العارض المناسب (شبكة للبروكسي / ملف للتحميل)
+  Widget _buildPdfViewer() {
+    // حالة الأوفلاين (عبر البروكسي)
+    if (_proxyUrl != null) {
+      return SfPdfViewer.network(
+        _proxyUrl!,
+        key: _pdfViewerKey,
+        enableDoubleTapZooming: true,
+        enableTextSelection: false, // منع النسخ
+        pageLayoutMode: PdfPageLayoutMode.continuous,
+        onDocumentLoaded: (details) {
+          setState(() => _totalPages = details.document.pages.count);
+        },
+        onPageChanged: (details) {
+          setState(() => _currentPage = details.newPageNumber - 1);
+        },
+        onDocumentLoadFailed: (details) {
+          setState(() => _error = "Failed to render PDF: ${details.error}");
+        },
+      );
+    } 
+    // حالة الأونلاين (ملف محمل مؤقتاً)
+    else if (_localFilePath != null) {
+      return SfPdfViewer.file(
+        File(_localFilePath!),
+        key: _pdfViewerKey,
+        enableDoubleTapZooming: true,
+        enableTextSelection: false,
+        onDocumentLoaded: (details) {
+          setState(() => _totalPages = details.document.pages.count);
+        },
+        onPageChanged: (details) {
+          setState(() => _currentPage = details.newPageNumber - 1);
+        },
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildWatermarkRow() {
@@ -271,7 +339,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ✅ تصميم العلامة المائية (كما هو - بدون تغييرات التباين العالي)
+  // ✅ تصميم العلامة المائية (كما هو - بدون تغييرات)
   Widget _buildWatermarkItem() {
     return Transform.rotate(
       angle: -0.5, 
