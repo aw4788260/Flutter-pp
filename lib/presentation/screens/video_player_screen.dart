@@ -12,8 +12,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/app_state.dart'; 
-// ✅ استيراد خدمة البروكسي المحلي
+import '../../core/services/app_state.dart';
 import '../../core/services/local_proxy.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -44,6 +43,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String _errorMessage = "";
   bool _isInitialized = false;
   
+  // ✅ متغير لمنع تكرار عمليات الإغلاق (Race Condition Fix)
+  bool _isDisposing = false;
+  
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
@@ -64,10 +66,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Sequence Started");
 
     try {
-      // 1. ✅ تفعيل وضع الغامرة
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-
-      // 2. ✅ إجبار الوضع الأفقي فور الفتح
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
@@ -128,20 +127,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ 1. دالة جديدة لاستعادة واجهة النظام فقط (بدون لمس المشغل)
-  // هذا يمنع الكراش عند استدعائها بعد dispose
-  Future<void> _resetSystemChrome() async {
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-    ]);
-  }
+  // ✅ دالة الخروج الآمن (القلب النابض للإصلاح)
+  // تضمن هذه الدالة إيقاف المشغل وتحرير الملفات قبل السماح بإغلاق الشاشة
+  Future<void> _safeExit() async {
+    if (_isDisposing) return;
+    _isDisposing = true;
 
-  // ✅ 2. تعديل هذه الدالة لتستخدم الدالة الجديدة
-  Future<void> _restoreSystemUI() async {
-    // هذه الدالة تستخدم عند الضغط على زر الرجوع أو التصغير والمشغل لا يزال يعمل
-    await _player.stop(); 
-    await _resetSystemChrome();
+    try {
+      // 1. إيقاف المؤقتات فوراً
+      _watermarkTimer?.cancel();
+      _screenRecordingTimer?.cancel();
+
+      // 2. إيقاف المشغل وانتظار تحرير الموارد
+      await _player.stop(); 
+      await _player.dispose(); // هذا يفك قفل الملفات الأوفلاين
+      
+      // 3. إيقاف السيرفر المحلي
+      await _proxyService.stop();
+
+      // 4. استعادة واجهة النظام
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
+      await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+      // 5. إيقاف حماية الشاشة
+      await WakelockPlus.disable();
+
+    } catch (e) {
+      debugPrint("⚠️ Error during safe exit: $e");
+    } finally {
+      // 6. الخروج الفعلي من الصفحة
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
   }
 
   Future<void> _setupScreenProtection() async {
@@ -151,6 +169,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await ScreenProtector.preventScreenshotOn();
 
       _screenRecordingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+        if (_isDisposing) { timer.cancel(); return; } // حماية إضافية
         final isRecording = await ScreenProtector.isRecording();
         if (isRecording) {
           _handleScreenRecordingDetected();
@@ -173,8 +192,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context);
+                Navigator.pop(context); // إغلاق الحوار
+                _safeExit(); // خروج آمن من المشغل
               },
               child: const Text("Exit"),
             )
@@ -195,9 +214,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           var box = Hive.box('auth_box');
           displayText = box.get('phone') ?? box.get('username') ?? '';
         }
-      } catch (e) {
-        debugPrint("Hive Error: $e");
-      }
+      } catch (e) { debugPrint("Hive Error: $e"); }
     }
     setState(() {
       _watermarkText = displayText.isNotEmpty ? displayText : 'User';
@@ -206,6 +223,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _startWatermarkAnimation() {
     _watermarkTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (_isDisposing) { timer.cancel(); return; }
       if (mounted) {
         setState(() {
           final random = Random();
@@ -219,10 +237,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _parseQualities() {
     if (widget.streams.isEmpty) {
-      setState(() {
-        _isError = true;
-        _errorMessage = "No video sources available";
-      });
+      setState(() { _isError = true; _errorMessage = "No video sources available"; });
       return;
     }
 
@@ -243,31 +258,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _playVideo(String url, {Duration? startAt}) async {
+    if (_isDisposing) return;
     try {
       String playUrl = url;
 
+      // ✅ منطق التحويل بين الأونلاين والأوفلاين
       if (!url.startsWith('http')) {
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
+        // تحويل مسار الملف المحلي إلى رابط HTTP محلي عبر البروكسي
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       }
       
-      // ✅ 1. إيقاف الفيديو الحالي تماماً (هذا يحل مشكلة أول تغيير للجودة)
-      await _player.stop();
+      await _player.stop(); // إيقاف القديم
       
-      // 2. فتح الفيديو الجديد مع تجميد التشغيل
+      // فتح الفيديو الجديد
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
-      // 3. انتظار تحميل البيانات الوصفية (Metadata) لضمان نجاح القفز
+      // منطق القفز (Seek)
       if (startAt != null && startAt != Duration.zero) {
         int retries = 0;
-        // الانتظار حتى تصبح المدة معروفة (بعد الـ stop ستكون 0، لذا ننتظر حتى تتغير)
         while (_player.state.duration == Duration.zero && retries < 40) {
+          if (_isDisposing) return;
           await Future.delayed(const Duration(milliseconds: 100));
           retries++;
         }
-        
-        // الآن القفز آمن
         await _player.seek(startAt);
       }
 
@@ -279,7 +294,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Play Failed');
-      if (mounted) {
+      if (mounted && !_isDisposing) {
         setState(() {
           _isError = true;
           _errorMessage = "Failed to load video.";
@@ -296,7 +311,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _showSettingsSheet() {
-    showModalBottomSheet(
+     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
@@ -346,10 +361,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
-                // حفظ الموضع الحالي
                 final currentPos = _player.state.position;
                 setState(() { _currentQuality = q; _isError = false; });
-                // استدعاء التشغيل مع الموضع المحفوظ
                 _playVideo(widget.streams[q]!, startAt: currentPos);
               }
             },
@@ -383,24 +396,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
-    _watermarkTimer?.cancel();
-    _screenRecordingTimer?.cancel();
-    _proxyService.stop();
-    _player.dispose(); // ✅ إنهاء المشغل
-    
-    // ✅ استدعاء دالة استعادة النظام "الآمنة" التي لا تحاول إيقاف المشغل مرة أخرى
-    _resetSystemChrome();
-    
-    WakelockPlus.disable();
+    // شبكة أمان أخيرة: إذا تم تدمير الودجت بطريقة غير متوقعة
+    if (!_isDisposing) {
+       _player.dispose(); 
+       _proxyService.stop();
+       WakelockPlus.disable();
+       _watermarkTimer?.cancel();
+       _screenRecordingTimer?.cancel();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // حساب المناطق الآمنة
     final padding = MediaQuery.of(context).viewPadding;
     
-    // إعداد الثيم
     final controlsTheme = MaterialVideoControlsThemeData(
       displaySeekBar: false,
       padding: EdgeInsets.only(
@@ -421,8 +431,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         const SizedBox(width: 10),
         MaterialCustomButton(
           onPressed: () {
-            _restoreSystemUI();
-            Navigator.pop(context);
+            // ✅ استخدام الخروج الآمن
+            _safeExit();
           },
           icon: const Icon(LucideIcons.minimize, color: Colors.white),
         ),
@@ -430,8 +440,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       topButtonBar: [
         MaterialCustomButton(
           onPressed: () {
-            _restoreSystemUI();
-            Navigator.pop(context);
+            // ✅ استخدام الخروج الآمن
+            _safeExit();
           },
           icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
         ),
@@ -460,10 +470,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       automaticallyImplySkipPreviousButton: false,
     );
 
+    // ✅ PopScope للتحكم في زر الرجوع الخاص بالنظام
     return PopScope(
-      canPop: true,
-      onPopInvoked: (didPop) {
-        if (didPop) _restoreSystemUI();
+      canPop: false, // نمنع الإغلاق المباشر
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        await _safeExit(); // نستدعي الخروج الآمن يدوياً
       },
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -507,7 +519,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-            // ✅ العلامة المائية المعدلة (تباين أعلى + ارتفاع أقل)
             if (!_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
@@ -515,17 +526,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 alignment: _watermarkAlignment,
                 child: IgnorePointer(
                   child: Container(
-                    // تقليل الحشوة الرأسية لتقليل الارتفاع
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                     decoration: BoxDecoration(
-                      // زيادة شفافية الخلفية لتصبح أغمق (تباين أعلى)
                       color: Colors.black.withOpacity(0.6), 
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       _watermarkText,
                       style: TextStyle(
-                        // زيادة شفافية النص ليصبح أكثر وضوحاً
                         color: Colors.white.withOpacity(0.85), 
                         fontWeight: FontWeight.bold,
                         fontSize: 12, 
