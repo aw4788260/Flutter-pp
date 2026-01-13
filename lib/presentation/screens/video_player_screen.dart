@@ -128,20 +128,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ تم تصحيح هذه الدالة لمنع الكراش وإتاحة التدوير
+  // ✅ تم إصلاح هذه الدالة لمنع الكراش واستعادة التدوير الحر
   Future<void> _restoreSystemUI() async {
-    // ❌ تم حذف: await _player.stop(); (لأنها تسبب كراش إذا تم التخلص من المشغل أولاً)
+    // ❌ تم حذف await _player.stop() لمنع الكراش
     
     // استعادة أشرطة النظام
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     
-    // ✅ استعادة جميع الاتجاهات (للسماح بالتدوير الحر كما كان قبل الدخول)
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    // ✅ استعادة جميع الاتجاهات (لكي يعمل التطبيق بمرونة كما كان قبل الدخول)
+    await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
   }
 
   Future<void> _setupScreenProtection() async {
@@ -242,6 +237,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  // =========================================================
+  // ✅ دالة التشغيل وتغيير الجودة (الحل المثالي والمستقر)
+  // =========================================================
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     try {
       String playUrl = url;
@@ -252,26 +250,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       }
       
-      // ✅ 1. تعطيل الإيقاف القسري للحفاظ على الحالة (إصلاح مشكلة إعادة البدء)
-      // await _player.stop(); 
-      
-      // 2. فتح الفيديو الجديد مع تجميد التشغيل (play: false)
+      // 1. فتح الفيديو الجديد مع تجميد التشغيل (play: false)
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
-      // 3. استعادة الموضع (Seek) مع انتظار ذكي
+      // 2. استعادة الموضع باستخدام Completer و Stream Listener (الطريقة الأصح برمجياً)
       if (startAt != null && startAt != Duration.zero) {
-        int retries = 0;
-        // زيادة عدد المحاولات وتقليل زمن الانتظار لاستجابة أسرع
-        while (_player.state.duration == Duration.zero && retries < 50) { 
-          await Future.delayed(const Duration(milliseconds: 50));
-          retries++;
-        }
         
-        // القفز للموضع المحفوظ
+        final completer = Completer<void>();
+        
+        // نستمع لتدفق المدة، بمجرد أن تصبح أكبر من صفر، نعلم أن الميتاداتا جاهزة
+        final subscription = _player.stream.duration.listen((duration) {
+          if (duration > Duration.zero && !completer.isCompleted) {
+            completer.complete();
+          }
+        });
+
+        // ننتظر لمدة أقصاها 5 ثواني
+        await completer.future.timeout(const Duration(seconds: 5), onTimeout: () => {});
+        await subscription.cancel(); // نلغي الاستماع
+
+        // القفز للموضع المحفوظ بدقة
         await _player.seek(startAt);
       }
 
-      // 4. استعادة السرعة إذا كانت متغيرة
+      // 3. استعادة السرعة إذا كانت متغيرة
       if (_currentSpeed != 1.0) {
         await _player.setRate(_currentSpeed);
       }
@@ -387,10 +389,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _watermarkTimer?.cancel();
     _screenRecordingTimer?.cancel();
     _proxyService.stop();
-    _player.dispose();
-    
-    // ✅ استعادة إعدادات النظام (بدون إيقاف المشغل لأنه تم التخلص منه)
-    _restoreSystemUI();
+    _player.dispose(); // التخلص من المشغل أولاً
+    _restoreSystemUI(); // ثم استعادة واجهة النظام
     
     WakelockPlus.disable();
     super.dispose();
@@ -508,7 +508,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-            // ✅ العلامة المائية المعدلة (تباين أعلى + ارتفاع أقل)
+            // ✅ العلامة المائية
             if (!_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
@@ -516,17 +516,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 alignment: _watermarkAlignment,
                 child: IgnorePointer(
                   child: Container(
-                    // تقليل الحشوة الرأسية لتقليل الارتفاع
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                     decoration: BoxDecoration(
-                      // زيادة شفافية الخلفية لتصبح أغمق (تباين أعلى)
                       color: Colors.black.withOpacity(0.6), 
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       _watermarkText,
                       style: TextStyle(
-                        // زيادة شفافية النص ليصبح أكثر وضوحاً
                         color: Colors.white.withOpacity(0.85), 
                         fontWeight: FontWeight.bold,
                         fontSize: 12, 
