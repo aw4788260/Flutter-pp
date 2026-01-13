@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io'; // للخروج من التطبيق exit(0)
+import 'dart:io'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:firebase_core/firebase_core.dart';
@@ -7,10 +7,11 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:safe_device/safe_device.dart'; // فحص الروت
-import 'package:screen_protector/screen_protector.dart'; // ✅ فحص تسجيل الشاشة
+import 'package:safe_device/safe_device.dart'; 
+import 'package:screen_protector/screen_protector.dart'; 
 import 'package:lucide_icons/lucide_icons.dart'; 
-import 'package:audio_session/audio_session.dart'; // ✅ 1. استيراد مكتبة الصوت
+// ✅ 1. استيراد مكتبة الصوت
+import 'package:audio_session/audio_session.dart'; 
 
 import 'core/services/notification_service.dart'; 
 import 'core/theme/app_theme.dart';
@@ -24,8 +25,7 @@ void main() async {
 
     MediaKit.ensureInitialized();
 
-    // ✅ 2. إعداد جلسة الصوت لمنع التسجيل (Android Audio Protection)
-    // هذا الكود يمنع التطبيقات الأخرى من التقاط صوت تطبيقك (أندرويد 10+)
+    // ✅ 2. إعداد جلسة الصوت (تم التصحيح)
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration(
       avAudioSessionCategory: AVAudioSessionCategory.playback,
@@ -37,12 +37,21 @@ void main() async {
         contentType: AndroidAudioContentType.movie,
         flags: AndroidAudioFlags.none,
         usage: AndroidAudioUsage.media,
-        // ⛔ هذا السطر هو الأهم: يمنع التطبيقات الأخرى من التقاط صوت تطبيقك
-        allowedCapturePolicy: AndroidAudioAllowedCapturePolicy.none, 
+        // ❌ تم حذف المعامل الخاطئ من هنا
       ),
       androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
       androidWillPauseWhenDucked: true,
     ));
+
+    // ✅ 3. منع تسجيل الصوت باستخدام AndroidAudioManager مباشرة
+    if (Platform.isAndroid) {
+      try {
+        // استخدام الاسم الصحيح للـ Enum: AndroidAudioCapturePolicy.allowNone
+        await AndroidAudioManager().setAllowedCapturePolicy(AndroidAudioCapturePolicy.allowNone);
+      } catch (e) {
+        debugPrint("Error setting audio capture policy: $e");
+      }
+    }
 
     await NotificationService().init();
     await initializeService();
@@ -63,7 +72,6 @@ void main() async {
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
     // تشغيل الحماية
-    // إضافة المستمعين لالتقاط التسجيل فوراً
     SecurityManager.instance.initListeners(); 
     SecurityManager.instance.checkSecurity();
     SecurityManager.instance.startPeriodicCheck();
@@ -74,6 +82,7 @@ void main() async {
   });
 }
 
+// ... (باقي الكلاسات SecurityManager و EduVantageApp تبقى كما هي تماماً) ...
 // =========================================================
 // 🛡️ كلاس إدارة الحماية (Security Manager)
 // =========================================================
@@ -97,7 +106,6 @@ class SecurityManager {
   }
 
   // دالة الفحص الموحدة
-  // إرجاع قيمة bool لمعرفة النتيجة
   Future<bool> checkSecurity() async {
     // إذا كانت النافذة ظاهرة بالفعل، نعتبره غير آمن
     if (_isAlertVisible) return false;
@@ -108,7 +116,6 @@ class SecurityManager {
       bool isDevMode = await SafeDevice.isDevelopmentModeEnable;
       
       // 2. فحص تسجيل الشاشة
-      // هذه الدالة تكتشف إذا كان هناك تطبيق خارجي يسجل الشاشة أو يتم مشاركتها
       bool isRecording = await ScreenProtector.isRecording();
 
       if (isJailBroken || isDevMode || isRecording) {
