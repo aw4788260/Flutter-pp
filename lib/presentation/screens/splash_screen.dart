@@ -9,6 +9,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
+import '../../main.dart'; // ✅ ضروري لاستيراد SecurityManager
 import 'login_screen.dart';
 import 'main_wrapper.dart';
 import 'privacy_policy_screen.dart';
@@ -58,8 +59,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     // 2. بدء عملية التهيئة
     _initializeApp();
   }
-
-  // ✅ تم حذف دالة _checkSecurity و _showSecurityBlockDialog من هنا
 
   // نافذة الموافقة على الشروط والسياسات (أول مرة فقط)
   Future<bool> _showTermsDialog(Box box) async {
@@ -125,19 +124,29 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   Future<void> _initializeApp() async {
-    // ✅ تم حذف التحقق الأمني من هنا (يعمل الآن في main.dart)
-
     try {
+      // ✅ 1. الفحص الأمني قبل البدء (إذا تم اكتشاف شيء نوقف الدالة فوراً)
+      bool isSafe = await SecurityManager.instance.checkSecurity();
+      if (!isSafe || SecurityManager.instance.isBlocked) {
+         return; // 🛑 التوقف هنا لمنع أي انتقال
+      }
+
       // فتح صندوق التخزين المحلي
       await Hive.initFlutter();
       var box = await Hive.openBox('auth_box');
       await Hive.openBox('downloads_box'); 
       
+      // ✅ فحص أمني مرة أخرى
+      if (SecurityManager.instance.isBlocked) return;
+
       // التحقق من الموافقة على الشروط (أول مرة)
       bool termsAccepted = box.get('terms_accepted', defaultValue: false);
       if (!termsAccepted) {
         await Future.delayed(const Duration(seconds: 1)); 
         if (mounted) {
+          // ✅ فحص قبل عرض الـ Dialog
+          if (SecurityManager.instance.isBlocked) return;
+
           bool userAgreed = await _showTermsDialog(box);
           if (!userAgreed) {
             if (Platform.isAndroid) SystemNavigator.pop();
@@ -148,12 +157,18 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         }
       }
 
+      // ✅ فحص أمني ثالث
+      if (SecurityManager.instance.isBlocked) return;
+
       // قراءة البيانات المحلية (ضيف / مستخدم)
       bool isGuest = box.get('is_guest', defaultValue: false);
       String? userId = box.get('user_id');
       String? deviceId = box.get('device_id');
 
       await Future.delayed(const Duration(seconds: 1)); 
+
+      // ✅ فحص أمني نهائي قبل محاولة الانتقال
+      if (SecurityManager.instance.isBlocked) return;
 
       // --- المسار الأول: المستخدم ضيف ---
       if (isGuest) {
@@ -164,7 +179,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
       // --- المسار الثاني: مستخدم عادي ---
       if (userId == null || deviceId == null) {
-        if (mounted) {
+        // ✅ نتأكد أن الحماية ليست مفعلة قبل الانتقال
+        if (mounted && !SecurityManager.instance.isBlocked) {
            Navigator.of(context).pushReplacement(
              MaterialPageRoute(builder: (_) => const LoginScreen()),
            );
@@ -177,7 +193,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack);
-      if (mounted) {
+      // ✅ الانتقال فقط إذا كان آمناً
+      if (mounted && !SecurityManager.instance.isBlocked) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
         );
@@ -207,7 +224,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       // تجاهل الأخطاء للضيف
     } finally {
       AppState().isGuest = true;
-      if (mounted) {
+      // ✅ فحص الحماية قبل الانتقال
+      if (mounted && !SecurityManager.instance.isBlocked) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const MainWrapper()),
         );
@@ -241,7 +259,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           await box.clear();
           await box.put('terms_accepted', true); 
           
-          if (mounted) {
+          // ✅ فحص الحماية
+          if (mounted && !SecurityManager.instance.isBlocked) {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => const LoginScreen()),
             );
@@ -249,7 +268,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           return;
         }
 
-        if (mounted) {
+        // ✅ فحص الحماية
+        if (mounted && !SecurityManager.instance.isBlocked) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const MainWrapper()),
           );
@@ -267,7 +287,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
            AppState().updateFromInitData(Map<String, dynamic>.from(cachedData));
          } catch (_) {}
 
-         if (mounted) {
+         if (mounted && !SecurityManager.instance.isBlocked) {
            ScaffoldMessenger.of(context).showSnackBar(
              const SnackBar(
                content: Text("No Internet. Entering Offline Mode."),
@@ -280,7 +300,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
            );
          }
       } else {
-         if (mounted) {
+         if (mounted && !SecurityManager.instance.isBlocked) {
             ScaffoldMessenger.of(context).showSnackBar(
              const SnackBar(content: Text("Offline Mode (Limited Access)"), backgroundColor: Colors.grey),
            );
