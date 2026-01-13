@@ -4,60 +4,57 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-// ✅ إضافة استيراد Crashlytics
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 class EncryptionHelper {
-  // حجم كتلة البيانات الصافية (بدون تشفير) - 64KB
-  static const int CHUNK_SIZE = 64 * 1024;
+  // ✅ 1. مضاعفة حجم الكتلة إلى 128KB
+  // هذا يقلل عدد عمليات القراءة والكتابة للنصف، مما يسرع معالجة الملفات الكبيرة
+  static const int CHUNK_SIZE = 128 * 1024; 
   
-  // طول الـ IV (12 bytes for GCM)
   static const int IV_LENGTH = 12;
-  
-  // طول الـ Tag (16 bytes for GCM/MAC)
   static const int TAG_LENGTH = 16;
   
-  // الحجم الكلي للكتلة المشفرة على القرص
+  // الحجم الكلي للكتلة المشفرة
   static const int ENCRYPTED_CHUNK_SIZE = IV_LENGTH + CHUNK_SIZE + TAG_LENGTH;
 
   static encrypt.Key? _key;
+  
+  // ✅ 2. متغير ثابت للاحتفاظ بمحرك التشفير في الذاكرة
+  static encrypt.Encrypter? _encrypter;
+  
   static final _storage = const FlutterSecureStorage();
 
-  /// تهيئة المفتاح
+  /// تهيئة المفتاح ومحرك التشفير
   static Future<void> init() async {
     try {
-      // محاولة قراءة المفتاح من التخزين الآمن
       String? storedKey = await _storage.read(key: 'app_master_key');
       
       if (storedKey == null) {
         FirebaseCrashlytics.instance.log("EncryptionHelper: Generating new master key");
-        
-        // توليد مفتاح عشوائي جديد 32 بايت (AES-256)
         final keyBytes = List<int>.generate(32, (i) => Random.secure().nextInt(256));
         storedKey = base64UrlEncode(keyBytes);
-        
-        // حفظ المفتاح بأمان
         await _storage.write(key: 'app_master_key', value: storedKey);
       } else {
         FirebaseCrashlytics.instance.log("EncryptionHelper: Master key loaded from storage");
       }
       
-      // تحميل المفتاح في الذاكرة
       _key = encrypt.Key.fromBase64(storedKey);
 
+      // ✅ 3. إنشاء محرك التشفير مرة واحدة فقط (هنا السرعة!)
+      // عملية إعداد AES تستهلك موارد المعالج، لذا نفعله مرة واحدة ونعيد استخدامه
+      _encrypter = encrypt.Encrypter(encrypt.AES(_key!, mode: encrypt.AESMode.gcm));
+
     } catch (e, stack) {
-      // ✅ تسجيل فشل التهيئة (خطأ حرج)
       FirebaseCrashlytics.instance.recordError(
         e, 
         stack, 
         reason: 'CRITICAL: EncryptionHelper.init failed',
-        fatal: true // نعتبره خطأ قاتل لأنه سيمنع تشغيل أي فيديو
+        fatal: true 
       );
       throw Exception("Failed to initialize encryption: $e");
     }
   }
 
-  /// getter للوصول للمفتاح
   static encrypt.Key get key {
     if (_key == null) {
       final e = Exception("Encryption Key not initialized! Call EncryptionHelper.init() first.");
@@ -67,17 +64,16 @@ class EncryptionHelper {
     return _key!;
   }
 
-  /// تشفير كتلة من البيانات باستخدام AES-GCM
+  /// تشفير كتلة من البيانات
   static Uint8List encryptBlock(Uint8List data) {
-    if (_key == null) throw Exception("Key not initialized!");
+    // التأكد من أن المحرك جاهز
+    if (_encrypter == null) throw Exception("Encryption not initialized! Call init() first.");
 
     try {
-      // توليد IV عشوائي
       final iv = encrypt.IV.fromSecureRandom(IV_LENGTH);
       
-      final encrypter = encrypt.Encrypter(encrypt.AES(_key!, mode: encrypt.AESMode.gcm));
-      
-      final encrypted = encrypter.encryptBytes(data, iv: iv);
+      // ✅ استخدام المحرك الجاهز بدلاً من إنشاء واحد جديد
+      final encrypted = _encrypter!.encryptBytes(data, iv: iv);
 
       final result = BytesBuilder();
       result.add(iv.bytes);
@@ -86,7 +82,6 @@ class EncryptionHelper {
       return result.toBytes();
 
     } catch (e, stack) {
-      // ✅ تسجيل خطأ أثناء التشفير
       FirebaseCrashlytics.instance.recordError(
         e, 
         stack, 
@@ -97,27 +92,20 @@ class EncryptionHelper {
     }
   }
 
-  /// فك تشفير كتلة من البيانات المشفرة
+  /// فك تشفير كتلة
   static Uint8List decryptBlock(Uint8List encryptedBlock) {
-    if (_key == null) throw Exception("Key not initialized!");
+    if (_encrypter == null) throw Exception("Encryption not initialized! Call init() first.");
 
     try {
-      // 1. التحقق من الطول
       if (encryptedBlock.length < IV_LENGTH) {
           throw Exception("Invalid encrypted block size: ${encryptedBlock.length}");
       }
 
-      // 2. استخراج الـ IV
-      final ivBytes = encryptedBlock.sublist(0, IV_LENGTH);
-      final iv = encrypt.IV(ivBytes);
-
-      // 3. استخراج البيانات المشفرة
+      final iv = encrypt.IV(encryptedBlock.sublist(0, IV_LENGTH));
       final cipherBytes = encryptedBlock.sublist(IV_LENGTH);
 
-      // 4. فك التشفير
-      final encrypter = encrypt.Encrypter(encrypt.AES(_key!, mode: encrypt.AESMode.gcm));
-      
-      final decrypted = encrypter.decryptBytes(
+      // ✅ استخدام المحرك الجاهز (أسرع عملية في الكود)
+      final decrypted = _encrypter!.decryptBytes(
         encrypt.Encrypted(cipherBytes), 
         iv: iv
       );
@@ -125,16 +113,13 @@ class EncryptionHelper {
       return Uint8List.fromList(decrypted);
 
     } catch (e, stack) {
-      // ✅ تسجيل خطأ تفصيلي أثناء فك التشفير
-      // هذا الخطأ هو الأكثر شيوعاً (Mac check failed) إذا كان المفتاح خطأ أو الملف تالف
       FirebaseCrashlytics.instance.recordError(
         e, 
         stack, 
         reason: 'DecryptBlock Failed',
         information: [
           'Block Size: ${encryptedBlock.length}',
-          'IV Length: $IV_LENGTH',
-          'Expected Tag Length: $TAG_LENGTH'
+          'IV Length: $IV_LENGTH'
         ]
       );
       throw e;
@@ -146,9 +131,7 @@ class EncryptionHelper {
     if (_key == null) await init();
 
     if (!await encryptedFile.exists()) {
-      final e = Exception("Source file does not exist: ${encryptedFile.path}");
-      FirebaseCrashlytics.instance.recordError(e, null);
-      throw e;
+      throw Exception("Source file does not exist: ${encryptedFile.path}");
     }
 
     final rafRead = await encryptedFile.open(mode: FileMode.read);
@@ -157,9 +140,11 @@ class EncryptionHelper {
     try {
       final int fileLength = await encryptedFile.length();
       int currentPos = 0;
+      
+      // ✅ استخدام الحجم الجديد للكتلة
       const int blockSize = ENCRYPTED_CHUNK_SIZE;
 
-      FirebaseCrashlytics.instance.log("Starting full decryption: ${encryptedFile.path} ($fileLength bytes)");
+      FirebaseCrashlytics.instance.log("Starting full decryption: ${encryptedFile.path}");
 
       while (currentPos < fileLength) {
         int bytesToRead = blockSize;
@@ -170,28 +155,20 @@ class EncryptionHelper {
         Uint8List chunk = await rafRead.read(bytesToRead);
         if (chunk.isEmpty) break;
 
-        // محاولة فك تشفير الكتلة
         try {
+          // ✅ سيستفيد تلقائياً من سرعة decryptBlock المحسنة
           Uint8List decryptedChunk = decryptBlock(chunk);
           await rafWrite.writeFrom(decryptedChunk);
         } catch (blockError) {
-          // تسجيل الخطأ المحدد للكتلة
           FirebaseCrashlytics.instance.log("Failed at position: $currentPos");
-          throw blockError; // إعادة رمي الخطأ ليتم التقاطه في الـ finally أو الخارج
+          throw blockError;
         }
 
         currentPos += chunk.length;
       }
       
-      FirebaseCrashlytics.instance.log("Full decryption completed successfully");
-
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(
-        e, 
-        stack, 
-        reason: 'DecryptFileFull Failed',
-        information: ['File: ${encryptedFile.path}']
-      );
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'DecryptFileFull Failed');
       throw e;
     } finally {
       await rafRead.close();
