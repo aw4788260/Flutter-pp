@@ -79,18 +79,17 @@ class DownloadManager {
     _keepAliveTimer?.cancel();
     _keepAliveTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       // إذا لم تكن هناك تحميلات نشطة، لا داعي لتحديث الإشعار أو إبقاء الخدمة حية هنا
-      // (سيتم إيقافها من دالة _stopBackgroundService عند انتهاء التحميل)
       if (_activeDownloads.isEmpty) return;
 
       service.invoke('keepAlive');
       
-      // ✅ تحديث إشعار الخدمة الرئيسي (888) ليظهر عدد الملفات
+      // ✅ تحديث إشعار الخدمة الرئيسي (888) ليعكس عدد التحميلات الجارية
       NotificationService().showProgressNotification(
         id: 888, 
         title: "مــــداد Service",
         body: "${_activeDownloads.length} file(s) downloading...",
         progress: 0,
-        maxProgress: 0, // Indeterminate (بدون شريط محدد)
+        maxProgress: 0, // Indeterminate
       );
     });
   }
@@ -101,10 +100,9 @@ class DownloadManager {
       _keepAliveTimer?.cancel();
       final service = FlutterBackgroundService();
       
-      // إيقاف الخدمة
       service.invoke('stopService');
       
-      // ✅ إلغاء إشعار الخدمة الرئيسي (888) فوراً ليختفي من شريط الإشعارات
+      // ✅ إلغاء إشعار الخدمة الرئيسي (888) فوراً
       await NotificationService().cancelNotification(888);
     }
   }
@@ -129,7 +127,7 @@ class DownloadManager {
     
     _activeDownloads.add(lessonId);
     
-    // ✅ تشغيل الخدمة لضمان البقاء في الخلفية وإظهار الإشعار المجمع
+    // ✅ تشغيل الخدمة
     _startBackgroundService();
     
     var currentProgress = Map<String, double>.from(downloadingProgress.value);
@@ -138,7 +136,7 @@ class DownloadManager {
 
     final notifService = NotificationService();
     
-    // ✅ إنشاء ID فريد لهذا الملف تحديداً
+    // ✅ إنشاء ID فريد لهذا الملف
     final int notificationId = lessonId.hashCode;
 
     // إظهار إشعار البدء لهذا الملف
@@ -209,7 +207,11 @@ class DownloadManager {
       final tempPath = '${dir.path}/$lessonId.temp';
       final savePath = '${dir.path}/$lessonId.enc';
       File tempFile = File(tempPath);
-      if (await tempFile.exists()) await tempFile.delete();
+      
+      // ✅ تصحيح: استخدام try-catch عند حذف الملفات لتجنب الكراش
+      try {
+        if (await tempFile.exists()) await tempFile.delete();
+      } catch (e) { /* ignore */ }
 
       Function(double) internalOnProgress = (p) {
         var prog = Map<String, double>.from(downloadingProgress.value);
@@ -217,11 +219,11 @@ class DownloadManager {
         downloadingProgress.value = prog; 
         onProgress(p); 
 
-        // ✅ تحديث الإشعار الخاص بهذا الملف فقط
+        // تحديث الإشعار الخاص بهذا الملف
         int percent = (p * 100).toInt();
         if (percent % 2 == 0) {
           notifService.showProgressNotification(
-            id: notificationId, // ID فريد لهذا الملف
+            id: notificationId, 
             title: "Downloading: $videoTitle",
             body: "$percent%",
             progress: percent,
@@ -243,7 +245,7 @@ class DownloadManager {
         );
       }
 
-      // التشفير (تحديث الإشعار الخاص بالملف)
+      // التشفير
       await notifService.showProgressNotification(
         id: notificationId,
         title: "Processing: $videoTitle",
@@ -254,11 +256,13 @@ class DownloadManager {
 
       if (await tempFile.exists()) {
         if ((await tempFile.length()) < (isPdf ? 100 : 10240)) { 
-          await tempFile.delete();
+          // ✅ تصحيح: حذف آمن
+          try { await tempFile.delete(); } catch(e) {}
           throw Exception("File too small");
         }
         await _encryptFileStream(tempFile, File(savePath));
-        await tempFile.delete(); 
+        // ✅ تصحيح: حذف آمن
+        try { await tempFile.delete(); } catch(e) {} 
       } else {
         throw Exception("Temp file missing");
       }
@@ -279,12 +283,12 @@ class DownloadManager {
         'size': File(savePath).lengthSync(),
       });
 
-      // ✅ 1. إلغاء إشعار التقدم لهذا الملف
+      // 1. إلغاء إشعار التقدم
       await notifService.cancelNotification(notificationId);
 
-      // ✅ 2. إظهار إشعار النجاح النهائي
+      // ✅ 2. تصحيح: استخدام remainder لتجنب تجاوز حدود 32-bit integer
       await notifService.showCompletionNotification(
-        id: DateTime.now().millisecondsSinceEpoch,
+        id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
         title: videoTitle,
         isSuccess: true,
       );
@@ -294,10 +298,10 @@ class DownloadManager {
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed');
       
-      // ✅ إلغاء إشعار التقدم وإظهار إشعار الفشل
       await notifService.cancelNotification(notificationId);
+      // ✅ تصحيح: استخدام remainder هنا أيضاً
       await notifService.showCompletionNotification(
-        id: DateTime.now().millisecondsSinceEpoch,
+        id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
         title: videoTitle,
         isSuccess: false,
       );
@@ -309,8 +313,7 @@ class DownloadManager {
       prog.remove(lessonId);
       downloadingProgress.value = prog;
       
-      // ✅ محاولة إيقاف الخدمة إذا لم تعد هناك تحميلات أخرى
-      // هذا هو الجزء الذي سيقوم بإخفاء الإشعار الثابت (888) عندما يفرغ العداد
+      // إيقاف الخدمة وإلغاء الإشعار المجمع (888)
       _stopBackgroundService();
     }
   }
