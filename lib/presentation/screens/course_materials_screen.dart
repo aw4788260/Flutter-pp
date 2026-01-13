@@ -80,6 +80,19 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
     // ✅ استخدام اسم المدرس الممرر من الصفحة السابقة (Init Data)
     final String displayInstructor = widget.instructorName ?? "Instructor";
 
+    // -------------------------------------------------------------------------
+    // ✅ منطق الاستجابة لحجم الشاشة (Responsive Layout)
+    // -------------------------------------------------------------------------
+    final double screenWidth = MediaQuery.of(context).size.width;
+    int crossAxisCount = 2; // الافتراضي للموبايل
+
+    if (screenWidth > 900) {
+      crossAxisCount = 4; // تابلت أفقي عريض
+    } else if (screenWidth > 600) {
+      crossAxisCount = 3; // تابلت رأسي أو موبايل كبير جداً
+    }
+    // -------------------------------------------------------------------------
+
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: SafeArea(
@@ -161,8 +174,8 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                         )
                       : GridView.builder(
                           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount, // ✅ استخدام العدد الديناميكي
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                             childAspectRatio: 1.0,
