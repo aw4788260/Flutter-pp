@@ -29,7 +29,8 @@ dependencies:
   device_info_plus: ^10.1.0
   android_id: ^0.4.0
   wakelock_plus: ^1.1.0        # لإبقاء الشاشة تعمل
-  syncfusion_flutter_pdfviewer: ^28.1.13
+  syncfusion_flutter_pdfviewer: ^28.1.37
+  syncfusion_flutter_pdf: ^28.1.37
   
   # ✅ التعديل 1: استخدام نسخة GitHub للحصول على دوال الاستماع (addListener)
   screen_protector:
