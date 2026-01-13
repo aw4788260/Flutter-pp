@@ -12,6 +12,7 @@ import 'package:percent_indicator/percent_indicator.dart'; // ✅ لاستخدا
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/local_proxy.dart'; // ✅ استيراد خدمة البروكسي
+import '../../core/utils/encryption_helper.dart'; // ✅ ضروري لفك التشفير
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfId;
@@ -28,12 +29,13 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
-  // ✅ استخدام خدمة البروكسي للبث المباشر للملفات المشفرة
+  // ✅ استخدام خدمة البروكسي للبث المباشر للملفات المشفرة الكبيرة
   final LocalProxyService _proxyService = LocalProxyService();
   
   // متغيرات الحالة
-  String? _proxyUrl;      // رابط التشغيل للأوفلاين (عبر البروكسي)
+  String? _proxyUrl;      // رابط التشغيل للأوفلاين (عبر البروكسي - للملفات الكبيرة)
   String? _localFilePath; // مسار الملف للأونلاين (بعد التحميل)
+  Uint8List? _pdfBytes;   // ✅ بيانات الملف للأوفلاين (للملفات الصغيرة في الذاكرة)
   
   bool _loading = true;
   double _downloadProgress = 0.0; // ✅ نسبة التحميل للأونلاين
@@ -94,11 +96,47 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
   }
 
+  /// دالة مساعدة لفك تشفير الملف بالكامل في الذاكرة (للملفات الصغيرة)
+  Future<Uint8List> _decryptFileToMemory(File file) async {
+    final builder = BytesBuilder();
+    final raf = await file.open(mode: FileMode.read);
+    
+    try {
+      final int fileLength = await file.length();
+      int currentPos = 0;
+      
+      // استخدام الثوابت من EncryptionHelper
+      const int blockSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
+
+      while (currentPos < fileLength) {
+        int bytesToRead = blockSize;
+        if (currentPos + bytesToRead > fileLength) {
+          bytesToRead = fileLength - currentPos;
+        }
+
+        Uint8List chunk = await raf.read(bytesToRead);
+        if (chunk.isEmpty) break;
+
+        // فك التشفير باستخدام الدالة السريعة
+        Uint8List decryptedChunk = EncryptionHelper.decryptBlock(chunk);
+        builder.add(decryptedChunk);
+
+        currentPos += chunk.length;
+      }
+    } finally {
+      await raf.close();
+    }
+    return builder.toBytes();
+  }
+
   Future<void> _loadPdf() async {
     setState(() => _loading = true);
     try {
+      // التأكد من تهيئة التشفير
+      await EncryptionHelper.init();
+
       // ============================================================
-      // 1. الأوفلاين: استخدام البروكسي (أخف وأسرع)
+      // 1. الأوفلاين: محاولة القراءة من التخزين المحلي
       // ============================================================
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
@@ -108,12 +146,35 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         final File encryptedFile = File(encryptedPath);
         
         if (await encryptedFile.exists()) {
-          FirebaseCrashlytics.instance.log("📂 Opening Offline PDF via Proxy: $encryptedPath");
+          // ✅ التحسين الجديد: فحص حجم الملف
+          int fileSize = await encryptedFile.length();
+          
+          // إذا كان الملف أصغر من 50 ميجابايت، نفك تشفيره في الرام (أسرع بكثير)
+          if (fileSize < 50 * 1024 * 1024) { 
+             try {
+               FirebaseCrashlytics.instance.log("🚀 Loading small PDF to memory: $encryptedPath");
+               final bytes = await _decryptFileToMemory(encryptedFile);
+               
+               if (mounted) {
+                 setState(() {
+                   _pdfBytes = bytes;
+                   _loading = false;
+                 });
+               }
+               return; // ✅ انتهينا، العرض من الذاكرة
+             } catch (e) {
+                // إذا فشلت الذاكرة، نكمل للكود التالي ونستخدم البروكسي كخطة بديلة
+                FirebaseCrashlytics.instance.log("⚠️ Memory decrypt failed, falling back to proxy: $e");
+             }
+          }
+
+          // --- الخطة ب: الملفات الكبيرة عبر البروكسي ---
+          FirebaseCrashlytics.instance.log("📂 Opening Large/Offline PDF via Proxy: $encryptedPath");
           
           // تشغيل البروكسي
           await _proxyService.start();
           
-          // تكوين رابط البروكسي (مثل الفيديو تماماً)
+          // تكوين رابط البروكسي
           final url = "http://127.0.0.1:8080/video?path=${Uri.encodeComponent(encryptedPath)}";
           
           if (mounted) {
@@ -122,7 +183,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               _loading = false;
             });
           }
-          return; // ✅ انتهينا، لا داعي للتحميل من النت
+          return; 
         }
       }
 
@@ -290,10 +351,26 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // دالة اختيار نوع العارض المناسب (شبكة للبروكسي / ملف للتحميل)
+  // دالة اختيار نوع العارض المناسب (ذاكرة / شبكة / ملف)
   Widget _buildPdfViewer() {
-    // حالة الأوفلاين (عبر البروكسي)
-    if (_proxyUrl != null) {
+    // ✅ الحالة 1: ملف أوفلاين صغير (تم فكه للذاكرة) - الأسرع
+    if (_pdfBytes != null) {
+       return SfPdfViewer.memory(
+        _pdfBytes!,
+        key: _pdfViewerKey,
+        enableDoubleTapZooming: true,
+        enableTextSelection: false,
+        pageLayoutMode: PdfPageLayoutMode.continuous,
+        onDocumentLoaded: (details) {
+          setState(() => _totalPages = details.document.pages.count);
+        },
+        onPageChanged: (details) {
+          setState(() => _currentPage = details.newPageNumber - 1);
+        },
+      );
+    }
+    // ✅ الحالة 2: ملف أوفلاين كبير (عبر البروكسي)
+    else if (_proxyUrl != null) {
       return SfPdfViewer.network(
         _proxyUrl!,
         key: _pdfViewerKey,
@@ -311,7 +388,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         },
       );
     } 
-    // حالة الأونلاين (ملف محمل مؤقتاً)
+    // ✅ الحالة 3: ملف أونلاين (تم تحميله مؤقتاً)
     else if (_localFilePath != null) {
       return SfPdfViewer.file(
         File(_localFilePath!),
