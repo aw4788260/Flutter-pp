@@ -36,6 +36,7 @@ dependencies:
   safe_device: ^1.1.4
   flutter_local_notifications: ^17.0.0
   flutter_background_service: ^5.0.0
+  audio_session: ^0.1.21
   
 
   # Security & Privacy
