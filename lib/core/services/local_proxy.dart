@@ -9,7 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/encryption_helper.dart';
 
 class LocalProxyService {
-  // ✅ 1. تطبيق Singleton Pattern: لضمان وجود نسخة واحدة فقط من السيرفر
+  // ✅ 1. تطبيق Singleton Pattern
   static final LocalProxyService _instance = LocalProxyService._internal();
   
   factory LocalProxyService() {
@@ -21,20 +21,18 @@ class LocalProxyService {
   HttpServer? _server;
   final int port = 8080;
   
-  // ✅ 2. عداد المراجع: لنعرف كم شاشة تستخدم السيرفر حالياً
+  // ✅ 2. عداد المراجع
   int _usageCount = 0;
 
   /// بدء السيرفر
   Future<void> start() async {
-    _usageCount++; // زيادة العداد (شاشة جديدة فتحت)
+    _usageCount++; 
     
-    // إذا كان السيرفر يعمل مسبقاً، لا تحاول تشغيله مرة أخرى (هذا يمنع الكراش)
     if (_server != null) {
         FirebaseCrashlytics.instance.log('🔒 Proxy already running (Clients: $_usageCount)');
         return;
     }
 
-    // التأكد من تهيئة التشفير (المفاتيح)
     try {
       await EncryptionHelper.init();
     } catch (e, stack) {
@@ -48,18 +46,15 @@ class LocalProxyService {
     try {
       _server = await shelf_io.serve(router, InternetAddress.loopbackIPv4, port);
       FirebaseCrashlytics.instance.log('🔒 Proxy Started on port ${_server!.port}');
-      print('🔒 Local Proxy running on port ${_server!.port}');
     } catch (e, stack) {
-      // تسجيل الخطأ دون إيقاف التطبيق بالكامل
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Start Failed');
     }
   }
 
   /// إيقاف السيرفر
   void stop() {
-    _usageCount--; // تقليل العداد (شاشة أغلقت)
+    _usageCount--; 
     
-    // ✅ 3. لا نغلق السيرفر إلا إذا خرج المستخدم من جميع الشاشات
     if (_usageCount <= 0) {
         _usageCount = 0;
         if (_server != null) {
@@ -88,12 +83,11 @@ class LocalProxyService {
     try {
       final encryptedLength = await file.length();
       
-      // ثوابت الأحجام من EncryptionHelper
+      // ✅ استخدام الثوابت المحدثة مباشرة (512KB)
       final int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
       final int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
-      final int overhead = encChunkSize - plainChunkSize; // (IV + Tag)
+      final int overhead = encChunkSize - plainChunkSize; 
 
-      // حساب الحجم الصافي (الأصلي) للملف
       final int totalChunks = (encryptedLength / encChunkSize).ceil();
       
       final int lastEncChunkSize = encryptedLength - ((totalChunks - 1) * encChunkSize);
@@ -101,7 +95,7 @@ class LocalProxyService {
       
       final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + lastPlainChunkSize;
 
-      // 1. معالجة طلب الـ Range
+      // معالجة طلب الـ Range
       final rangeHeader = request.headers['range'];
       int start = 0;
       int end = originalFileSize - 1;
@@ -116,7 +110,6 @@ class LocalProxyService {
         }
       }
 
-      // التأكد من الحدود الصحيحة
       if (start < 0) start = 0;
       if (end >= originalFileSize) end = originalFileSize - 1;
       
@@ -124,10 +117,8 @@ class LocalProxyService {
 
       FirebaseCrashlytics.instance.log("📡 Proxy Stream: Range $start-$end / $originalFileSize");
 
-      // 2. إنشاء Stream يقرأ الكتل ويفك التشفير
       final stream = _createDecryptedStream(file, start, end);
 
-      // 3. إرجاع استجابة جزئية (206 Partial Content)
       return Response(
         206,
         body: stream,
@@ -154,17 +145,16 @@ class LocalProxyService {
     try {
       raf = await file.open(mode: FileMode.read);
       
+      // ✅ استخدام الثوابت (512KB) لتقليل عدد مرات القراءة
       const int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       const int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
 
-      // تحديد رقم أول وآخر كتلة نحتاج قراءتها
       int startChunkIndex = reqStart ~/ plainChunkSize;
       int endChunkIndex = reqEnd ~/ plainChunkSize;
 
       final fileLen = await file.length();
 
       for (int i = startChunkIndex; i <= endChunkIndex; i++) {
-        // حساب موقع القراءة من الملف المشفر
         int seekPos = i * encChunkSize;
         
         if (seekPos >= fileLen) break;
@@ -176,11 +166,12 @@ class LocalProxyService {
            bytesToRead = fileLen - seekPos;
         }
 
-        if (bytesToRead <= 0) break;
+        // ✅ حماية إضافية: إذا كانت البيانات أقل من حجم الـ IV، نتجاهلها
+        if (bytesToRead <= EncryptionHelper.IV_LENGTH) break;
 
         Uint8List encryptedBlock = await raf.read(bytesToRead);
         
-        // فك تشفير الكتلة بالكامل
+        // فك التشفير (سريع جداً الآن بفضل المحرك المثبت)
         Uint8List decryptedBlock;
         try {
           decryptedBlock = EncryptionHelper.decryptBlock(encryptedBlock);
@@ -194,7 +185,7 @@ class LocalProxyService {
            throw e; 
         }
 
-        // حساب أي جزء من هذه الكتلة نحتاج إرساله
+        // حساب الجزء المطلوب
         int blockStartInPlain = i * plainChunkSize;
         int sliceStart = max(0, reqStart - blockStartInPlain);
         int sliceEnd = min(decryptedBlock.length, reqEnd - blockStartInPlain + 1);
