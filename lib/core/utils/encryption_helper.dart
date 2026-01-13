@@ -9,7 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 class EncryptionHelper {
   // ✅ تم التعديل: 512KB (نصف ميجابايت)
   // هذا الحجم مثالي جداً للفيديوهات ويقلل الحمل على المعالج بشكل كبير
-  static const int CHUNK_SIZE = 512 * 1024; 
+  static const int CHUNK_SIZE = 128 * 1024; 
   
   static const int IV_LENGTH = 12;
   static const int TAG_LENGTH = 16;
