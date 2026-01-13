@@ -5,8 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:screen_protector/screen_protector.dart'; // ✅ المكتبة المطلوبة
+import 'package:wakelock_plus/wakelock_plus.dart'; // ✅ تم الاحتفاظ به لإبقاء الشاشة مضاءة
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -32,7 +31,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _controller;
   final LocalProxyService _proxyService = LocalProxyService();
-  final _screenProtector = ScreenProtector(); // ✅ كائن الحماية
+  
+  // ❌ تم حذف ScreenProtector لأنه مفعل في main.dart
 
   String _currentQuality = "";
   List<String> _sortedQualities = [];
@@ -41,13 +41,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isError = false;
   String _errorMessage = "";
   bool _isInitialized = false;
-  bool _isSecurityViolation = false; // ✅ متغير لحالة المخالفة
   
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
-
-  Timer? _securityFallbackTimer; // مؤقت احتياطي
 
   final Map<String, String> _nativeHeaders = {
     'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
@@ -63,11 +60,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init");
 
     try {
+      // إعدادات الشاشة (الوضع الأفقي)
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
+      
+      // ✅ تفعيل إبقاء الشاشة مضاءة (نقلناها هنا)
+      await WakelockPlus.enable();
 
       await _startProxyServer();
 
@@ -82,16 +83,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       _player.stream.error.listen((error) {
         FirebaseCrashlytics.instance.recordError(Exception(error), StackTrace.current);
-        if (mounted && !_isSecurityViolation) {
+        if (mounted) {
           setState(() {
             _isError = true;
             _errorMessage = "Playback Error: $error";
           });
         }
       });
-
-      // ✅ تفعيل نظام الحماية المتكامل
-      _setupRobustSecurity();
       
       _loadUserData();
       _startWatermarkAnimation();
@@ -111,130 +109,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try { await _proxyService.start(); } catch (e) { debugPrint("Proxy Error: $e"); }
   }
 
-  // =========================================================
-  // 🛡️ نظام الحماية المتقدم (Listeners + Fallback Timer)
-  // =========================================================
-  void _setupRobustSecurity() async {
-    try {
-      await WakelockPlus.enable();
-      
-      // 1. تفعيل الحماية من مستوى النظام (شاشة سوداء عند التسجيل)
-      await _screenProtector.preventScreenshotOn();
-      await _screenProtector.protectDataLeakageOn();
-
-      // 2. ✅ الاستماع المباشر للأحداث (الأسرع)
-      _screenProtector.addListener(
-        () {
-          // تم أخذ لقطة شاشة (Screenshot)
-          _triggerSecurityLock("تم اكتشاف محاولة تصوير للشاشة!");
-        }, 
-        (isRecording) {
-          // تم اكتشاف بدء/إيقاف تسجيل الفيديو
-          if (isRecording) {
-            _triggerSecurityLock("تم اكتشاف تطبيق تسجيل فيديو يعمل في الخلفية!");
-          }
-        }
-      );
-
-      // 3. ✅ مؤقت احتياطي (في حال فشل المستمع في بعض أجهزة أندرويد)
-      _securityFallbackTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-        if (_isSecurityViolation) return; // إذا تم الحظر بالفعل لا تفحص
-        
-        bool isRecording = await _screenProtector.isRecording();
-        if (isRecording) {
-          _triggerSecurityLock("تم اكتشاف تسجيل للشاشة (فحص دوري)!");
-        }
-      });
-
-    } catch (e) {
-      debugPrint("Security Setup Error: $e");
-    }
-  }
-
-  // 🔒 دالة تنفيذ الحظر الفوري
-  void _triggerSecurityLock(String reason) {
-    if (_isSecurityViolation) return; // منع التكرار
-
-    setState(() {
-      _isSecurityViolation = true;
-    });
-
-    // 1. إيقاف الفيديو فوراً
-    _player.pause(); 
-    
-    // 2. تسجيل الواقعة
-    FirebaseCrashlytics.instance.log("🚨 Security Violation: $reason");
-
-    // 3. عرض نافذة الحظر الكاملة
-    if (mounted) {
-      showGeneralDialog(
-        context: context,
-        barrierDismissible: false,
-        barrierLabel: "Security",
-        barrierColor: Colors.black, // خلفية سوداء تماماً
-        pageBuilder: (ctx, anim1, anim2) {
-          return PopScope(
-            canPop: false, // منع زر الرجوع
-            child: Scaffold(
-              backgroundColor: const Color(0xFF1a0000), // أحمر داكن جداً
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(LucideIcons.shieldAlert, size: 80, color: Colors.red),
-                      const SizedBox(height: 24),
-                      const Text(
-                        "تم اكتشاف تسجيل للشاشة!",
-                        style: TextStyle(color: Colors.red, fontSize: 24, fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        reason,
-                        style: const TextStyle(color: Colors.white70, fontSize: 16),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 32),
-                      const Text(
-                        "⚠️ تحذير: هذا المحتوى محمي بحقوق النشر.\nمحاولة تسجيل المحتوى تعرض حسابك للحظر النهائي فوراً.",
-                        style: TextStyle(color: AppColors.accentYellow, fontSize: 14, height: 1.5),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 48),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: () {
-                            // إغلاق التطبيق بالكامل
-                            if (Platform.isAndroid) {
-                              SystemNavigator.pop();
-                            } else {
-                              exit(0);
-                            }
-                          },
-                          child: const Text("إغلاق التطبيق فوراً", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    }
-  }
-
-  // ... (باقي دوال التحميل والأنيميشن كما هي) ...
-  void _loadUserData() { /* ... نفس الكود السابق ... */ 
+  void _loadUserData() {
     String displayText = '';
     if (AppState().userData != null) {
       displayText = AppState().userData!['phone'] ?? '';
@@ -252,7 +127,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  void _startWatermarkAnimation() { /* ... نفس الكود السابق ... */ 
+  void _startWatermarkAnimation() {
     _watermarkTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (mounted) {
         setState(() {
@@ -265,7 +140,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  void _parseQualities() { /* ... نفس الكود السابق ... */ 
+  void _parseQualities() {
     if (widget.streams.isEmpty) {
       setState(() { _isError = true; _errorMessage = "No video sources"; });
       return;
@@ -281,9 +156,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _playVideo(String url, {Duration? startAt}) async {
-    // ✅ إذا كان هناك مخالفة أمنية، نمنع تشغيل الفيديو
-    if (_isSecurityViolation) return;
-
     try {
       String playUrl = url;
       if (!url.startsWith('http')) {
@@ -294,6 +166,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
+      // استعادة الموضع بالطريقة المثالية (Completer)
       if (startAt != null && startAt != Duration.zero) {
         final completer = Completer<void>();
         final subscription = _player.stream.duration.listen((duration) {
@@ -308,21 +181,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await _player.play();
 
     } catch (e) {
-      if (mounted && !_isSecurityViolation) {
+      if (mounted) {
         setState(() { _isError = true; _errorMessage = "Load Error: $e"; });
       }
     }
   }
 
   Future<void> _seekRelative(Duration amount) async {
-    if (_isSecurityViolation) return;
     try {
       final currentPos = _player.state.position;
       await _player.seek(currentPos + amount);
     } catch (e) {}
   }
 
-  // ... (دوال Settings و Quality Selection كما هي) ...
   void _showSettingsSheet() {
      showModalBottomSheet(
       context: context,
@@ -407,10 +278,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void dispose() {
     _watermarkTimer?.cancel();
-    // ✅ إيقاف مؤقتات الحماية وإزالة المستمعين
-    _securityFallbackTimer?.cancel();
-    _screenProtector.removeListener();
-    
     _proxyService.stop();
     _player.dispose();
     _restoreSystemUI();
@@ -421,11 +288,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ إذا كان هناك مخالفة أمنية، نعرض شاشة سوداء فارغة خلف النافذة المنبثقة
-    if (_isSecurityViolation) {
-      return const Scaffold(backgroundColor: Colors.black);
-    }
-
     final padding = MediaQuery.of(context).viewPadding;
     
     final controlsTheme = MaterialVideoControlsThemeData(
