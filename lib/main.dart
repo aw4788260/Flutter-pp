@@ -25,6 +25,7 @@ void main() async {
     MediaKit.ensureInitialized();
 
     // ✅ 2. إعداد جلسة الصوت لمنع التسجيل (Android Audio Protection)
+    // هذا الكود يمنع التطبيقات الأخرى من التقاط صوت تطبيقك (أندرويد 10+)
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration(
       avAudioSessionCategory: AVAudioSessionCategory.playback,
