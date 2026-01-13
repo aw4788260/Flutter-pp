@@ -42,6 +42,8 @@ void main() async {
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
     // تشغيل الحماية
+    // ✅ التعديل 1: إضافة المستمعين لالتقاط التسجيل فوراً
+    SecurityManager.instance.initListeners(); 
     SecurityManager.instance.checkSecurity();
     SecurityManager.instance.startPeriodicCheck();
 
@@ -59,10 +61,25 @@ class SecurityManager {
   SecurityManager._internal();
 
   bool _isAlertVisible = false;
+  
+  // ✅ التعديل 2: كاشف للحالة لاستخدامه في Splash Screen لمنع الانتقال
+  bool get isBlocked => _isAlertVisible;
+
+  // ✅ التعديل 3: دالة تهيئة المستمعين (Screen Recording Listener)
+  void initListeners() {
+    ScreenProtector.addListener(() {
+      // عند بدء التسجيل أو أخذ لقطة شاشة
+      checkSecurity();
+    }, (isCapturing) {
+      if (isCapturing) checkSecurity();
+    });
+  }
 
   // دالة الفحص الموحدة
-  Future<void> checkSecurity() async {
-    if (_isAlertVisible) return;
+  // ✅ التعديل 4: إرجاع قيمة bool لمعرفة النتيجة
+  Future<bool> checkSecurity() async {
+    // إذا كانت النافذة ظاهرة بالفعل، نعتبره غير آمن
+    if (_isAlertVisible) return false;
 
     try {
       // 1. فحص الروت وخيارات المطور
@@ -76,16 +93,19 @@ class SecurityManager {
       if (isJailBroken || isDevMode || isRecording) {
         _isAlertVisible = true;
         _showBlockDialog(isJailBroken, isDevMode, isRecording);
+        return false; // غير آمن
       }
     } catch (e) {
       debugPrint("Security Check Error: $e");
     }
+    
+    return true; // آمن
   }
 
   void startPeriodicCheck() {
-    // فحص كل 3 ثواني (سيكشف التسجيل فور بدئه تقريباً)
-    Timer.periodic(const Duration(seconds: 3), (timer) {
-      checkSecurity();
+    // ✅ التعديل 5: تقليل الوقت لثانية واحدة لزيادة سرعة الكشف
+    Timer.periodic(const Duration(seconds: 1), (timer) async {
+      await checkSecurity();
     });
   }
 
@@ -117,6 +137,7 @@ class SecurityManager {
       showDialog(
         context: navigatorKey.currentContext!,
         barrierDismissible: false,
+        useRootNavigator: true, // ✅ التعديل 6: جعل النافذة فوق كل شيء (Root Navigator)
         builder: (context) => PopScope(
           canPop: false,
           child: AlertDialog(
@@ -131,7 +152,7 @@ class SecurityManager {
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.end, // ✅ محاذاة لليمين للنص العربي
                 children: [
                   const Text(
                     "تم إيقاف التطبيق لأسباب أمنية:",
@@ -143,26 +164,37 @@ class SecurityManager {
                     arabicReason,
                     style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 13, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.right,
+                    textDirection: TextDirection.rtl, // ✅ اتجاه النص
                   ),
                   const Divider(color: Colors.white24),
-                  const Text(
-                    "Action Required:",
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    englishReason,
-                    style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 12),
+                  Align( // محاذاة اليسار للإنجليزي
+                    alignment: Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Action Required:",
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          englishReason,
+                          style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 12),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    warningMessage,
-                    style: TextStyle(
-                      color: isRecording ? const Color(0xFFEF4444) : Colors.white54, // لون أحمر للتهديد
-                      fontSize: 12, 
-                      fontWeight: FontWeight.bold
+                  Center(
+                    child: Text(
+                      warningMessage,
+                      style: TextStyle(
+                        color: isRecording ? const Color(0xFFEF4444) : Colors.white54, // لون أحمر للتهديد
+                        fontSize: 12, 
+                        fontWeight: FontWeight.bold
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
