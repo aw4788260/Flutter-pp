@@ -154,7 +154,9 @@ class DownloadManager {
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
       final deviceId = box.get('device_id');
-      const String appSecret = String.fromEnvironment('APP_SECRET', defaultValue: 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only');
+      
+      // 🔒 التعديل: جلب الرمز السري من متغيرات البيئة فقط
+      const String appSecret = String.fromEnvironment('APP_SECRET');
 
       if (userId == null) throw Exception("User authentication missing");
 
