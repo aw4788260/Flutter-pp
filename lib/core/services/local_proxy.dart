@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:convert'; // ✅ ضرورية لتوليد الرمز (base64UrlEncode)
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
@@ -24,6 +25,12 @@ class LocalProxyService {
   // ✅ 2. عداد المراجع
   int _usageCount = 0;
 
+  // ✅ 3. متغير لتخزين رمز الحماية
+  String _authToken = "";
+  
+  // ✅ getter للوصول للرمز من الخارج (لإرساله مع الطلبات)
+  String get authToken => _authToken;
+
   /// بدء السيرفر
   Future<void> start() async {
     _usageCount++; 
@@ -35,6 +42,11 @@ class LocalProxyService {
 
     try {
       await EncryptionHelper.init();
+      
+      // ✅ 4. توليد رمز عشوائي جديد عند كل تشغيل للسيرفر
+      _authToken = _generateRandomToken();
+      FirebaseCrashlytics.instance.log('🔒 Security Token Generated');
+
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Encryption Init Failed', fatal: true);
       return;
@@ -43,8 +55,14 @@ class LocalProxyService {
     final router = Router();
     router.get('/video', _handleVideoRequest);
 
+    // ✅ 5. إضافة Middleware للتحقق من الرمز قبل معالجة أي طلب
+    final handler = Pipeline()
+        .addMiddleware(_checkAuthToken) // إضافة طبقة الحماية
+        .addHandler(router);
+
     try {
-      _server = await shelf_io.serve(router, InternetAddress.loopbackIPv4, port);
+      // ✅ استخدام handler بدلاً من router مباشرة
+      _server = await shelf_io.serve(handler, InternetAddress.loopbackIPv4, port);
       FirebaseCrashlytics.instance.log('🔒 Proxy Started on port ${_server!.port}');
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Start Failed');
@@ -60,11 +78,32 @@ class LocalProxyService {
         if (_server != null) {
             _server?.close(force: true);
             _server = null;
+            _authToken = ""; // ✅ تصفير الرمز عند الإيقاف
             FirebaseCrashlytics.instance.log('🛑 Proxy Stopped (No active clients)');
         }
     } else {
         FirebaseCrashlytics.instance.log('ℹ️ Proxy kept alive (Remaining clients: $_usageCount)');
     }
+  }
+
+  // ✅ 6. دالة التحقق من الرمز (Middleware)
+  Middleware get _checkAuthToken => (innerHandler) {
+    return (request) {
+      final token = request.headers['x-auth-token'];
+      // إذا كان الرمز غير موجود أو غير مطابق، نرفض الطلب فوراً
+      if (token == null || token != _authToken) {
+        FirebaseCrashlytics.instance.log("🚨 Unauthorized access attempt detected!");
+        return Response.forbidden('Access Denied: Invalid Token');
+      }
+      return innerHandler(request);
+    };
+  };
+
+  // ✅ 7. دالة مساعدة لتوليد رمز عشوائي قوي
+  String _generateRandomToken() {
+    final random = Random.secure();
+    final values = List<int>.generate(32, (i) => random.nextInt(255));
+    return base64UrlEncode(values);
   }
 
   /// معالجة طلب الفيديو (Stream Response)
