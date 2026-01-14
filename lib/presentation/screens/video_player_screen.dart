@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:screen_protector/screen_protector.dart'; 
+import 'package:screen_protector/screen_protector.dart'; // ✅ المكتبة المطلوبة
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -32,7 +32,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _controller;
   final LocalProxyService _proxyService = LocalProxyService();
-  final _screenProtector = ScreenProtector(); 
+  final _screenProtector = ScreenProtector(); // ✅ كائن الحماية
 
   String _currentQuality = "";
   List<String> _sortedQualities = [];
@@ -41,13 +41,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isError = false;
   String _errorMessage = "";
   bool _isInitialized = false;
-  bool _isSecurityViolation = false; 
+  bool _isSecurityViolation = false; // ✅ متغير لحالة المخالفة
   
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
 
-  Timer? _securityFallbackTimer; 
+  Timer? _securityFallbackTimer; // مؤقت احتياطي
 
   final Map<String, String> _nativeHeaders = {
     'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
@@ -381,11 +381,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
-  // ✅ الدالة المسؤولة عن إعادة التطبيق لحالته الطبيعية
   Future<void> _restoreSystemUI() async {
-    // 1. إعادة شريط الحالة والتحكم السفلي للظهور
+    // استعادة ظهور شريط الحالة والأزرار السفلية
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
-    // 2. السماح بجميع اتجاهات الشاشة (العودة للوضع الافتراضي الذي يدعم الدوران)
+    // استعادة وضع الدوران الطبيعي (Portrait + Landscape)
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -401,10 +400,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _screenProtector.removeListener();
     _proxyService.stop();
     _player.dispose();
-    
-    // ✅ تنفيذ الاستعادة عند التخلص من الصفحة
     _restoreSystemUI();
-    
     WakelockPlus.disable();
     super.dispose();
   }
@@ -434,8 +430,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         const SizedBox(width: 10),
         MaterialCustomButton(
           onPressed: () {
-            // ✅ عند الضغط على زر التصغير، نغلق الصفحة وسيتم استدعاء dispose تلقائياً
-            Navigator.pop(context);
+             _restoreSystemUI();
+             Navigator.pop(context);
           }, 
           icon: const Icon(LucideIcons.minimize, color: Colors.white)
         ),
@@ -443,7 +439,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       topButtonBar: [
         MaterialCustomButton(
           onPressed: () {
-             // ✅ عند الضغط على زر الرجوع، نغلق الصفحة وسيتم استدعاء dispose تلقائياً
+            _restoreSystemUI();
             Navigator.pop(context);
           }, 
           icon: const Icon(LucideIcons.arrowLeft, color: Colors.white)
@@ -467,10 +463,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     return PopScope(
       canPop: true,
       onPopInvoked: (didPop) { 
-        // ✅ ضمان تنفيذ الاستعادة عند الرجوع بزر النظام الخلفي
-        if (didPop) {
-          _restoreSystemUI(); 
-        }
+        if (didPop) _restoreSystemUI(); 
       },
       child: Scaffold(
         backgroundColor: Colors.black,
