@@ -2,17 +2,17 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; 
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // ✅ المكتبة الجديدة
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:percent_indicator/percent_indicator.dart'; 
+import 'package:percent_indicator/percent_indicator.dart'; // ✅ لاستخدام شريط التقدم الدائري
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../core/services/local_proxy.dart';
-import '../../core/utils/encryption_helper.dart';
+import '../../core/services/local_proxy.dart'; // ✅ استيراد خدمة البروكسي
+import '../../core/utils/encryption_helper.dart'; // ✅ ضروري لفك التشفير
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfId;
@@ -374,12 +374,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       return SfPdfViewer.network(
         _proxyUrl!,
         key: _pdfViewerKey,
-        
-        // 🔹 التعديل: إضافة الهيدر الذي يحتوي على التوكن 🔹
-        headers: {
-          'x-auth-token': _proxyService.authToken, 
-        },
-
         enableDoubleTapZooming: true,
         enableTextSelection: false, // منع النسخ
         pageLayoutMode: PdfPageLayoutMode.continuous,
