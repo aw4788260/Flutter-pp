@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; // أبقيت عليها لمنع انطفاء الشاشة أثناء المشاهدة فقط
+import 'package:wakelock_plus/wakelock_plus.dart'; 
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -71,7 +71,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         DeviceOrientation.landscapeRight,
       ]);
 
-      // تفعيل Wakelock لمنع الشاشة من الانطفاء أثناء الفيديو (راحة للمستخدم وليس حماية)
+      // تفعيل Wakelock لمنع الشاشة من الانطفاء أثناء الفيديو
       await WakelockPlus.enable();
 
       await _startProxyServer();
@@ -98,8 +98,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           });
         }
       });
-
-      // تمت إزالة دالة الحماية _setupScreenProtection
       
       _loadUserData();
       _startWatermarkAnimation();
@@ -130,12 +128,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ التعديل هنا: استعادة إعدادات النظام للوضع الطبيعي (يدعم الدوران)
+  // استعادة إعدادات النظام للوضع الطبيعي (يدعم الدوران)
   Future<void> _resetSystemChrome() async {
     // استعادة شريط الحالة والأزرار السفلية
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     
-    // ✅ السماح بكل الاتجاهات ليعود التطبيق كما كان (يدعم الدوران التلقائي إذا كان مفعلاً في الهاتف)
+    // السماح بكل الاتجاهات ليعود التطبيق كما كان
     await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
   }
 
@@ -230,16 +228,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (_isDisposing) return;
     try {
       String playUrl = url;
+      
+      // ✅ تجهيز الهيدرز الافتراضية
+      final Map<String, String> currentHeaders = Map.from(_nativeHeaders);
 
       if (!url.startsWith('http')) {
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
+        
+        // رابط البروكسي
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
+        
+        // ✅ إضافة التوكن للهيدرز عند الطلب من البروكسي المحلي فقط
+        // هذا يمنع أي تطبيق آخر من فتح الرابط لأنه لا يملك التوكن
+        currentHeaders['x-auth-token'] = _proxyService.authToken;
       }
       
       await _player.stop();
       
-      await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
+      // ✅ استخدام الهيدرز المحمية
+      await _player.open(Media(playUrl, httpHeaders: currentHeaders), play: false);
       
       if (startAt != null && startAt != Duration.zero) {
         int retries = 0;
