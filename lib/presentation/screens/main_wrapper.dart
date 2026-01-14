@@ -4,7 +4,7 @@ import '../../core/constants/app_colors.dart';
 import 'home_screen.dart';
 import 'my_courses_screen.dart';
 import 'profile_screen.dart';
-import 'downloaded_files_screen.dart'; // ✅ استيراد صفحة التحميلات
+import 'downloaded_files_screen.dart'; 
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -16,11 +16,10 @@ class MainWrapper extends StatefulWidget {
 class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
 
-  // القوائم المرتبطة بالأزرار
   final List<Widget> _pages = [
     const HomeScreen(),
     const MyCoursesScreen(),
-    const DownloadedFilesScreen(), // ✅ الصفحة الحقيقية للتحميلات
+    const DownloadedFilesScreen(), 
     const ProfileScreen(),
   ];
 
@@ -32,35 +31,44 @@ class _MainWrapperState extends State<MainWrapper> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ الحصول على حشوة النظام السفلية (ارتفاع شريط التنقل الخاص بالهاتف)
+    final double bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
       ),
-      // ✅ Custom Bottom Navigation (تصميم مخصص يطابق التصميم الأصلي)
+      // ✅ تعديل البار السفلي لدعم Safe Area
       bottomNavigationBar: Container(
-        height: 80, // ارتفاع الشريط
+        // ❌ تم حذف height: 80 الثابت من هنا ليصبح الارتفاع ديناميكياً
         decoration: BoxDecoration(
-          color: AppColors.backgroundSecondary.withOpacity(0.9), // لون خلفية نصف شفاف
+          color: AppColors.backgroundSecondary.withOpacity(0.9), 
           border: const Border(
-            top: BorderSide(color: Colors.white10), // خط فاصل علوي خفيف
+            top: BorderSide(color: Colors.white10), 
           ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(0, LucideIcons.home, "Home"),
-            _buildNavItem(1, LucideIcons.bookOpen, "Courses"),
-            _buildNavItem(2, LucideIcons.download, "Downloads"), // أيقونة التحميلات
-            _buildNavItem(3, LucideIcons.user, "Profile"),
-          ],
+        // ✅ إضافة مسافة سفلية بمقدار ارتفاع أزرار النظام
+        padding: EdgeInsets.only(bottom: bottomPadding), 
+        
+        // ✅ استخدام SizedBox للحفاظ على ارتفاع تصميم البار (80) + المسافة السفلية
+        child: SizedBox(
+          height: 80, 
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(0, LucideIcons.home, "Home"),
+              _buildNavItem(1, LucideIcons.bookOpen, "Courses"),
+              _buildNavItem(2, LucideIcons.download, "Downloads"),
+              _buildNavItem(3, LucideIcons.user, "Profile"),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // ودجت بناء العنصر المخصص في الشريط السفلي
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _currentIndex == index;
     
@@ -68,11 +76,10 @@ class _MainWrapperState extends State<MainWrapper> {
       onTap: () => _onTabTapped(index),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 80, // عرض منطقة اللمس
+        width: 80, 
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // 1. المؤشر العلوي المضيء (يظهر فقط عند التحديد)
             if (isSelected)
               Positioned(
                 top: 0,
@@ -85,14 +92,13 @@ class _MainWrapperState extends State<MainWrapper> {
                     boxShadow: [
                       BoxShadow(
                         color: AppColors.accentYellow.withOpacity(0.5),
-                        blurRadius: 12, // تأثير التوهج (Glow)
+                        blurRadius: 12, 
                       )
                     ],
                   ),
                 ),
               ),
 
-            // 2. الأيقونة والنص
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -108,7 +114,7 @@ class _MainWrapperState extends State<MainWrapper> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5, // تباعد الأحرف المميز للتصميم
+                    letterSpacing: 1.5, 
                     color: isSelected 
                         ? AppColors.accentYellow 
                         : AppColors.textSecondary.withOpacity(0.6),
