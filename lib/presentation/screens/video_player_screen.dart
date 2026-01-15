@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; // أبقيت عليها لمنع انطفاء الشاشة أثناء المشاهدة فقط
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -41,13 +41,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String _errorMessage = "";
   bool _isInitialized = false;
   
-  // متغير لمنع تكرار عمليات الإغلاق
   bool _isDisposing = false;
   
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
 
+  // هيدر مخصص للمشغل الأول (السيرفر) فقط
   final Map<String, String> _nativeHeaders = {
     'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
   };
@@ -59,24 +59,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _initializePlayerScreen() async {
-    FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Sequence Started");
+    // ✅ 1. تسجيل مكثف للبيانات الواردة عند فتح الشاشة
+    FirebaseCrashlytics.instance.log("🎬 MediaKit: Init Started for '${widget.title}'");
+    FirebaseCrashlytics.instance.log("📦 Incoming Streams Data: ${widget.streams.toString()}");
+    
+    await FirebaseCrashlytics.instance.setCustomKey('video_title', widget.title);
+    await FirebaseCrashlytics.instance.setCustomKey('stream_count', widget.streams.length);
 
     try {
-      // 1. تفعيل وضع الغامرة (إخفاء الازرار والشريط العلوي)
+      // إعداد واجهة النظام
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-
-      // 2. إجبار الوضع الأفقي أثناء المشاهدة فقط
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
 
-      // تفعيل Wakelock لمنع الشاشة من الانطفاء أثناء الفيديو (راحة للمستخدم وليس حماية)
       await WakelockPlus.enable();
-
       await _startProxyServer();
 
-      _player = Player();
+      // إنشاء المشغل
+      _player = Player(
+        configuration: const PlayerConfiguration(
+          // logLevel: MPVLogLevel.warn, // فعل هذا أثناء التطوير لرؤية السجلات في الكونسول
+        ),
+      );
+      
       _controller = VideoController(
         _player,
         configuration: const VideoControllerConfiguration(
@@ -85,12 +92,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ),
       );
 
+      // ✅ 2. الاستماع لأخطاء المشغل (Dart Level)
       _player.stream.error.listen((error) {
+        String errorMsg = "🚨 MediaKit Critical Error: $error";
+        debugPrint(errorMsg);
+        
+        FirebaseCrashlytics.instance.log(errorMsg);
         FirebaseCrashlytics.instance.recordError(
           Exception(error), 
           StackTrace.current, 
-          reason: "🚨 MediaKit Stream Error"
+          reason: "MediaKit Player Stream Error",
+          fatal: false 
         );
+
         if (mounted) {
           setState(() {
             _isError = true;
@@ -99,8 +113,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       });
 
-      // تمت إزالة دالة الحماية _setupScreenProtection
-      
+      // ✅ 3. الاستماع لسجلات المحرك الداخلي (Native MPV Logs)
+      _player.stream.log.listen((log) {
+        // نسجل فقط التحذيرات والأخطاء لتجنب إغراق السيرفر
+        if (log.level == 'error' || log.level == 'warn' || log.level == 'fatal') {
+           FirebaseCrashlytics.instance.log("⚠️ Native Player Log [${log.level}]: ${log.prefix}: ${log.message}");
+        }
+      });
+
+      // مراقبة البفرينغ
+      _player.stream.buffering.listen((isBuffering) {
+        if (isBuffering) {
+           debugPrint("⏳ Buffering...");
+        }
+      });
+
       _loadUserData();
       _startWatermarkAnimation();
 
@@ -112,6 +139,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
 
     } catch (e, stack) {
+      FirebaseCrashlytics.instance.log("❌ Fatal Init Error: $e");
       FirebaseCrashlytics.instance.recordError(e, stack, reason: "Initialization Failed");
       if (mounted) {
         setState(() {
@@ -127,37 +155,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await _proxyService.start();
     } catch (e) {
       debugPrint("Proxy Error: $e");
+      FirebaseCrashlytics.instance.log("⚠️ Proxy Start Failed: $e");
     }
   }
 
-  // ✅ التعديل هنا: استعادة إعدادات النظام للوضع الطبيعي (يدعم الدوران)
   Future<void> _resetSystemChrome() async {
-    // استعادة شريط الحالة والأزرار السفلية
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
-    
-    // ✅ السماح بكل الاتجاهات ليعود التطبيق كما كان (يدعم الدوران التلقائي إذا كان مفعلاً في الهاتف)
     await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
   }
 
-  // دالة الخروج الآمن
   Future<void> _safeExit() async {
     if (_isDisposing) return;
     _isDisposing = true;
 
+    FirebaseCrashlytics.instance.log("👋 Player Closing Safe Exit");
+
     try {
       _watermarkTimer?.cancel();
-
       await _player.stop(); 
       await _player.dispose(); 
-      
       _proxyService.stop(); 
-
-      // استعادة واجهة النظام واتجاه الشاشة
       await _resetSystemChrome();
-
-      // إيقاف Wakelock
       await WakelockPlus.disable();
-
     } catch (e) {
       debugPrint("⚠️ Error during safe exit: $e");
     } finally {
@@ -203,6 +222,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _parseQualities() {
     if (widget.streams.isEmpty) {
+      FirebaseCrashlytics.instance.log("❌ Parse Qualities: Streams map is empty!");
       setState(() {
         _isError = true;
         _errorMessage = "No video sources available";
@@ -221,45 +241,95 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ? "480p" 
         : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
 
+    FirebaseCrashlytics.instance.log("✅ Quality Parsed. Selected: $_currentQuality from $_sortedQualities");
+
     if (_currentQuality.isNotEmpty) {
       _playVideo(widget.streams[_currentQuality]!);
     }
   }
 
+  // ✅ الدالة الأساسية لتشغيل الفيديو مع الدعم المزدوج (عادي + مدمج)
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
+    
+    FirebaseCrashlytics.instance.log("▶️ _playVideo Called. Quality: $_currentQuality");
+    
     try {
       String playUrl = url;
+      String? audioUrl; 
 
-      if (!url.startsWith('http')) {
+      // 1. تحليل الرابط (هل هو مدمج، منفصل، محلي؟)
+      if (url.contains('|')) {
+        // رابط قادم من youtube_explode (جودة عالية صوت منفصل)
+        final parts = url.split('|');
+        playUrl = parts[0];
+        if (parts.length > 1) {
+          audioUrl = parts[1];
+        }
+        FirebaseCrashlytics.instance.log("ℹ️ Type: Split Stream (YoutubeExplode). Audio track found.");
+      } 
+      else if (!url.startsWith('http')) {
+        // ملف محلي
         final file = File(url);
-        if (!await file.exists()) throw Exception("Offline file missing");
+        if (!await file.exists()) {
+           FirebaseCrashlytics.instance.log("❌ Error: Local file not found at $url");
+           throw Exception("Offline file missing");
+        }
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
+        FirebaseCrashlytics.instance.log("ℹ️ Type: Local File (Proxy active)");
+      } else {
+        FirebaseCrashlytics.instance.log("ℹ️ Type: Standard Stream");
       }
       
+      // تسجيل الرابط الفعلي (للتتبع فقط)
+      await FirebaseCrashlytics.instance.setCustomKey('active_url', playUrl);
+
       await _player.stop();
       
-      await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
+      // 2. إدارة الهيدرز (حسب المصدر)
+      // إذا كان من جوجل فيديو أو معه صوت منفصل (يوتيوب) نزيل الهيدر، وإلا نستخدم الهيدر الخاص بالسيرفر
+      final headers = (playUrl.contains('googlevideo.com') || audioUrl != null)
+          ? <String, String>{} 
+          : _nativeHeaders;    
       
+      FirebaseCrashlytics.instance.log("ℹ️ Headers Used: ${headers.keys.toList()}");
+
+      // 3. فتح الفيديو
+      await _player.open(
+        Media(playUrl, httpHeaders: headers), 
+        play: false
+      );
+
+      // 4. دمج الصوت (إذا وجد للمشغل الثالث)
+      if (audioUrl != null) {
+        FirebaseCrashlytics.instance.log("➕ Adding separate audio track...");
+        await _player.setAudioTrack(AudioTrack.uri(audioUrl));
+      }
+      
+      // 5. Seek (استعادة الموضع)
       if (startAt != null && startAt != Duration.zero) {
+        FirebaseCrashlytics.instance.log("⏩ Seeking to: $startAt");
         int retries = 0;
         while (_player.state.duration == Duration.zero && retries < 40) {
           if (_isDisposing) return;
           await Future.delayed(const Duration(milliseconds: 100));
           retries++;
         }
-        
         await _player.seek(startAt);
       }
 
+      // 6. السرعة
       if (_currentSpeed != 1.0) {
         await _player.setRate(_currentSpeed);
       }
 
       await _player.play();
+      FirebaseCrashlytics.instance.log("✅ Play command sent successfully");
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Play Failed');
+      FirebaseCrashlytics.instance.log("❌ _playVideo Exception: $e");
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Play Video Function Failed');
+      
       if (mounted && !_isDisposing) {
         setState(() {
           _isError = true;
@@ -456,10 +526,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   children: [
                     const Icon(Icons.error_outline, color: AppColors.error, size: 48),
                     const SizedBox(height: 16),
-                    Text(_errorMessage, style: const TextStyle(color: Colors.white)),
+                    Text(_errorMessage, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: () {
+                          FirebaseCrashlytics.instance.log("🔄 User clicked Retry");
                           setState(() => _isError = false);
                           _playVideo(widget.streams[_currentQuality]!);
                       }, 
