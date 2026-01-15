@@ -101,7 +101,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-video-id',
-        queryParameters: {'lessonId': video['id'].toString()},
+        // ✅ تعديل هنا: تحديد الوضع stream
+        queryParameters: {
+          'lessonId': video['id'].toString(),
+          'mode': 'stream', 
+        },
         options: Options(headers: {
           'x-user-id': box.get('user_id'),
           'x-device-id': box.get('device_id'),
@@ -143,6 +147,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
             }
           }
 
+          // إذا لم نجد قائمة، وفّر لنا البروكسي رابطاً واحداً (وهذا هو المتوقع الآن في وضع الستريم)
           if (qualities.isEmpty && data['url'] != null) {
             qualities["Auto"] = data['url'];
           }
@@ -190,7 +195,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-video-id',
-        queryParameters: {'lessonId': videoId},
+        // ✅ تعديل هنا: تحديد الوضع download
+        queryParameters: {
+          'lessonId': videoId,
+          'mode': 'download',
+        },
         options: Options(headers: {
           'x-user-id': box.get('user_id'),
           'x-device-id': box.get('device_id'),
