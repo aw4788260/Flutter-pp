@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // أبقيت عليها لمنع انطفاء الشاشة أثناء المشاهدة فقط
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -33,20 +33,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   final LocalProxyService _proxyService = LocalProxyService();
 
-  // --- Legacy / Manual Stream Switching Variables (للوضع القديم) ---
   String _currentQuality = "";
   List<String> _sortedQualities = [];
-  
-  // --- Native HLS Track Switching Variables (للوضع الجديد) ---
-  List<VideoTrack> _videoTracks = [];
-  VideoTrack _selectedVideoTrack = VideoTrack.auto();
-
   double _currentSpeed = 1.0;
 
   bool _isError = false;
   String _errorMessage = "";
   bool _isInitialized = false;
   
+  // متغير لمنع تكرار عمليات الإغلاق
   bool _isDisposing = false;
   
   Timer? _watermarkTimer;
@@ -67,18 +62,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     FirebaseCrashlytics.instance.log("🎬 MediaKit Player: Init Sequence Started");
 
     try {
-      // 1. إعدادات الشاشة والنظام
+      // 1. تفعيل وضع الغامرة (إخفاء الازرار والشريط العلوي)
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+      // 2. إجبار الوضع الأفقي أثناء المشاهدة فقط
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
+
+      // تفعيل Wakelock لمنع الشاشة من الانطفاء أثناء الفيديو (راحة للمستخدم وليس حماية)
       await WakelockPlus.enable();
 
-      // 2. تشغيل البروكسي المحلي (للملفات المحملة)
       await _startProxyServer();
 
-      // 3. تهيئة المشغل
       _player = Player();
       _controller = VideoController(
         _player,
@@ -88,7 +85,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ),
       );
 
-      // مراقبة الأخطاء
       _player.stream.error.listen((error) {
         FirebaseCrashlytics.instance.recordError(
           Exception(error), 
@@ -103,24 +99,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       });
 
-      // ✅ استماع للمسارات (Tracks) لدعم الجودات المتعددة في رابط واحد (HLS)
-      _player.stream.tracks.listen((tracks) {
-        if (mounted) {
-          setState(() {
-            _videoTracks = tracks.video;
-          });
-        }
-      });
-
-      // ✅ استماع للمسار المختار حالياً لتحديث الواجهة
-      _player.stream.track.listen((track) {
-        if (mounted) {
-          setState(() {
-            _selectedVideoTrack = track.video;
-          });
-        }
-      });
-
+      // تمت إزالة دالة الحماية _setupScreenProtection
+      
       _loadUserData();
       _startWatermarkAnimation();
 
@@ -128,7 +108,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         setState(() {
           _isInitialized = true;
         });
-        _parseQualitiesAndPlay();
+        _parseQualities();
       }
 
     } catch (e, stack) {
@@ -150,22 +130,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  // ✅ التعديل هنا: استعادة إعدادات النظام للوضع الطبيعي (يدعم الدوران)
   Future<void> _resetSystemChrome() async {
+    // استعادة شريط الحالة والأزرار السفلية
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
+    
+    // ✅ السماح بكل الاتجاهات ليعود التطبيق كما كان (يدعم الدوران التلقائي إذا كان مفعلاً في الهاتف)
     await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
   }
 
+  // دالة الخروج الآمن
   Future<void> _safeExit() async {
     if (_isDisposing) return;
     _isDisposing = true;
 
     try {
       _watermarkTimer?.cancel();
+
       await _player.stop(); 
       await _player.dispose(); 
+      
       _proxyService.stop(); 
+
+      // استعادة واجهة النظام واتجاه الشاشة
       await _resetSystemChrome();
+
+      // إيقاف Wakelock
       await WakelockPlus.disable();
+
     } catch (e) {
       debugPrint("⚠️ Error during safe exit: $e");
     } finally {
@@ -209,7 +201,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  void _parseQualitiesAndPlay() {
+  void _parseQualities() {
     if (widget.streams.isEmpty) {
       setState(() {
         _isError = true;
@@ -218,7 +210,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return;
     }
 
-    // المنطق القديم: ترتيب الروابط اليدوية (للاستخدام كاحتياطي)
     _sortedQualities = widget.streams.keys.toList();
     _sortedQualities.sort((a, b) {
       int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
@@ -226,8 +217,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return valA.compareTo(valB);
     });
 
-    // نختار الجودة الافتراضية للبدء
-    // إذا كان الرابط ماستر (مثل "Auto")، فهذا هو المطلوب.
     _currentQuality = _sortedQualities.contains("480p") 
         ? "480p" 
         : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
@@ -248,19 +237,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
       }
       
-      // إيقاف السابق وفتح الجديد
-      // ✅ ملاحظة: عند استخدام HLS Master، لن نحتاج لاستدعاء هذه الدالة مرة أخرى لتغيير الجودة
       await _player.stop();
+      
       await _player.open(Media(playUrl, httpHeaders: _nativeHeaders), play: false);
       
       if (startAt != null && startAt != Duration.zero) {
-        // محاولة القفز للتوقيت (مع انتظار تحميل الميتا داتا)
         int retries = 0;
         while (_player.state.duration == Duration.zero && retries < 40) {
           if (_isDisposing) return;
           await Future.delayed(const Duration(milliseconds: 100));
           retries++;
         }
+        
         await _player.seek(startAt);
       }
 
@@ -288,26 +276,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     } catch (e) {/*ignore*/}
   }
 
-  // دالة مساعدة للحصول على اسم الجودة من المسار
-  String _getVideoTrackName(VideoTrack track) {
-    if (track == VideoTrack.auto()) return "Auto";
-    if (track == VideoTrack.no()) return "None";
-    if (track.h != null && track.h! > 0) return "${track.h}p";
-    if (track.w != null && track.w! > 0) return "${track.w}p";
-    return track.title ?? "Unknown";
-  }
-
   void _showSettingsSheet() {
-    // تحديد النص المعروض للجودة
-    String qualityText = _currentQuality;
-    
-    // إذا كان لدينا مسارات HLS حقيقية، نعرض اسم المسار المختار من المشغل
-    // نعتبر أن المسارات حقيقية إذا كان هناك أكثر من مجرد auto/no
-    bool hasNativeTracks = _videoTracks.any((t) => t.w != null && t.h != null);
-    if (hasNativeTracks) {
-        qualityText = _getVideoTrackName(_selectedVideoTrack);
-    }
-
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -324,7 +293,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             
             ListTile(
               leading: const Icon(LucideIcons.monitor, color: Colors.white),
-              title: Text("Quality: $qualityText", style: const TextStyle(color: Colors.white)),
+              title: Text("Quality: $_currentQuality", style: const TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(ctx);
                 _showQualitySelection();
@@ -346,53 +315,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _showQualitySelection() {
-    // 1. تصفية المسارات الصالحة (نستبعد 'no' ونرتب الباقي)
-    final meaningfulTracks = _videoTracks.where((t) => t != VideoTrack.no()).toList();
-    
-    // ترتيب: Auto أولاً، ثم الجودات من الأعلى للأسفل
-    meaningfulTracks.sort((a, b) {
-       if (a == VideoTrack.auto()) return -1;
-       if (b == VideoTrack.auto()) return 1;
-       return (b.h ?? 0).compareTo(a.h ?? 0);
-    });
-
-    // هل نستخدم نظام المسارات الذكي (HLS) أم الروابط اليدوية؟
-    // نستخدم HLS إذا كان لدينا مسارات متعددة (أكثر من مجرد Auto)
-    bool useNativeTracks = meaningfulTracks.length > 1;
-
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
       builder: (ctx) => SafeArea(
         child: ListView(
           shrinkWrap: true,
-          children: useNativeTracks 
-          ? // --- خيارات HLS Native (الحل الجديد) ---
-            meaningfulTracks.map((track) {
-              final name = _getVideoTrackName(track);
-              final isSelected = _selectedVideoTrack == track;
-              return ListTile(
-                title: Text(name, style: TextStyle(color: isSelected ? AppColors.accentYellow : Colors.white)),
-                trailing: isSelected ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _player.setVideoTrack(track); // ✅ تغيير الجودة فورياً بدون إعادة تحميل
-                },
-              );
-            }).toList()
-          : // --- خيارات الروابط اليدوية (الحل القديم/الاحتياطي) ---
-            _sortedQualities.reversed.map((q) => ListTile(
-              title: Text(q, style: TextStyle(color: q == _currentQuality ? AppColors.accentYellow : Colors.white)),
-              trailing: q == _currentQuality ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
-              onTap: () {
-                Navigator.pop(ctx);
-                if (q != _currentQuality) {
-                  final currentPos = _player.state.position;
-                  setState(() { _currentQuality = q; _isError = false; });
-                  _playVideo(widget.streams[q]!, startAt: currentPos); // ⚠️ إعادة تحميل
-                }
-              },
-            )).toList(),
+          children: _sortedQualities.reversed.map((q) => ListTile(
+            title: Text(q, style: TextStyle(color: q == _currentQuality ? AppColors.accentYellow : Colors.white)),
+            trailing: q == _currentQuality ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
+            onTap: () {
+              Navigator.pop(ctx);
+              if (q != _currentQuality) {
+                final currentPos = _player.state.position;
+                setState(() { _currentQuality = q; _isError = false; });
+                _playVideo(widget.streams[q]!, startAt: currentPos);
+              }
+            },
+          )).toList(),
         ),
       ),
     );
@@ -521,7 +461,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ElevatedButton(
                       onPressed: () {
                           setState(() => _isError = false);
-                          // إعادة المحاولة بالرابط الحالي
                           _playVideo(widget.streams[_currentQuality]!);
                       }, 
                       style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
