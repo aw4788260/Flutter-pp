@@ -5,21 +5,21 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/download_manager.dart';
+import '../../core/services/youtube_service.dart'; // ✅ 1. استيراد خدمة اليوتيوب الجديدة
 import 'video_player_screen.dart';
 import 'youtube_player_screen.dart';
 import 'pdf_viewer_screen.dart';
 
 class ChapterContentsScreen extends StatefulWidget {
   final Map<String, dynamic> chapter;
-  // ✅ 1. إضافة المتغيرات لاستقبال الهيكل الشجري
   final String courseTitle;
   final String subjectTitle;
 
   const ChapterContentsScreen({
     super.key, 
     required this.chapter,
-    required this.courseTitle,  // ✅ مطلوب
-    required this.subjectTitle, // ✅ مطلوب
+    required this.courseTitle,
+    required this.subjectTitle,
   });
 
   @override
@@ -58,11 +58,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
               const SizedBox(height: 24),
               
-              // خيار المشغل الداخلي
+              // الخيار الأول: المشغل الداخلي (API)
               _buildOptionTile(
                 icon: LucideIcons.playCircle,
-                title: "First player",
-                subtitle: "Best for multi-quality streaming",
+                title: "Server Player",
+                subtitle: "Official stream (Standard)",
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayVideo(video, useYoutube: false);
@@ -71,14 +71,27 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               
               const SizedBox(height: 16),
 
-              // خيار مشغل يوتيوب
+              // الخيار الثاني: مشغل يوتيوب (Webview/Native)
               _buildOptionTile(
                 icon: LucideIcons.youtube,
-                title: "Second player",
-                subtitle: "Best for auto quality selection",
+                title: "YouTube Player",
+                subtitle: "Standard YouTube experience",
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayVideo(video, useYoutube: true);
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // ✅ الخيار الثالث: المشغل المباشر (YoutubeExplode)
+              _buildOptionTile(
+                icon: LucideIcons.rocket, // أيقونة مميزة
+                title: "Direct Stream (High Quality)",
+                subtitle: "Best for 1080p+ & unstable net",
+                onTap: () {
+                  Navigator.pop(context);
+                  _fetchAndPlayWithExplode(video); // استدعاء الدالة الجديدة
                 },
               ),
             ],
@@ -88,8 +101,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
+  // الدالة القديمة (للخيارين الأول والثاني)
   Future<void> _fetchAndPlayVideo(Map<String, dynamic> video, {required bool useYoutube}) async {
-    // إظهار مؤشر التحميل
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -109,16 +122,14 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         }),
       );
 
-      if (mounted) Navigator.pop(context); // إغلاق التحميل
+      if (mounted) Navigator.pop(context);
 
       if (res.statusCode == 200) {
         final data = res.data;
         final String videoTitle = data['db_video_title'] ?? video['title'];
 
         if (useYoutube) {
-          // --- تشغيل يوتيوب ---
           String? youtubeId = data['youtube_video_id'];
-          
           if (youtubeId != null && youtubeId.isNotEmpty) {
             Navigator.push(
               context,
@@ -130,11 +141,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
             FirebaseCrashlytics.instance.log("YouTube ID missing for lesson: ${video['id']}");
             _showErrorSnackBar("Not a YouTube video or ID missing.");
           }
-
         } else {
-          // --- تشغيل داخلي ---
           Map<String, String> qualities = {};
-          
           if (data['availableQualities'] != null) {
             for (var q in data['availableQualities']) {
               if (q['url'] != null) {
@@ -142,7 +150,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               }
             }
           }
-
           if (qualities.isEmpty && data['url'] != null) {
             qualities["Auto"] = data['url'];
           }
@@ -160,11 +167,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           }
         }
       } else {
-        FirebaseCrashlytics.instance.recordError(
-          Exception("API Error ${res.statusCode}: ${res.data}"), 
-          null, 
-          reason: 'Fetch Video Failed'
-        );
         _showErrorSnackBar(res.data['message'] ?? "Access Denied");
       }
     } catch (e, stack) {
@@ -174,8 +176,83 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
+  // ✅ الدالة الجديدة للخيار الثالث (YoutubeExplode)
+  Future<void> _fetchAndPlayWithExplode(Map<String, dynamic> video) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+    );
+
+    final ytService = YoutubeService();
+
+    try {
+      // 1. جلب الـ ID من السيرفر أولاً
+      var box = await Hive.openBox('auth_box');
+      final res = await Dio().get(
+        '$_baseUrl/api/secure/get-video-id',
+        queryParameters: {'lessonId': video['id'].toString()},
+        options: Options(headers: {
+          'x-user-id': box.get('user_id'),
+          'x-device-id': box.get('device_id'),
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
+      );
+
+      if (res.statusCode == 200) {
+        final data = res.data;
+        String? youtubeId = data['youtube_video_id']; 
+        String videoTitle = data['db_video_title'] ?? video['title'];
+
+        // محاولة استخراج الـ ID من الرابط إذا لم يكن موجوداً بشكل مباشر
+        if (youtubeId == null || youtubeId.isEmpty) {
+           if (data['url'] != null) {
+              youtubeId = ytService.extractVideoId(data['url']);
+           }
+        }
+
+        if (youtubeId != null) {
+          // 2. استخدام الخدمة لجلب الروابط (بما في ذلك Muxed و Video+Audio المدمج)
+          final qualities = await ytService.getVideoQualities(youtubeId);
+
+          if (mounted) {
+            Navigator.pop(context); // إخفاء التحميل
+            
+            if (qualities.isNotEmpty) {
+              // الانتقال للمشغل مع الروابط المستخرجة
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => VideoPlayerScreen(
+                    streams: qualities, 
+                    title: videoTitle,
+                  ),
+                ),
+              );
+            } else {
+              _showErrorSnackBar("No playable streams found via Explode.");
+            }
+          }
+        } else {
+          if (mounted) Navigator.pop(context);
+          _showErrorSnackBar("Youtube ID not found.");
+        }
+      } else {
+        if (mounted) Navigator.pop(context);
+        _showErrorSnackBar("Failed to get video info from server.");
+      }
+    } catch (e, stack) {
+      if (mounted) Navigator.pop(context);
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: "Explode Stream Error");
+      debugPrint("Explode Error: $e");
+      _showErrorSnackBar("Error extracting links. Try other players.");
+    } finally {
+      ytService.dispose();
+    }
+  }
+
   // ===========================================================================
-  // 2. منطق التحميل (Download Logic) واختيار الجودة
+  // 2. منطق التحميل (Download Logic)
   // ===========================================================================
 
   Future<void> _prepareVideoDownload(String videoId, String videoTitle, String duration) async {
@@ -209,16 +286,13 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         } else if (data['url'] != null) {
           _startVideoDownload(videoId, videoTitle, data['url'], "Auto", duration);
         } else {
-          FirebaseCrashlytics.instance.log("No download links for lesson: $videoId");
           _showErrorSnackBar("No download links available");
         }
       } else {
-        FirebaseCrashlytics.instance.log("Prepare download API returned: ${res.statusCode}");
         _showErrorSnackBar("Server Error: ${res.statusCode}");
       }
-    } catch (e, stack) {
+    } catch (e) {
       if (mounted) Navigator.pop(context);
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Prepare Download Failed: $videoId');
       _showErrorSnackBar("Failed to fetch download info");
     }
   }
@@ -273,11 +347,9 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     DownloadManager().startDownload(
       lessonId: videoId,
       videoTitle: videoTitle,
-      // ✅ 2. استخدام الأسماء الصحيحة الممررة للـ Widget
       courseName: widget.courseTitle,
       subjectName: widget.subjectTitle,
       chapterName: widget.chapter['title'] ?? "Chapter",
-      // ----------------------------------------------------
       downloadUrl: downloadUrl,
       quality: quality,   
       duration: duration, 
@@ -297,11 +369,9 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
      DownloadManager().startDownload(
       lessonId: pdfId, 
       videoTitle: pdfTitle, 
-      // ✅ 3. استخدام الأسماء الصحيحة للـ PDF أيضاً
       courseName: widget.courseTitle, 
       subjectName: widget.subjectTitle,
       chapterName: widget.chapter['title'] ?? "Chapter",
-      // ----------------------------------------------------
       isPdf: true,
       onProgress: (p) {},
       onComplete: () {
@@ -366,7 +436,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                 maxLines: 1,
                               ),
                               const SizedBox(height: 4),
-                              // ✅ إضافة عرض المسار تحت العنوان (اختياري لتحسين التجربة)
                               Text(
                                 "${widget.courseTitle} > ${widget.subjectTitle}",
                                 style: TextStyle(
@@ -456,7 +525,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       itemBuilder: (context, index) {
         final video = videos[index];
         final String videoId = video['id'].toString();
-        // ✅ استخراج مدة الفيديو من الكائن
         final String duration = video['duration'] ?? "--:--"; 
         
         return Container(
@@ -493,7 +561,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
-                          // ✅ 4. استبدال كلمة SESSION بـ VIDEO
                           Text(
                             "VIDEO", 
                             style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.7)),
@@ -528,7 +595,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         else return _buildActionButton(
                           "Download", 
                           AppColors.textSecondary, 
-                          // ✅ تمرير المدة
                           () => _prepareVideoDownload(videoId, video['title'], duration)
                         );
                       },
