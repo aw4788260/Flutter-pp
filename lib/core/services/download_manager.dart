@@ -136,11 +136,7 @@ class DownloadManager {
         } else {
           final res = await _dio.get(
             '$_baseUrl/api/secure/get-video-id',
-            // ✅ التعديل هنا: إضافة mode: 'download'
-            queryParameters: {
-              'lessonId': lessonId,
-              'mode': 'download', 
-            },
+            queryParameters: {'lessonId': lessonId},
             options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret}, validateStatus: (s) => s! < 500),
           );
           if (res.statusCode != 200) throw Exception(res.data['message'] ?? "Failed to get info");
