@@ -117,7 +117,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _player.stream.log.listen((log) {
         // نسجل فقط التحذيرات والأخطاء لتجنب إغراق السيرفر
         if (log.level == 'error' || log.level == 'warn' || log.level == 'fatal') {
-           FirebaseCrashlytics.instance.log("⚠️ Native Player Log [${log.level}]: ${log.prefix}: ${log.message}");
+           // 🛠️ تم التصحيح: استخدام log.text بدلاً من log.message
+           FirebaseCrashlytics.instance.log("⚠️ Native Player Log [${log.level}]: ${log.prefix}: ${log.text}");
         }
       });
 
@@ -287,7 +288,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await _player.stop();
       
       // 2. إدارة الهيدرز (حسب المصدر)
-      // إذا كان من جوجل فيديو أو معه صوت منفصل (يوتيوب) نزيل الهيدر، وإلا نستخدم الهيدر الخاص بالسيرفر
       final headers = (playUrl.contains('googlevideo.com') || audioUrl != null)
           ? <String, String>{} 
           : _nativeHeaders;    
