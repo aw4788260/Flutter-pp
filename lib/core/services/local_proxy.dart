@@ -181,8 +181,7 @@ class LocalProxyService {
           outputBlock = EncryptionHelper.decryptBlock(encryptedBlock);
         } catch (e) {
            print("❌ Decryption ERROR at chunk $i: $e");
-           // ✅ 2. في حالة فشل فك التشفير، نرسل كتلة فارغة (أصفار) للحفاظ على التدفق
-           // هذا يمنع انقطاع الصوت إذا كان الملف تالفاً جزئياً
+           // ✅ 2. في حالة فشل فك التشفير لكتلة واحدة، نرسل كتلة فارغة (أصفار) للحفاظ على التدفق
            int expectedSize = (bytesToRead == encChunkSize) 
                ? plainChunkSize 
                : max(0, bytesToRead - ivLen - tagLen);
@@ -206,13 +205,21 @@ class LocalProxyService {
        print("Stream Critical Error: $e");
        FirebaseCrashlytics.instance.recordError(e, s, reason: 'Stream Critical Error');
     } finally {
-      // ✅✅ 3. الإصلاح الجذري (Safety Net Padding):
-      // إذا انتهت الحلقة لأي سبب (بطء، خطأ قراءة) ولم نرسل الحجم الكامل المطلوب
-      // نقوم بإرسال أصفار لتكملة الملف. هذا يمنع خطأ "Can not open external file"
+      // ✅✅ 3. المنطق الذكي للفجوات (Smart Gap Handling)
+      // هذا الجزء هو الحل الحقيقي لمشكلتك
       if (totalSent < requiredLength) {
           int missingBytes = requiredLength - totalSent;
-          print("⚠️ Filling Gap: Sending $missingBytes padding bytes to keep stream alive.");
-          yield Uint8List(missingBytes);
+          
+          // إذا كانت الفجوة صغيرة (أقل من نصف ميجا)، نملؤها بأصفار لتجنب التقطيع البسيط
+          if (missingBytes < 512 * 1024) {
+             print("⚠️ Small Gap ($missingBytes bytes): Filling with zeros to prevent glitch.");
+             yield Uint8List(missingBytes);
+          } else {
+             // إذا كانت الفجوة كبيرة (مثل 85 ميجا)، نغلق الاتصال فوراً.
+             // هذا يجعل المشغل (Player) يفهم أن الاتصال انقطع، فيقوم تلقائياً
+             // بعمل Retry ويطلب الجزء المتبقي بشكل صحيح بدلاً من تشغيل صمت/سواد.
+             print("🛑 Large Gap ($missingBytes bytes): Closing stream to trigger Player Retry.");
+          }
       }
       
       await raf?.close();
