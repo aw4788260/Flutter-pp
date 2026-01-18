@@ -23,27 +23,30 @@ class LocalProxyService {
 
   Future<void> start() async {
     _usageCount++; 
+    
+    // إذا كان السيرفر يعمل بالفعل، لا داعي لإعادة تشغيله
     if (_server != null) return;
 
     try {
+      // التأكد من تهيئة مفاتيح التشفير
       await EncryptionHelper.init();
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Encryption Init Failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Encryption Init Failed', fatal: true);
       return;
     }
 
     final router = Router();
+    // دعم طلبات HEAD (للتحقق من الحجم) و GET (للتحميل)
     router.head('/video', _handleRequest);
     router.get('/video', _handleRequest);
 
     try {
-      // ✅ 1. استخدام AnyIPv4 لحل مشاكل الاتصال في أندرويد
-      // ✅ 2. shared: true يحسن الأداء عند تعدد الطلبات (صوت + صورة)
+      // ✅ 1. الربط بـ AnyIPv4 (0.0.0.0) لحل مشاكل رفض الاتصال في أندرويد
+      // ✅ 2. shared: true يحسن الأداء عند تعدد الطلبات المتزامنة (صوت + فيديو)
       _server = await shelf_io.serve(router, InternetAddress.anyIPv4, port, shared: true);
       
-      _server?.autoCompress = false; 
-      // ✅ 3. تعطيل مهلة الانتظار لمنع قطع الاتصال أثناء التخزين المؤقت
-      _server?.idleTimeout = null; 
+      _server?.autoCompress = false; // تعطيل الضغط لتسريع البث
+      _server?.idleTimeout = null;   // منع السيرفر من إغلاق الاتصال عند الإيقاف المؤقت
       
       FirebaseCrashlytics.instance.log('🔒 Proxy Started on ${_server!.address.host}:${_server!.port}');
     } catch (e, stack) {
@@ -56,6 +59,7 @@ class LocalProxyService {
     if (_usageCount <= 0) {
         _usageCount = 0;
         if (_server != null) {
+            FirebaseCrashlytics.instance.log('🛑 Proxy Stopped');
             _server?.close(force: true);
             _server = null;
         }
@@ -71,23 +75,29 @@ class LocalProxyService {
       final file = File(decodedPath);
       
       if (!await file.exists()) {
+        FirebaseCrashlytics.instance.log("❌ File not found: $decodedPath");
         return Response.notFound('File not found');
       }
 
-      // ✅ 4. استخدام octet-stream هو الأكثر أماناً مع التشفير لتجنب خطأ MediaCodec
+      // ✅ استخدام octet-stream هو الخيار الأكثر أماناً للملفات المشفرة
+      // يجبر المشغل على فحص الترويسة الحقيقية بعد فك التشفير
       String contentType = 'application/octet-stream'; 
       if (decodedPath.toLowerCase().contains('.pdf')) contentType = 'application/pdf';
 
       final encryptedLength = await file.length();
+      
+      // ✅ استدعاء ثوابت التشفير لضمان التوافق التام مع طريقة الكتابة
       final int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
       final int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       final int overhead = encChunkSize - plainChunkSize; 
 
+      // حساب الحجم الأصلي (مفكوك التشفير) بناءً على عدد الكتل
       final int totalChunks = (encryptedLength / encChunkSize).ceil();
       if (totalChunks == 0) return Response.ok('');
 
       final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + max(0, (encryptedLength - ((totalChunks - 1) * encChunkSize)) - overhead);
 
+      // معالجة طلب النطاق (Range Request)
       final rangeHeader = request.headers['range'];
       int start = 0;
       int end = originalFileSize - 1;
@@ -104,6 +114,7 @@ class LocalProxyService {
       
       final contentLength = end - start + 1;
 
+      // الرد على طلب HEAD بالبيانات الوصفية فقط
       if (request.method == 'HEAD') {
         return Response.ok(null, headers: {
             'Content-Type': contentType,
@@ -112,6 +123,7 @@ class LocalProxyService {
         });
       }
 
+      // ✅ بدء البث مع هيدرز محسنة
       return Response(
         206, 
         body: _createDecryptedStream(file, start, end),
@@ -121,8 +133,8 @@ class LocalProxyService {
           'Content-Range': 'bytes $start-$end/$originalFileSize',
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache', // منع التخزين المؤقت المزدوج
+          'Connection': 'keep-alive',  // الحفاظ على الاتصال مفتوحاً
         },
       );
 
@@ -137,30 +149,35 @@ class LocalProxyService {
     try {
       raf = await file.open(mode: FileMode.read);
       
+      // ✅ استخدام نفس أحجام الكتل المستخدمة في التشفير
       const int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       const int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
 
+      // تحديد أي كتلة مشفرة تحتوي على البايت المطلوب
       int startChunkIndex = reqStart ~/ plainChunkSize;
       int endChunkIndex = reqEnd ~/ plainChunkSize;
       final fileLen = await file.length();
 
       for (int i = startChunkIndex; i <= endChunkIndex; i++) {
+        // حساب موقع القراءة في الملف المشفر
         int seekPos = i * encChunkSize;
         if (seekPos >= fileLen) break;
 
         await raf.setPosition(seekPos);
         
-        // قراءة حجم الكتلة بالضبط
+        // قراءة كتلة كاملة (أو ما تبقى في نهاية الملف)
         int bytesToRead = min(encChunkSize, fileLen - seekPos);
         
+        // حماية من القراءة الصفرية
         if (bytesToRead <= EncryptionHelper.IV_LENGTH) break;
 
         Uint8List encryptedBlock = await raf.read(bytesToRead);
         
         try {
-          // ✅ 5. فك التشفير وإرسال البيانات
+          // ✅ عملية فك التشفير للكتلة الحالية
           Uint8List decryptedBlock = EncryptionHelper.decryptBlock(encryptedBlock);
 
+          // حساب الجزء المطلوب من الكتلة المفكوكة (لأن الطلب قد يكون لجزء من المنتصف)
           int blockStartInPlain = i * plainChunkSize;
           int sliceStart = max(0, reqStart - blockStartInPlain);
           int sliceEnd = min(decryptedBlock.length, reqEnd - blockStartInPlain + 1);
@@ -170,13 +187,14 @@ class LocalProxyService {
           }
         } catch (e) {
            print("⚠️ Decryption Skip at chunk $i: $e");
-           // ✅ 6. في حال فشل تشفير كتلة واحدة، نتجاوزها بدلاً من إيقاف الفيديو بالكامل
-           // هذا يمنع Crashlytics Fatal Exception ويجعل الفيديو يكمل مع "قفزة" بسيطة
+           // ✅ في حال فشل كتلة واحدة، نتجاوزها ونكمل للكتلة التالية
+           // هذا يمنع توقف الفيديو بالكامل ويسمح بتجاوز الأجزاء التالفة
            continue; 
         }
       }
     } catch(e) {
        print("Stream Error: $e");
+       // لا نرمي الخطأ لكي لا ينهار السيرفر، بل ننهي الستريم بهدوء
     } finally {
       await raf?.close();
     }
