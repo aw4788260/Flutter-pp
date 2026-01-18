@@ -18,12 +18,16 @@ class DownloadManager {
   DownloadManager._internal();
 
   static final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 60), // تقليل المهلة لاكتشاف انقطاع النت أسرع
+    connectTimeout: const Duration(seconds: 60),
     receiveTimeout: const Duration(seconds: 60),
     sendTimeout: const Duration(seconds: 60),
   ));
 
   static final Set<String> _activeDownloads = {};
+  
+  // ✅ خريطة لتخزين عناوين الدروس الجاري تحميلها لعرضها في الواجهة
+  final Map<String, String> activeTitles = {}; 
+
   // ✅ خريطة لتخزين توكن الإلغاء لكل درس
   static final Map<String, CancelToken> _cancelTokens = {}; 
   
@@ -63,7 +67,7 @@ class DownloadManager {
         : "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
   }
 
-  // ✅ دالة إلغاء التحميل (جديدة)
+  // ✅ دالة إلغاء التحميل
   Future<void> cancelDownload(String lessonId) async {
     // 1. إلغاء الطلب من الشبكة
     if (_cancelTokens.containsKey(lessonId)) {
@@ -77,6 +81,7 @@ class DownloadManager {
     
     // 2. تنظيف القوائم
     _activeDownloads.remove(lessonId);
+    activeTitles.remove(lessonId); // إزالة العنوان
     
     var prog = Map<String, double>.from(downloadingProgress.value);
     prog.remove(lessonId);
@@ -100,7 +105,7 @@ class DownloadManager {
     _keepAliveTimer?.cancel();
     _keepAliveTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_activeDownloads.isEmpty) {
-         _stopBackgroundService(); // ✅ إيقاف تلقائي إذا لم يكن هناك تحميلات
+         _stopBackgroundService(); 
          return;
       }
       service.invoke('keepAlive');
@@ -119,11 +124,8 @@ class DownloadManager {
 
   void _stopBackgroundService() async {
     _keepAliveTimer?.cancel();
-    
-    // ✅ التأكد من إلغاء الإشعار العام للخدمة
     try { await NotificationService().cancelNotification(888); } catch (e) {}
 
-    // ✅ إيقاف خدمة الخلفية نفسها
     final service = FlutterBackgroundService();
     if (await service.isRunning()) {
        service.invoke('stopService');
@@ -149,9 +151,10 @@ class DownloadManager {
     String quality = "SD",
     String duration = "", 
   }) async {
-    // ✅ إنشاء CancelToken جديد لهذا التحميل
+    // ✅ 1. التجهيزات الأولية (Tokens, Titles, Service)
     final CancelToken cancelToken = CancelToken();
     _cancelTokens[lessonId] = cancelToken;
+    activeTitles[lessonId] = videoTitle; // تخزين الاسم للعرض
 
     FirebaseCrashlytics.instance.log("⬇️ Download Started: $videoTitle (PDF: $isPdf)");
     _activeDownloads.add(lessonId);
@@ -180,7 +183,7 @@ class DownloadManager {
 
       if (userId == null) throw Exception("User auth missing");
 
-      // 1. تجهيز الروابط
+      // 2. تجهيز الروابط
       String? finalVideoUrl = downloadUrl;
       String? finalAudioUrl = audioUrl;
 
@@ -192,7 +195,7 @@ class DownloadManager {
             '$_baseUrl/api/secure/get-video-id',
             queryParameters: {'lessonId': lessonId},
             options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret}),
-            cancelToken: cancelToken, // ✅ تمرير التوكن
+            cancelToken: cancelToken,
           );
           if (res.statusCode == 200 && res.data['url'] != null) {
              finalVideoUrl = res.data['url'];
@@ -200,7 +203,6 @@ class DownloadManager {
         }
       }
       
-      // ✅ فحص الإلغاء
       if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
       if (finalVideoUrl == null) throw Exception("Link not found");
 
@@ -209,7 +211,7 @@ class DownloadManager {
         if (ext.isNotEmpty) duration = ext;
       }
 
-      // 2. تحضير المسارات
+      // 3. تحضير المسارات
       final appDir = await getApplicationDocumentsDirectory();
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -226,13 +228,13 @@ class DownloadManager {
         audioSavePath = '${dir.path}/aud_${lessonId}_hq.enc';
       }
 
-      // 3. التنفيذ حسب النوع
+      // 4. التنفيذ حسب النوع
       if (isPdf) {
         await _downloadPdfWithEncryption(
           url: finalVideoUrl,
           savePath: videoSavePath,
           headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
-          cancelToken: cancelToken, // ✅ تمرير التوكن
+          cancelToken: cancelToken,
           onProgress: (p) {
              if (cancelToken.isCancelled) return;
              var prog = Map<String, double>.from(downloadingProgress.value);
@@ -283,7 +285,7 @@ class DownloadManager {
           url: finalVideoUrl,
           savePath: videoSavePath,
           headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
-          cancelToken: cancelToken, // ✅ تمرير التوكن
+          cancelToken: cancelToken,
           onProgress: (p) { vidProg = p; updateAggregatedProgress(); }
         ));
 
@@ -292,7 +294,7 @@ class DownloadManager {
             url: finalAudioUrl,
             savePath: audioSavePath,
             headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
-            cancelToken: cancelToken, // ✅ تمرير التوكن
+            cancelToken: cancelToken,
             onProgress: (p) { audProg = p; updateAggregatedProgress(); }
           ));
         }
@@ -300,10 +302,9 @@ class DownloadManager {
         await Future.wait(tasks);
       }
 
-      // ✅ فحص أخير قبل الحفظ
+      // 5. فحص أخير وحفظ
       if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
 
-      // 5. حساب الحجم والحفظ
       int totalSizeBytes = await File(videoSavePath).length();
       if (audioSavePath != null && await File(audioSavePath).exists()) {
         totalSizeBytes += await File(audioSavePath).length();
@@ -325,7 +326,6 @@ class DownloadManager {
         'size': totalSizeBytes,
       });
 
-      // ✅ حذف إشعار التقدم عند الاكتمال
       await notifService.cancelNotification(notificationId);
       
       await notifService.showCompletionNotification(
@@ -339,13 +339,11 @@ class DownloadManager {
 
     } catch (e, stack) {
       // ✅ التعامل مع الإلغاء أو الخطأ
-      await notifService.cancelNotification(notificationId); // إزالة الإشعار الثابت
+      await notifService.cancelNotification(notificationId);
       
-      // إذا كان الخطأ بسبب الإلغاء اليدوي، لا نعرض إشعار فشل
       bool isCancelled = (e is DioException && e.type == DioExceptionType.cancel);
       
       if (!isCancelled) {
-        // في حالة الخطأ الحقيقي (شبكة أو غيره)
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed');
         await notifService.showCompletionNotification(
           id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
@@ -377,9 +375,10 @@ class DownloadManager {
       }
 
     } finally {
-      // ✅ التنظيف النهائي المهم جداً
+      // ✅ التنظيف النهائي
       _activeDownloads.remove(lessonId);
-      _cancelTokens.remove(lessonId); // إزالة التوكن
+      _cancelTokens.remove(lessonId); 
+      activeTitles.remove(lessonId); // إزالة الاسم
       
       var prog = Map<String, double>.from(downloadingProgress.value);
       prog.remove(lessonId);
@@ -399,7 +398,7 @@ class DownloadManager {
     required String savePath,
     required Map<String, dynamic> headers,
     required Function(double) onProgress,
-    required CancelToken cancelToken, // ✅
+    required CancelToken cancelToken,
   }) async {
     final saveFile = File(savePath);
     final sink = await saveFile.open(mode: FileMode.write);
@@ -409,7 +408,7 @@ class DownloadManager {
       final response = await _dio.get(
         url,
         options: Options(responseType: ResponseType.stream, headers: headers, followRedirects: true),
-        cancelToken: cancelToken, // ✅
+        cancelToken: cancelToken,
       );
 
       int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
@@ -449,7 +448,7 @@ class DownloadManager {
     required String savePath,
     required Map<String, dynamic> headers,
     required Function(double) onProgress,
-    required CancelToken cancelToken, // ✅
+    required CancelToken cancelToken,
   }) async {
     if (url.contains('.m3u8') || url.contains('.m3u')) {
       final saveFile = File(savePath);
@@ -503,7 +502,7 @@ class DownloadManager {
           try {
             await _downloadChunkAndEncrypt(
               url: url, start: start, end: end, headers: headers, sink: sink, buffer: buffer,
-              cancelToken: cancelToken, // ✅
+              cancelToken: cancelToken,
             );
             chunkSuccess = true;
             downloadedBytes += (end - start + 1);
@@ -538,7 +537,7 @@ class DownloadManager {
         responseType: ResponseType.stream,
         headers: {...headers, 'Range': 'bytes=$start-$end'},
       ),
-      cancelToken: cancelToken, // ✅
+      cancelToken: cancelToken,
     );
 
     Stream<Uint8List> stream = response.data.stream;
