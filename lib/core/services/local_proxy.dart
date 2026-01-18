@@ -9,7 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/encryption_helper.dart';
 
 class LocalProxyService {
-  // ✅ 1. تطبيق Singleton Pattern
+  // ✅ Singleton Pattern
   static final LocalProxyService _instance = LocalProxyService._internal();
   
   factory LocalProxyService() {
@@ -21,7 +21,7 @@ class LocalProxyService {
   HttpServer? _server;
   final int port = 8080;
   
-  // ✅ 2. عداد المراجع
+  // ✅ عداد المراجع لمنع إغلاق السيرفر أثناء استخدام الصوت والفيديو معاً
   int _usageCount = 0;
 
   /// بدء السيرفر
@@ -29,11 +29,13 @@ class LocalProxyService {
     _usageCount++; 
     
     if (_server != null) {
+        // السيرفر يعمل بالفعل، فقط نزيد العداد
         FirebaseCrashlytics.instance.log('🔒 Proxy already running (Clients: $_usageCount)');
         return;
     }
 
     try {
+      // التأكد من تهيئة التشفير
       await EncryptionHelper.init();
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Encryption Init Failed', fatal: true);
@@ -41,6 +43,7 @@ class LocalProxyService {
     }
 
     final router = Router();
+    // نقطة واحدة تعالج كل شيء بناءً على المسار الممرر
     router.get('/video', _handleVideoRequest);
 
     try {
@@ -74,28 +77,30 @@ class LocalProxyService {
       return Response.notFound('Path not provided');
     }
 
-    final file = File(path);
+    // فك ترميز المسار (في حال كان يحتوي على مسافات أو رموز)
+    final decodedPath = Uri.decodeComponent(path);
+    final file = File(decodedPath);
+    
     if (!await file.exists()) {
-      FirebaseCrashlytics.instance.log("⚠️ Proxy: File not found at $path");
+      FirebaseCrashlytics.instance.log("⚠️ Proxy: File not found at $decodedPath");
       return Response.notFound('File not found');
     }
 
     try {
       final encryptedLength = await file.length();
       
-      // ✅ استخدام الثوابت المحدثة مباشرة (512KB)
+      // ✅ استخدام الثوابت من EncryptionHelper لضمان التوافق مع التشفير
       final int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
       final int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       final int overhead = encChunkSize - plainChunkSize; 
 
+      // حساب الحجم الأصلي (مفكوك التشفير) للملف
       final int totalChunks = (encryptedLength / encChunkSize).ceil();
-      
       final int lastEncChunkSize = encryptedLength - ((totalChunks - 1) * encChunkSize);
       final int lastPlainChunkSize = max(0, lastEncChunkSize - overhead);
-      
       final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + lastPlainChunkSize;
 
-      // معالجة طلب الـ Range
+      // معالجة طلب الـ Range (للتقديم والتأخير)
       final rangeHeader = request.headers['range'];
       int start = 0;
       int end = originalFileSize - 1;
@@ -117,13 +122,14 @@ class LocalProxyService {
 
       FirebaseCrashlytics.instance.log("📡 Proxy Stream: Range $start-$end / $originalFileSize");
 
+      // إنشاء الستريم المفكوك
       final stream = _createDecryptedStream(file, start, end);
 
       return Response(
-        206,
+        206, // Partial Content
         body: stream,
         headers: {
-          'Content-Type': 'video/mp4',
+          'Content-Type': 'video/mp4', // يعمل أيضاً للصوتيات في معظم المشغلات
           'Content-Length': contentLength.toString(),
           'Content-Range': 'bytes $start-$end/$originalFileSize',
           'Accept-Ranges': 'bytes',
@@ -145,7 +151,7 @@ class LocalProxyService {
     try {
       raf = await file.open(mode: FileMode.read);
       
-      // ✅ استخدام الثوابت (512KB) لتقليل عدد مرات القراءة
+      // ✅ استخدام الثوابت لتقليل القراءة من القرص
       const int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       const int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
 
@@ -166,12 +172,12 @@ class LocalProxyService {
            bytesToRead = fileLen - seekPos;
         }
 
-        // ✅ حماية إضافية: إذا كانت البيانات أقل من حجم الـ IV، نتجاهلها
+        // حماية: تجاهل الكتل الصغيرة جداً التي لا تحتوي حتى على IV
         if (bytesToRead <= EncryptionHelper.IV_LENGTH) break;
 
         Uint8List encryptedBlock = await raf.read(bytesToRead);
         
-        // فك التشفير (سريع جداً الآن بفضل المحرك المثبت)
+        // فك التشفير
         Uint8List decryptedBlock;
         try {
           decryptedBlock = EncryptionHelper.decryptBlock(encryptedBlock);
@@ -185,7 +191,7 @@ class LocalProxyService {
            throw e; 
         }
 
-        // حساب الجزء المطلوب
+        // حساب الجزء المطلوب من الكتلة الحالية لإرساله
         int blockStartInPlain = i * plainChunkSize;
         int sliceStart = max(0, reqStart - blockStartInPlain);
         int sliceEnd = min(decryptedBlock.length, reqEnd - blockStartInPlain + 1);
