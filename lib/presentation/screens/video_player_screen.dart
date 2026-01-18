@@ -52,7 +52,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
   };
 
-  // 2. هيدر خاص لليوتيوب (فارغ أو متصفح) لتجنب الحظر
+  // 2. هيدر خاص لليوتيوب
   final Map<String, String> _youtubeHeaders = {}; 
 
   @override
@@ -63,7 +63,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _initializePlayerScreen() async {
     FirebaseCrashlytics.instance.log("🎬 MediaKit: Init Started for '${widget.title}'");
-    FirebaseCrashlytics.instance.log("📦 Incoming Streams Count: ${widget.streams.length}");
     
     await FirebaseCrashlytics.instance.setCustomKey('video_title', widget.title);
 
@@ -77,38 +76,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await WakelockPlus.enable();
       await _startProxyServer();
 
-      // ✅ تعديل 1: تهيئة المشغل (تفضيل السوفتوير للأمان مع AV1، أو يمكن تفعيل GPU إذا تأكدنا من الصيغ)
+      // تهيئة المشغل
       _player = Player(
         configuration: const PlayerConfiguration(
-          bufferSize: 32 * 1024 * 1024, // زيادة البافر
+          bufferSize: 32 * 1024 * 1024, // زيادة البافر للأمان
         ),
       );
       
-      // ✅ تعديل 2: تفعيل التسريع المادي (لأننا غيرنا الروابط لـ VP9/H.264 وهي آمنة)
+      // ✅ تفعيل التسريع المادي (Hardware Acceleration) الآن آمن ومطلوب للأداء
       _controller = VideoController(
         _player,
         configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: true, // ✅ الآن آمن ومستحسن للأداء
+          enableHardwareAcceleration: true, 
           androidAttachSurfaceAfterVideoParameters: true,
         ),
       );
 
-      // الاستماع للأخطاء
       _player.stream.error.listen((error) {
-        String errorMsg = "🚨 MediaKit Error: $error";
-        debugPrint(errorMsg);
-        
-        // تجاهل الأخطاء العابرة، فقط أظهر خطأ إذا توقف التشغيل فعلياً
-        if (mounted && !_player.state.playing && _player.state.duration == Duration.zero) {
-           // يمكننا تفعيل هذا إذا أردنا إظهار رسالة خطأ للمستخدم
-           // setState(() { _isError = true; _errorMessage = "Playback Error"; });
-        }
-      });
-
-      _player.stream.log.listen((log) {
-        if (log.level == 'error' || log.level == 'warn' || log.level == 'fatal') {
-           // FirebaseCrashlytics.instance.log("⚠️ Native Log: ${log.prefix}: ${log.text}");
-        }
+        debugPrint("🚨 MediaKit Error: $error");
+        // لا نظهر الخطأ فوراً لتجنب المقاطعة إلا إذا توقف التشغيل
       });
 
       _loadUserData();
@@ -207,14 +193,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     _sortedQualities = widget.streams.keys.toList();
-    // ترتيب الجودات رقمياً
     _sortedQualities.sort((a, b) {
       int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       int valB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       return valA.compareTo(valB);
     });
 
-    // ✅ البدء بجودة 480p افتراضياً، أو أول جودة متاحة
+    // اختيار الجودة الافتراضية
     _currentQuality = _sortedQualities.contains("480p") 
         ? "480p" 
         : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
@@ -224,17 +209,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ الدالة الأساسية للتشغيل (مع الحفاظ على التقدم)
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
     
-    FirebaseCrashlytics.instance.log("▶️ Playing quality: $_currentQuality at $startAt");
+    FirebaseCrashlytics.instance.log("▶️ Playing quality: $_currentQuality");
     
     try {
       String playUrl = url;
       String? audioUrl; 
 
-      // 1. فك تركيب الرابط (فيديو | صوت)
+      // 1. منطق الأونلاين (Online Split)
       if (url.contains('|')) {
         final parts = url.split('|');
         playUrl = parts[0];
@@ -242,28 +226,48 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           audioUrl = parts[1];
         }
       } 
-      // 2. التحقق من الملفات المحلية
+      // 2. منطق الأوفلاين (Offline Encrypted Split)
       else if (!url.startsWith('http')) {
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
+        
+        // تحويل مسار الفيديو للبروكسي
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
+
+        // البحث عن ملف صوت مرتبط في قاعدة البيانات
+        if (Hive.isBoxOpen('downloads_box')) {
+           final box = Hive.box('downloads_box');
+           // البحث عن الدرس الذي يملك هذا المسار
+           final downloadItem = box.values.firstWhere(
+             (item) => item['path'] == url, 
+             orElse: () => null
+           );
+
+           if (downloadItem != null && downloadItem['audioPath'] != null) {
+              final String audioPath = downloadItem['audioPath'];
+              final File audioFile = File(audioPath);
+              if (await audioFile.exists()) {
+                 // تحويل مسار الصوت للبروكسي
+                 audioUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(audioFile.path)}';
+                 debugPrint("📂 Loaded Offline Audio: $audioUrl");
+              }
+           }
+        }
       }
       
-      await _player.stop(); // إيقاف الفيديو السابق
+      await _player.stop();
       
-      // 3. تحديد الهيدر
       final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
-      // 4. فتح الفيديو (بدون تشغيل تلقائي لضبط الوقت والصوت)
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false
       );
 
-      // 5. دمج مسار الصوت (إذا وجد)
+      // دمج الصوت (سواء أونلاين أو أوفلاين)
       if (audioUrl != null) {
-        await Future.delayed(const Duration(milliseconds: 100)); // تأخير بسيط للاستقرار
+        await Future.delayed(const Duration(milliseconds: 100));
         await _player.setAudioTrack(AudioTrack.uri(
           audioUrl,
           title: "HQ Audio",
@@ -271,33 +275,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ));
       }
       
-      // 6. ✅ استعادة الموضع (المنطق المحسن)
-      if (startAt != null && startAt > Duration.zero) {
+      // استعادة الموضع
+      if (startAt != null && startAt != Duration.zero) {
         int retries = 0;
-        // زيادة المهلة إلى 100 محاولة (10 ثواني) لضمان تحميل الميتا داتا
+        // الانتظار الذكي (حتى 10 ثواني)
         while (_player.state.duration == Duration.zero && retries < 100) {
           if (_isDisposing) return;
           await Future.delayed(const Duration(milliseconds: 100));
           retries++;
         }
-        
-        // التحقق مرة أخرى قبل القفز
-        if (_player.state.duration != Duration.zero) {
-           await _player.seek(startAt);
-           debugPrint("⏩ Seeked to: $startAt");
-        } else {
-           debugPrint("⚠️ Warning: Duration is still zero, seeking might fail.");
-           // محاولة يائسة أخيرة للقفز
-           await _player.seek(startAt);
-        }
+        await _player.seek(startAt);
       }
 
-      // 7. ضبط السرعة المحفوظة
       if (_currentSpeed != 1.0) {
         await _player.setRate(_currentSpeed);
       }
 
-      // 8. ابدأ التشغيل
       await _player.play();
 
     } catch (e, stack) {
@@ -369,10 +362,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
-                // ✅ حفظ الموقع الحالي قبل تغيير الجودة
+                // حفظ الموضع الحالي بدقة
                 final currentPos = _player.state.position;
                 setState(() { _currentQuality = q; _isError = false; });
-                // تمرير الموقع لدالة التشغيل
                 _playVideo(widget.streams[q]!, startAt: currentPos);
               }
             },
@@ -506,7 +498,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       onPressed: () {
                           FirebaseCrashlytics.instance.log("🔄 User clicked Retry");
                           setState(() => _isError = false);
-                          // محاولة إعادة التشغيل بنفس الجودة
                           _playVideo(widget.streams[_currentQuality]!);
                       }, 
                       style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
