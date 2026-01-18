@@ -65,7 +65,7 @@ flutter {
 
 dependencies {
     // ✅ 2. إضافة مكتبة Desugaring JDK Libs الضرورية لتفعيل الميزة أعلاه
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-analytics")
