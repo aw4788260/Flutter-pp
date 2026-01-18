@@ -18,12 +18,15 @@ class DownloadManager {
   DownloadManager._internal();
 
   static final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 120),
-    receiveTimeout: const Duration(seconds: 120),
-    sendTimeout: const Duration(seconds: 120),
+    connectTimeout: const Duration(seconds: 60), // تقليل المهلة لاكتشاف انقطاع النت أسرع
+    receiveTimeout: const Duration(seconds: 60),
+    sendTimeout: const Duration(seconds: 60),
   ));
 
   static final Set<String> _activeDownloads = {};
+  // ✅ خريطة لتخزين توكن الإلغاء لكل درس
+  static final Map<String, CancelToken> _cancelTokens = {}; 
+  
   static final ValueNotifier<Map<String, double>> downloadingProgress = ValueNotifier({});
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
@@ -58,6 +61,36 @@ class DownloadManager {
     return hours > 0 
         ? "${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}"
         : "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
+  }
+
+  // ✅ دالة إلغاء التحميل (جديدة)
+  Future<void> cancelDownload(String lessonId) async {
+    // 1. إلغاء الطلب من الشبكة
+    if (_cancelTokens.containsKey(lessonId)) {
+      try {
+        _cancelTokens[lessonId]?.cancel("User cancelled download");
+      } catch (e) {
+        debugPrint("Error canceling token: $e");
+      }
+      _cancelTokens.remove(lessonId);
+    }
+    
+    // 2. تنظيف القوائم
+    _activeDownloads.remove(lessonId);
+    
+    var prog = Map<String, double>.from(downloadingProgress.value);
+    prog.remove(lessonId);
+    downloadingProgress.value = prog;
+
+    // 3. إزالة الإشعار فوراً
+    await NotificationService().cancelNotification(lessonId.hashCode);
+    
+    // 4. إيقاف الخدمة إذا لم يتبق تحميلات
+    if (_activeDownloads.isEmpty) {
+      _stopBackgroundService();
+    }
+    
+    debugPrint("🛑 Download Cancelled: $lessonId");
   }
   
   void _startBackgroundService() async {
@@ -116,6 +149,10 @@ class DownloadManager {
     String quality = "SD",
     String duration = "", 
   }) async {
+    // ✅ إنشاء CancelToken جديد لهذا التحميل
+    final CancelToken cancelToken = CancelToken();
+    _cancelTokens[lessonId] = cancelToken;
+
     FirebaseCrashlytics.instance.log("⬇️ Download Started: $videoTitle (PDF: $isPdf)");
     _activeDownloads.add(lessonId);
     _startBackgroundService();
@@ -155,12 +192,16 @@ class DownloadManager {
             '$_baseUrl/api/secure/get-video-id',
             queryParameters: {'lessonId': lessonId},
             options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret}),
+            cancelToken: cancelToken, // ✅ تمرير التوكن
           );
           if (res.statusCode == 200 && res.data['url'] != null) {
              finalVideoUrl = res.data['url'];
           }
         }
       }
+      
+      // ✅ فحص الإلغاء
+      if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
       if (finalVideoUrl == null) throw Exception("Link not found");
 
       if (!isPdf && (duration.isEmpty || duration == "--:--")) {
@@ -187,12 +228,13 @@ class DownloadManager {
 
       // 3. التنفيذ حسب النوع
       if (isPdf) {
-        // ✅ منطق PDF المباشر (Stream + Encrypt)
         await _downloadPdfWithEncryption(
           url: finalVideoUrl,
           savePath: videoSavePath,
           headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
+          cancelToken: cancelToken, // ✅ تمرير التوكن
           onProgress: (p) {
+             if (cancelToken.isCancelled) return;
              var prog = Map<String, double>.from(downloadingProgress.value);
              prog[lessonId] = p;
              downloadingProgress.value = prog; 
@@ -210,11 +252,11 @@ class DownloadManager {
           }
         );
       } else {
-        // ✅ منطق الفيديو الذكي (Chunked + Retry + Audio)
         double vidProg = 0.0;
         double audProg = 0.0;
 
         void updateAggregatedProgress() {
+          if (cancelToken.isCancelled) return;
           double total = (finalAudioUrl != null) 
               ? (vidProg * 0.80) + (audProg * 0.20)
               : vidProg;
@@ -241,6 +283,7 @@ class DownloadManager {
           url: finalVideoUrl,
           savePath: videoSavePath,
           headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
+          cancelToken: cancelToken, // ✅ تمرير التوكن
           onProgress: (p) { vidProg = p; updateAggregatedProgress(); }
         ));
 
@@ -249,12 +292,16 @@ class DownloadManager {
             url: finalAudioUrl,
             savePath: audioSavePath,
             headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
+            cancelToken: cancelToken, // ✅ تمرير التوكن
             onProgress: (p) { audProg = p; updateAggregatedProgress(); }
           ));
         }
 
         await Future.wait(tasks);
       }
+
+      // ✅ فحص أخير قبل الحفظ
+      if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
 
       // 5. حساب الحجم والحفظ
       int totalSizeBytes = await File(videoSavePath).length();
@@ -281,7 +328,6 @@ class DownloadManager {
       // ✅ حذف إشعار التقدم عند الاكتمال
       await notifService.cancelNotification(notificationId);
       
-      // إظهار إشعار النجاح (اختياري)
       await notifService.showCompletionNotification(
         id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
         title: videoTitle,
@@ -292,24 +338,53 @@ class DownloadManager {
       onComplete();
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed');
+      // ✅ التعامل مع الإلغاء أو الخطأ
+      await notifService.cancelNotification(notificationId); // إزالة الإشعار الثابت
       
-      // ✅ حذف إشعار التقدم عند الفشل أيضاً
-      await notifService.cancelNotification(notificationId);
+      // إذا كان الخطأ بسبب الإلغاء اليدوي، لا نعرض إشعار فشل
+      bool isCancelled = (e is DioException && e.type == DioExceptionType.cancel);
       
-      await notifService.showCompletionNotification(
-        id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
-        title: videoTitle,
-        isSuccess: false,
-      );
-      onError("Download failed. Please check internet and try again.");
+      if (!isCancelled) {
+        // في حالة الخطأ الحقيقي (شبكة أو غيره)
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed');
+        await notifService.showCompletionNotification(
+          id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
+          title: videoTitle,
+          isSuccess: false,
+        );
+        onError("Download failed. Please check internet.");
+      }
+      
+      // ✅ تنظيف الملفات الجزئية
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
+        final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
+        final safeChapter = chapterName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
+        final dirPath = '${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter';
+        
+        final videoFileName = isPdf ? "$lessonId.pdf.enc" : "vid_${lessonId}_$quality.enc";
+        final audioFileName = 'aud_${lessonId}_hq.enc';
+        
+        final videoFile = File('$dirPath/$videoFileName');
+        if (await videoFile.exists()) await videoFile.delete();
+        
+        final audioFile = File('$dirPath/$audioFileName');
+        if (await audioFile.exists()) await audioFile.delete();
+        
+      } catch (cleanupError) {
+        print("Cleanup Error: $cleanupError");
+      }
+
     } finally {
+      // ✅ التنظيف النهائي المهم جداً
       _activeDownloads.remove(lessonId);
+      _cancelTokens.remove(lessonId); // إزالة التوكن
+      
       var prog = Map<String, double>.from(downloadingProgress.value);
       prog.remove(lessonId);
       downloadingProgress.value = prog;
       
-      // ✅ إيقاف الخدمة (والتي بدورها تحذف إشعار الخدمة 888)
       if (_activeDownloads.isEmpty) {
          _stopBackgroundService();
       }
@@ -324,6 +399,7 @@ class DownloadManager {
     required String savePath,
     required Map<String, dynamic> headers,
     required Function(double) onProgress,
+    required CancelToken cancelToken, // ✅
   }) async {
     final saveFile = File(savePath);
     final sink = await saveFile.open(mode: FileMode.write);
@@ -332,11 +408,8 @@ class DownloadManager {
     try {
       final response = await _dio.get(
         url,
-        options: Options(
-          responseType: ResponseType.stream,
-          headers: headers,
-          followRedirects: true, 
-        ),
+        options: Options(responseType: ResponseType.stream, headers: headers, followRedirects: true),
+        cancelToken: cancelToken, // ✅
       );
 
       int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
@@ -344,6 +417,8 @@ class DownloadManager {
 
       Stream<Uint8List> stream = response.data.stream;
       await for (final chunk in stream) {
+        if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
+        
         buffer.addAll(chunk);
         while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
           final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
@@ -365,7 +440,6 @@ class DownloadManager {
     }
   }
 
-
   // ---------------------------------------------------------------------------
   // 🎥 Video Downloader
   // ---------------------------------------------------------------------------
@@ -375,13 +449,14 @@ class DownloadManager {
     required String savePath,
     required Map<String, dynamic> headers,
     required Function(double) onProgress,
+    required CancelToken cancelToken, // ✅
   }) async {
     if (url.contains('.m3u8') || url.contains('.m3u')) {
       final saveFile = File(savePath);
       final sink = await saveFile.open(mode: FileMode.write);
       List<int> buffer = [];
       try {
-         await _downloadHls(url, sink, buffer, onProgress);
+         await _downloadHls(url, sink, buffer, onProgress, cancelToken);
          if (buffer.isNotEmpty) {
            final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
            await sink.writeFrom(enc);
@@ -394,67 +469,50 @@ class DownloadManager {
 
     int totalBytes = 0;
     try {
-      final headRes = await _dio.head(url, options: Options(headers: headers));
+      final headRes = await _dio.head(url, options: Options(headers: headers), cancelToken: cancelToken);
       totalBytes = int.parse(headRes.headers.value(Headers.contentLengthHeader) ?? '0');
-    } catch (e) {
-      try {
-        final rangeRes = await _dio.get(url, options: Options(headers: {...headers, 'Range': 'bytes=0-0'}));
-        final rangeHeader = rangeRes.headers.value('content-range') ?? "";
-        if (rangeHeader.contains("/")) {
-           totalBytes = int.parse(rangeHeader.split("/").last);
-        }
-      } catch (_) {}
-    }
-
-    if (totalBytes <= 0) {
-      final saveFile = File(savePath);
-      final sink = await saveFile.open(mode: FileMode.write);
-      List<int> buffer = [];
-      try {
-        await _downloadStreamBasic(url, sink, buffer, onProgress, headers);
-        if (buffer.isNotEmpty) {
-           final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
-           await sink.writeFrom(enc);
-        }
-      } finally {
-        await sink.close();
-      }
-      return;
-    }
+    } catch (_) {}
 
     const int chunkSize = 1 * 1024 * 1024; 
     int downloadedBytes = 0;
-    
     final saveFile = File(savePath);
     final sink = await saveFile.open(mode: FileMode.write);
     List<int> buffer = [];
 
     try {
+      if (totalBytes <= 0) {
+         await _downloadStreamBasic(url, sink, buffer, onProgress, headers, cancelToken);
+         if (buffer.isNotEmpty) {
+           final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
+           await sink.writeFrom(enc);
+         }
+         return;
+      }
+
       while (downloadedBytes < totalBytes) {
+        if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
+
         int start = downloadedBytes;
         int end = min(start + chunkSize - 1, totalBytes - 1);
         
         bool chunkSuccess = false;
-        int retries = 10;
+        int retries = 5; 
 
         while (retries > 0 && !chunkSuccess) {
+          if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
           try {
             await _downloadChunkAndEncrypt(
-              url: url,
-              start: start,
-              end: end,
-              headers: headers,
-              sink: sink,
-              buffer: buffer,
+              url: url, start: start, end: end, headers: headers, sink: sink, buffer: buffer,
+              cancelToken: cancelToken, // ✅
             );
             chunkSuccess = true;
             downloadedBytes += (end - start + 1);
             onProgress(downloadedBytes / totalBytes);
           } catch (e) {
+            if (e is DioException && e.type == DioExceptionType.cancel) throw e;
             retries--;
-            if (retries == 0) throw Exception("Failed to download chunk $start-$end");
-            await Future.delayed(Duration(seconds: (11 - retries))); 
-            print("⚠️ Retrying chunk... ($retries left)");
+            if (retries == 0) throw Exception("Failed chunk");
+            await Future.delayed(const Duration(seconds: 2)); 
           }
         }
       }
@@ -471,26 +529,21 @@ class DownloadManager {
   }
 
   Future<void> _downloadChunkAndEncrypt({
-    required String url,
-    required int start,
-    required int end,
-    required Map<String, dynamic> headers,
-    required RandomAccessFile sink,
-    required List<int> buffer,
+    required String url, required int start, required int end, required Map<String, dynamic> headers,
+    required RandomAccessFile sink, required List<int> buffer, required CancelToken cancelToken,
   }) async {
     final response = await _dio.get(
       url,
       options: Options(
         responseType: ResponseType.stream,
-        headers: {
-          ...headers,
-          'Range': 'bytes=$start-$end',
-        },
+        headers: {...headers, 'Range': 'bytes=$start-$end'},
       ),
+      cancelToken: cancelToken, // ✅
     );
 
     Stream<Uint8List> stream = response.data.stream;
     await for (final chunk in stream) {
+      if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
       buffer.addAll(chunk);
       while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
         final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
@@ -501,15 +554,13 @@ class DownloadManager {
     }
   }
 
-  Future<void> _downloadStreamBasic(String url, RandomAccessFile sink, List<int> buffer, Function(double) onProgress, Map<String, dynamic> headers) async {
-    final response = await _dio.get(
-      url,
-      options: Options(responseType: ResponseType.stream, headers: headers),
-    );
+  Future<void> _downloadStreamBasic(String url, RandomAccessFile sink, List<int> buffer, Function(double) onProgress, Map<String, dynamic> headers, CancelToken cancelToken) async {
+    final response = await _dio.get(url, options: Options(responseType: ResponseType.stream, headers: headers), cancelToken: cancelToken);
     int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
     int received = 0;
     Stream<Uint8List> stream = response.data.stream;
     await for (final chunk in stream) {
+      if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
       buffer.addAll(chunk);
       while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
         final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
@@ -522,8 +573,8 @@ class DownloadManager {
     }
   }
 
-  Future<void> _downloadHls(String m3u8Url, RandomAccessFile sink, List<int> buffer, Function(double) onProgress) async {
-     final response = await _dio.get(m3u8Url);
+  Future<void> _downloadHls(String m3u8Url, RandomAccessFile sink, List<int> buffer, Function(double) onProgress, CancelToken cancelToken) async {
+     final response = await _dio.get(m3u8Url, cancelToken: cancelToken);
      final content = response.data.toString();
      final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
      List<String> tsUrls = [];
@@ -538,11 +589,13 @@ class DownloadManager {
      int batchSize = 8; 
 
      for (int i = 0; i < total; i += batchSize) {
+       if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
+       
        int end = min(i + batchSize, total);
        List<String> batchUrls = tsUrls.sublist(i, end);
        List<Future<List<int>?>> futures = batchUrls.map((url) async {
          try {
-           final rs = await _dio.get<List<int>>(url, options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(seconds: 15)));
+           final rs = await _dio.get<List<int>>(url, options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(seconds: 15)), cancelToken: cancelToken);
            return rs.data;
          } catch (e) { return null; }
        }).toList();
