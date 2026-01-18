@@ -57,24 +57,24 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
               const SizedBox(height: 24),
               
-              // ✅ الخيار الأول (كان الثالث): المشغل المباشر
+              // ✅ الخيار الأول: المشغل المباشر (الأقوى)
               _buildOptionTile(
-                icon: LucideIcons.rocket, // أيقونة مميزة
+                icon: LucideIcons.rocket, 
                 title: "First Player",
-                subtitle: "High Performance Playback", // وصف عام
+                subtitle: "High Performance (Recommended)", 
                 onTap: () {
                   Navigator.pop(context);
-                  _fetchAndPlayWithExplode(video); // استدعاء الدالة الجديدة
+                  _fetchAndPlayWithExplode(video); 
                 },
               ),
 
               const SizedBox(height: 16),
 
-              // ✅ الخيار الثاني: يوتيوب (كما هو)
+              // ✅ الخيار الثاني: يوتيوب
               _buildOptionTile(
                 icon: LucideIcons.youtube,
                 title: "Second Player",
-                subtitle: "Alternative Playback", // وصف عام
+                subtitle: "Standard YouTube Player", 
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayVideo(video, useYoutube: true);
@@ -83,11 +83,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               
               const SizedBox(height: 16),
 
-              // ✅ الخيار الثالث (كان الأول): المشغل القديم
+              // ✅ الخيار الثالث: المشغل القديم
               _buildOptionTile(
                 icon: LucideIcons.playCircle,
                 title: "Third Player",
-                subtitle: "Standard Playback", // وصف عام
+                subtitle: "Legacy Stream Player", 
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayVideo(video, useYoutube: false);
@@ -175,7 +175,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // الدالة الجديدة للخيار الأول (الأقوى)
+  // الدالة الجديدة للخيار الأول (الأقوى - دمج الصوت والصورة)
   Future<void> _fetchAndPlayWithExplode(Map<String, dynamic> video) async {
     showDialog(
       context: context,
@@ -348,7 +348,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     "${q['quality']}p", 
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                   ),
-                  // ✅ تم إزالة وصف الفيديو والصوت من هنا كما طلبت
+                  // ✅ تم إزالة الـ subtitle هنا كما طلبت
                   trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
                   onTap: () {
                     Navigator.pop(context);
@@ -389,6 +389,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
+  // ✅ منطق تحميل PDF (المسترجع من الكود القديم والمدمج مع التشفير)
   void _startPdfDownload(String pdfId, String pdfTitle) {
      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
      
@@ -399,7 +400,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       subjectName: widget.subjectTitle,
       chapterName: widget.chapter['title'] ?? "Chapter",
       isPdf: true,
-      quality: "PDF",
+      quality: "PDF", // ✅ تمرير الجودة المطلوبة لتجنب الأخطاء
       onProgress: (p) {},
       onComplete: () {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success));
@@ -617,7 +618,19 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         bool isDownloaded = DownloadManager().isFileDownloaded(videoId);
                         bool isDownloading = DownloadManager().isFileDownloading(videoId);
 
-                        if (isDownloaded) return _buildStatusButton("SAVED", AppColors.success, LucideIcons.checkCircle);
+                        // ✅ قراءة البيانات المحفوظة لعرض الحجم
+                        String? sizeStr;
+                        if (isDownloaded) {
+                           final item = box.get(videoId);
+                           if (item != null) {
+                              int bytes = item['size'] ?? 0;
+                              sizeStr = "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+                           }
+                        }
+
+                        if (isDownloaded) {
+                           return _buildStatusButton("SAVED ${sizeStr != null ? '($sizeStr)' : ''}", AppColors.success, LucideIcons.checkCircle);
+                        }
                         else if (isDownloading) return _buildStatusButton("LOADING...", AppColors.accentYellow, LucideIcons.loader);
                         else return _buildActionButton(
                           "Download", 
