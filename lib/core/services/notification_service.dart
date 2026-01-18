@@ -14,11 +14,9 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   Future<void> init() async {
-    // إعدادات أندرويد
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    // إعدادات iOS (اختيارية إذا كنت ستدعمها لاحقاً)
     const DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings();
 
@@ -27,24 +25,27 @@ class NotificationService {
       iOS: initializationSettingsDarwin,
     );
 
+    // ✅ ضروري: طلب الأذونات في أندرويد 13+ لتجنب المشاكل
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse details) {
-        // هنا يمكنك التعامل مع الضغط على الإشعار
+        // Handle notification tap
       },
     );
   }
 
-  // ✅ دالة إلغاء إشعار محدد
   Future<void> cancelNotification(int id) async {
     try {
       await flutterLocalNotificationsPlugin.cancel(id);
     } catch (e) {
-      // تجاهل الأخطاء البسيطة هنا
+      // Ignore
     }
   }
 
-  // ✅✅ الدالة المفقودة: إلغاء كل الإشعارات
   Future<void> cancelAll() async {
     try {
       await flutterLocalNotificationsPlugin.cancelAll();
@@ -53,7 +54,6 @@ class NotificationService {
     }
   }
 
-  // دالة إظهار إشعار التقدم (Progress)
   Future<void> showProgressNotification({
     required int id,
     required String title,
@@ -61,19 +61,24 @@ class NotificationService {
     required int progress,
     required int maxProgress,
   }) async {
+    // ✅ التصحيح هنا: استخدام نفس ID القناة الموجود في main.dart
+    const String channelId = 'downloads_channel'; 
+    
     final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'download_channel', // id
-      'Downloads', // name
+      channelId, // ✅ تم توحيد الاسم
+      'Downloads',
       channelDescription: 'Notifications for file downloads',
-      importance: Importance.low,
+      importance: Importance.low, // Low لمنع الإزعاج الصوتي مع التحديث المستمر
       priority: Priority.low,
       showProgress: true,
       maxProgress: maxProgress,
       progress: progress,
-      onlyAlertOnce: true, // يمنع التنبيه الصوتي المتكرر مع كل تحديث
-      ongoing: true, // يمنع المستخدم من حذف الإشعار بالسحب
+      onlyAlertOnce: true,
+      ongoing: true,
       autoCancel: false,
+      // ✅ إضافة هامة لأندرويد 14: التأكد من أن الإشعار لا يغلق الخدمة بالخطأ
+      foregroundServiceBehavior: AndroidNotificationForegroundServiceBehavior.immediate,
     );
 
     final NotificationDetails platformChannelSpecifics =
@@ -87,15 +92,17 @@ class NotificationService {
     );
   }
 
-  // دالة إظهار إشعار اكتمال التحميل
   Future<void> showCompletionNotification({
     required int id,
     required String title,
     required bool isSuccess,
   }) async {
+    // يمكن استخدام قناة مختلفة للإشعارات المكتملة (بصوت وتنبيه)
+    const String channelId = 'download_completed_channel';
+
     final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'download_completed_channel',
+      channelId,
       'Download Completed',
       channelDescription: 'Notifications for completed downloads',
       importance: Importance.high,
