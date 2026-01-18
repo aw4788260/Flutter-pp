@@ -5,7 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/download_manager.dart';
-// ❌ تم حذف استيراد youtube_service.dart لأنه لم يعد مستخدماً
+// ❌ تم إزالة استيراد youtube_service.dart نهائياً
 import 'video_player_screen.dart';
 import 'youtube_player_screen.dart';
 import 'pdf_viewer_screen.dart';
@@ -84,7 +84,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
               const SizedBox(height: 16),
 
-              // ✅ الخيار الثالث: المشغل المباشر (Direct Stream)
+              // ✅ الخيار الثالث: المشغل المباشر (Direct Stream High Quality)
               _buildOptionTile(
                 icon: LucideIcons.rocket, // أيقونة مميزة
                 title: "Direct Stream (High Quality)",
@@ -101,7 +101,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // الدالة القديمة (للخيارين الأول والثاني)
+  // الدالة القديمة (للخيارين الأول والثاني - تعتمد على get-video-id)
   Future<void> _fetchAndPlayVideo(Map<String, dynamic> video, {required bool useYoutube}) async {
     showDialog(
       context: context,
@@ -176,7 +176,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // ✅ الدالة الجديدة كلياً للخيار الثالث (تستخدم البروكسي الجديد وتدمج الصوت)
+  // ✅ الدالة الجديدة للخيار الثالث (تستخدم البروكسي الجديد وتدعم دمج الصوت)
   Future<void> _fetchAndPlayWithExplode(Map<String, dynamic> video) async {
     showDialog(
       context: context,
@@ -187,8 +187,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     try {
       var box = await Hive.openBox('auth_box');
       
-      // 1. الاتصال بنقطة النهاية الجديدة (get-stream-proxy)
-      // هذه النقطة تتصل بسيرفر البايثون وتعود بقائمة الجودات (مفصولة ومدمجة)
+      // الاتصال بنقطة النهاية الجديدة التي تعيد تفاصيل الجودات (get-stream-proxy)
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-stream-proxy', 
         queryParameters: {'lessonId': video['id'].toString()},
@@ -209,10 +208,9 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         if (rawQualities.isNotEmpty) {
           Map<String, String> processedQualities = {};
 
-          // أ) البحث عن أفضل رابط صوتي (Audio Only) لدمجه مع الفيديوهات الصامتة
+          // أ) البحث عن أفضل رابط صوتي (Audio Only) لدمجه مع الفيديوهات
           String? bestAudioUrl;
           try {
-            // عادةً البايثون يرسل أفضل صوت كأول عنصر من نوع audio_only
             final audioObj = rawQualities.firstWhere(
               (q) => q['type'] == 'audio_only', 
               orElse: () => null
@@ -220,20 +218,20 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
             bestAudioUrl = audioObj?['url'];
           } catch (_) {}
 
-          // ب) معالجة القائمة ودمج الصوت إذا لزم الأمر
+          // ب) بناء قائمة الجودات
           for (var item in rawQualities) {
             String url = item['url'];
-            String qualityKey = "${item['quality']}p"; // مثال: 1080p
+            String qualityKey = "${item['quality']}p"; 
             String type = item['type']; // video_only, audio_only, video_audio
 
-            // لا نعرض ملفات الصوت كخيارات للمشاهدة
+            // تجاهل الصوتيات في قائمة العرض
             if (type == 'audio_only') continue;
 
             if (type == 'video_only' && bestAudioUrl != null) {
-              // ✅ هنا يتم الدمج: نضع فاصل | ليفهمه مشغل الفيديو (VideoPlayerScreen)
+              // ✅ دمج رابط الفيديو مع رابط الصوت بفاصل |
               processedQualities[qualityKey] = "$url|$bestAudioUrl";
             } else {
-              // ملفات مدمجة جاهزة (مثل 360p) أو في حال عدم وجود صوت منفصل
+              // ملفات مدمجة جاهزة أو في حال عدم وجود صوت
               processedQualities[qualityKey] = url;
             }
           }
@@ -265,7 +263,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   }
 
   // ===========================================================================
-  // 2. منطق التحميل (Download Logic)
+  // 2. منطق التحميل (Download Logic) - المحدث لدعم الصوت والفيديو المنفصلين
   // ===========================================================================
 
   Future<void> _prepareVideoDownload(String videoId, String videoTitle, String duration) async {
@@ -278,8 +276,9 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     try {
       var box = await Hive.openBox('auth_box');
       
+      // ✅ نستخدم نفس نقطة النهاية (get-stream-proxy) للحصول على الروابط المفصلة
       final res = await Dio().get(
-        '$_baseUrl/api/secure/get-video-id',
+        '$_baseUrl/api/secure/get-stream-proxy', 
         queryParameters: {'lessonId': videoId},
         options: Options(headers: {
           'x-user-id': box.get('user_id'),
@@ -292,21 +291,32 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
       if (res.statusCode == 200) {
         final data = res.data;
-        List<dynamic> qualities = data['availableQualities'] ?? [];
+        List<dynamic> rawQualities = data['availableQualities'] ?? [];
 
-        if (qualities.isNotEmpty) {
-          // فلترة الجودات للتحميل (نستبعد الصوت فقط حالياً)
-          var downloadQualities = qualities.where((q) => q['type'] != 'audio_only').toList();
+        if (rawQualities.isNotEmpty) {
           
-          if (downloadQualities.isNotEmpty) {
-             _showQualitySelectionDialog(videoId, videoTitle, downloadQualities, duration);
-          } else if (data['url'] != null) {
-             _startVideoDownload(videoId, videoTitle, data['url'], "Auto", duration);
+          // 1. استخراج رابط الصوت لاستخدامه مع الجودات العالية
+          String? bestAudioUrl;
+          try {
+            final audioObj = rawQualities.firstWhere((q) => q['type'] == 'audio_only', orElse: () => null);
+            bestAudioUrl = audioObj?['url'];
+          } catch (_) {}
+
+          // 2. فلترة خيارات الفيديو للعرض في القائمة
+          // نستبعد ملفات الصوت من القائمة المرئية للمستخدم
+          var videoOptions = rawQualities.where((q) => q['type'] != 'audio_only').toList();
+
+          if (videoOptions.isNotEmpty) {
+             _showQualitySelectionDialog(
+               videoId, 
+               videoTitle, 
+               videoOptions, 
+               duration, 
+               bestAudioUrl // ✅ نمرر رابط الصوت ليتم استخدامه عند التحميل
+             );
           } else {
-             _showErrorSnackBar("No compatible download links found.");
+             _showErrorSnackBar("No compatible video streams found.");
           }
-        } else if (data['url'] != null) {
-          _startVideoDownload(videoId, videoTitle, data['url'], "Auto", duration);
         } else {
           _showErrorSnackBar("No download links available");
         }
@@ -319,7 +329,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration) {
+  void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration, String? audioUrl) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.backgroundSecondary,
@@ -350,12 +360,18 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                   subtitle: q['type'] == 'video_only' 
-                      ? const Text("Video Only (No Sound)", style: TextStyle(color: Colors.grey, fontSize: 10)) 
+                      ? const Text("High Quality (Video+Audio)", style: TextStyle(color: Colors.green, fontSize: 10)) 
                       : null,
                   trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
                   onTap: () {
                     Navigator.pop(context);
-                    _startVideoDownload(videoId, title, q['url'], "${q['quality']}p", duration);
+                    
+                    // ✅ تحديد ما إذا كنا سنحمل صوتاً منفصلاً أم لا
+                    // إذا كان الفيديو video_only (جودة عالية)، نحتاج لرابط الصوت
+                    // إذا كان مدمجاً (جودة منخفضة)، نرسل null للصوت
+                    String? targetAudio = (q['type'] == 'video_only') ? audioUrl : null;
+
+                    _startVideoDownload(videoId, title, q['url'], targetAudio, "${q['quality']}p", duration);
                   },
                 );
               }),
@@ -366,9 +382,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  void _startVideoDownload(String videoId, String videoTitle, String? downloadUrl, String quality, String duration) {
+  void _startVideoDownload(String videoId, String videoTitle, String? downloadUrl, String? audioUrl, String quality, String duration) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
     
+    // استدعاء مدير التحميل مع رابط الفيديو ورابط الصوت (إن وجد)
     DownloadManager().startDownload(
       lessonId: videoId,
       videoTitle: videoTitle,
@@ -376,6 +393,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       subjectName: widget.subjectTitle,
       chapterName: widget.chapter['title'] ?? "Chapter",
       downloadUrl: downloadUrl,
+      audioUrl: audioUrl, // ✅ تمرير رابط الصوت
       quality: quality,   
       duration: duration, 
       onProgress: (p) {},
