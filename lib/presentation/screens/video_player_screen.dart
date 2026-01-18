@@ -16,7 +16,6 @@ import '../../core/services/local_proxy.dart';
 class VideoPlayerScreen extends StatefulWidget {
   final Map<String, String> streams;
   final String title;
-  // ✅ متغير جديد لاستقبال رابط الصوت المجهز مسبقاً
   final String? preReadyAudioUrl;
 
   const VideoPlayerScreen({
@@ -44,10 +43,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String _errorMessage = "";
   bool _isInitialized = false;
   
-  // ✅ التحكم في شاشة الانتظار
   bool _isVideoLoading = true; 
   
-  // ✅ متغيرات العد التنازلي للاستقرار
+  // متغيرات العداد
   int _stabilizingCountdown = 0;
   Timer? _countdownTimer;
   
@@ -58,7 +56,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String _watermarkText = "";
 
   final Map<String, String> _serverHeaders = {
-    // محاولة محاكاة ExoPlayer لتقليل الحظر من بعض السيرفرات
     'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
   };
   final Map<String, String> _youtubeHeaders = {}; 
@@ -74,7 +71,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     await FirebaseCrashlytics.instance.setCustomKey('video_title', widget.title);
 
     try {
-      // 1. إعداد وضع الشاشة الكاملة
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
@@ -82,14 +78,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ]);
 
       await WakelockPlus.enable();
-      
-      // 2. ضمان تشغيل البروكسي (زيادة العداد) حتى لو تم تشغيله سابقاً
       await _startProxyServer();
 
-      // 3. تكوين المشغل للأداء العالي (High Performance)
       _player = Player(
         configuration: const PlayerConfiguration(
-          // تخصيص 32 ميجابايت للذاكرة المؤقتة لتقليل التقطيع أثناء فك التشفير
           bufferSize: 32 * 1024 * 1024, 
         ),
       );
@@ -97,15 +89,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _controller = VideoController(
         _player,
         configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: true, // تفعيل تسريع الهاردوير
-          androidAttachSurfaceAfterVideoParameters: true, // حل لمشاكل الشاشة السوداء في بعض الأجهزة
+          enableHardwareAcceleration: true,
+          androidAttachSurfaceAfterVideoParameters: true,
         ),
       );
 
       _player.stream.error.listen((error) {
         debugPrint("🚨 MediaKit Stream Error: $error");
-        // تسجيل الخطأ دون إيقاف التطبيق، لأن المشغل قد يتعافى تلقائياً
         FirebaseCrashlytics.instance.recordError(error, null, reason: 'MediaKit Stream Error (Non-Fatal)');
+      });
+
+      // ✅ استماع لحالة التخزين المؤقت لإخفاء اللودر وإظهار الإطار الأول
+      _player.stream.buffering.listen((buffering) {
+        if (!buffering && _isVideoLoading) {
+          if (mounted) setState(() => _isVideoLoading = false);
+        }
       });
 
       _loadUserData();
@@ -149,10 +147,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     try {
       _watermarkTimer?.cancel();
-      _countdownTimer?.cancel(); // إيقاف العداد
+      _countdownTimer?.cancel();
       await _player.stop(); 
       await _player.dispose(); 
-      _proxyService.stop(); // ✅ تقليل عداد استخدام البروكسي
+      _proxyService.stop(); 
       await _resetSystemChrome();
       await WakelockPlus.disable();
     } catch (e) {
@@ -198,6 +196,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
+  // ✅ دالة العداد المعدلة: تشغل الفيديو فقط عند الانتهاء
+  void _startCountdown() {
+    setState(() => _stabilizingCountdown = 10);
+    _countdownTimer?.cancel();
+    
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_isDisposing) {
+        timer.cancel();
+        return;
+      }
+      
+      if (_stabilizingCountdown <= 1) {
+        timer.cancel();
+        if (mounted) {
+          setState(() => _stabilizingCountdown = 0);
+          // 🚀 الآن فقط يبدأ التشغيل الفعلي
+          _player.play(); 
+        }
+      } else {
+        if (mounted) setState(() => _stabilizingCountdown--);
+      }
+    });
+  }
+
   void _parseQualities() {
     if (widget.streams.isEmpty) {
       setState(() {
@@ -227,64 +249,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
     
-    // إظهار شاشة التحميل فوراً
     setState(() => _isVideoLoading = true);
-    
-    FirebaseCrashlytics.instance.log("▶️ _playVideo Called. Quality: $_currentQuality");
     
     try {
       String playUrl = url;
       String? audioUrl; 
-
       bool isOffline = false;
 
-      // 1. أولوية للصوت المجهز مسبقاً (Pre-warmed Audio)
       if (widget.preReadyAudioUrl != null && !url.startsWith('http')) {
-         // إذا كان الرابط محلياً ولدينا صوت مجهز، نستخدمه
          audioUrl = widget.preReadyAudioUrl;
          isOffline = true;
       } else if (url.contains('127.0.0.1')) {
-         // إذا كان الرابط يشير للسيرفر المحلي مباشرة
          isOffline = true;
       }
 
-      // ✅ منطق التأخير القسري للأوفلاين (Stabilization Delay)
-      if (isOffline) {
-        // نضبط العداد على 10 ثواني
-        setState(() => _stabilizingCountdown = 10);
-        
-        // حلقة انتظار مع تحديث العداد
-        for (int i = 10; i > 0; i--) {
-          if (_isDisposing) return;
-          setState(() => _stabilizingCountdown = i);
-          await Future.delayed(const Duration(seconds: 1));
-        }
-        
-        // انتهى العد
-        setState(() => _stabilizingCountdown = 0);
-      }
-
-      // --- بدء التحضير للتشغيل بعد انتهاء العداد ---
-
-      // 2. منطق الأونلاين (Split)
       if (url.contains('|')) {
         final parts = url.split('|');
         playUrl = parts[0];
         if (parts.length > 1) audioUrl = parts[1];
-      } 
-      // 3. منطق الأوفلاين (Encrypted)
-      else if (!url.startsWith('http')) {
+      } else if (!url.startsWith('http')) {
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
-        
-        // استخدام 127.0.0.1 لضمان الاتصال المحلي
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
 
-        // إذا لم يكن الصوت مجهزاً مسبقاً، نبحث عنه الآن
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
            final String absoluteVideoPath = file.absolute.path;
-           
            final downloadItem = box.values.firstWhere(
              (item) {
                 if (item['path'] == null) return false;
@@ -292,7 +282,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
              }, 
              orElse: () => null
            );
-
            if (downloadItem != null && downloadItem['audioPath'] != null) {
               final String audioPath = downloadItem['audioPath'];
               final File audioFile = File(audioPath);
@@ -301,12 +290,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               }
            }
         }
-      } 
-      // 4. إذا كان الرابط http ولكنه محلي (تم تجهيزه في الشاشة السابقة)
-      else if (url.contains('127.0.0.1')) {
+      } else if (url.contains('127.0.0.1')) {
          playUrl = url;
-         
-         // ✅ التقاط الصوت الممرر عبر preReadyAudioUrl إذا لم يتم تمريره مع الرابط
          if (audioUrl == null && widget.preReadyAudioUrl != null) {
             audioUrl = widget.preReadyAudioUrl;
          }
@@ -317,14 +302,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
-      // ✅ فتح الميديا مع play: false لتحميل الـ Buffer أولاً
+      // ✅ فتح الميديا مع عدم التشغيل (play: false)
+      // سيتم تحميل أول "بفر" وعرض الإطار الأول
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false 
       );
 
       if (audioUrl != null) {
-        // تأخير بسيط إضافي (احتياطي) لضمان تهيئة الفيديو
         await Future.delayed(const Duration(milliseconds: 500));
         await _player.setAudioTrack(AudioTrack.uri(
           audioUrl,
@@ -334,7 +319,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
       
       if (startAt != null && startAt != Duration.zero) {
-         // استخدام seek بدقة
          await _player.seek(startAt);
       }
 
@@ -342,11 +326,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         await _player.setRate(_currentSpeed);
       }
 
-      // ✅ التشغيل الفعلي الآن
-      await _player.play();
-      
-      // ✅ إخفاء شاشة الانتظار بعد بدء التشغيل الفعلي
-      if (mounted) setState(() => _isVideoLoading = false);
+      // ✅ التحكم في التشغيل بناءً على الحالة (أونلاين/أوفلاين)
+      if (isOffline) {
+        // إذا أوفلاين: نشغل العداد، وننتظر انتهائه ليقوم هو باستدعاء _player.play()
+        _startCountdown();
+      } else {
+        // إذا أونلاين: نشغل فوراً
+        await _player.play();
+      }
 
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PlayVideo Function Failed');
@@ -568,7 +555,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               )
             else
-              // ✅ عرض المشغل
+              // ✅ عرض المشغل (سيكون الإطار الأول ظاهراً في الخلفية)
               Center(
                 child: MaterialVideoControlsTheme(
                   normal: controlsTheme,
@@ -580,31 +567,42 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-            // ✅ شاشة التحميل الذكية + عداد التجهيز (Stabilization Countdown)
+            // ✅ شاشة التحميل + العداد (مع شفافية لرؤية الفيديو)
             if (!_isError && (_isVideoLoading || !_isInitialized || _stabilizingCountdown > 0))
               Container(
-                color: Colors.black,
+                // شفافية 60% لإظهار الإطار الأول بوضوح
+                color: Colors.black.withOpacity(0.6), 
                 child: Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const CircularProgressIndicator(color: AppColors.accentYellow),
+                      // إظهار اللودر فقط إذا كان الفيديو يجهز
+                      if (_isVideoLoading || !_isInitialized)
+                        const CircularProgressIndicator(color: AppColors.accentYellow),
+                        
+                      // إظهار العداد إذا كان فعالاً
                       if (_stabilizingCountdown > 0) ...[
                         const SizedBox(height: 24),
                         Text(
-                          "Stabilizing... $_stabilizingCountdown",
+                          "Starting in $_stabilizingCountdown",
                           style: const TextStyle(
                             color: AppColors.accentYellow, 
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            letterSpacing: 2.0
+                            fontSize: 28, // تكبير الخط ليظهر بوضوح
+                            letterSpacing: 2.0,
+                            shadows: [
+                              Shadow(blurRadius: 10, color: Colors.black, offset: Offset(2, 2))
+                            ]
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          "Preparing offline stream",
-                          style: TextStyle(color: Colors.white54, fontSize: 12),
-                        ),
+                        if (!_isVideoLoading) // نص تأكيد الجاهزية
+                          const Padding(
+                            padding: EdgeInsets.only(top: 12.0),
+                            child: Text(
+                              "Video Ready - Stabilizing Stream...",
+                              style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                          ),
                       ]
                     ],
                   ),
