@@ -25,12 +25,9 @@ class LocalProxyService {
   Future<void> start() async {
     _usageCount++; 
     
-    if (_server != null) {
-        return;
-    }
+    if (_server != null) return;
 
     try {
-      FirebaseCrashlytics.instance.log('🔒 Proxy: Initializing Encryption...');
       await EncryptionHelper.init();
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Encryption Init Failed', fatal: true);
@@ -38,13 +35,13 @@ class LocalProxyService {
     }
 
     final router = Router();
-    // ✅ دعم طلبات HEAD و GET (ضروري للمشغلات)
+    // ✅ دعم طلبات HEAD و GET (ضروري لتوافق ExoPlayer)
     router.head('/video', _handleRequest);
     router.get('/video', _handleRequest);
 
     try {
-      _server = await shelf_io.serve(router, InternetAddress.loopbackIPv4, port);
-      // تسريع الاستجابة للطلبات المحلية
+      // استخدام shared: true للمساعدة في الاستقرار
+      _server = await shelf_io.serve(router, InternetAddress.loopbackIPv4, port, shared: true);
       _server?.autoCompress = false; 
       FirebaseCrashlytics.instance.log('🔒 Proxy Started on port ${_server!.port}');
     } catch (e, stack) {
@@ -57,7 +54,6 @@ class LocalProxyService {
     if (_usageCount <= 0) {
         _usageCount = 0;
         if (_server != null) {
-            FirebaseCrashlytics.instance.log('🛑 Proxy Stopped');
             _server?.close(force: true);
             _server = null;
         }
@@ -66,27 +62,17 @@ class LocalProxyService {
 
   Future<Response> _handleRequest(Request request) async {
     final path = request.url.queryParameters['path'];
-    
-    // تسجيل تفاصيل الطلب
-    FirebaseCrashlytics.instance.log('📥 Proxy Request: ${request.method} $path');
-
-    if (path == null) {
-      return Response.notFound('Path not provided');
-    }
+    if (path == null) return Response.notFound('Path not provided');
 
     final decodedPath = Uri.decodeComponent(path);
     final file = File(decodedPath);
     
     if (!await file.exists()) {
-      FirebaseCrashlytics.instance.log('❌ Proxy File Not Found: $decodedPath');
       return Response.notFound('File not found');
     }
 
-    // ✅ التعديل الجوهري: استخدام octet-stream
-    // هذا يجبر المشغل على فحص محتوى الملف (Sniffing) لمعرفة نوعه (MP4, WebM, AAC)
-    // بدلاً من الاعتماد على الهيدر الذي قد يكون خاطئاً.
+    // ✅ استخدام octet-stream لإجبار المشغل على اكتشاف الكودك بنفسه
     String contentType = 'application/octet-stream'; 
-    
     if (decodedPath.toLowerCase().contains('.pdf')) {
        contentType = 'application/pdf';
     } 
@@ -99,10 +85,7 @@ class LocalProxyService {
       final int overhead = encChunkSize - plainChunkSize; 
 
       final int totalChunks = (encryptedLength / encChunkSize).ceil();
-      // حماية من الملفات الفارغة أو التالفة
-      if (totalChunks == 0) {
-         return Response.ok('');
-      }
+      if (totalChunks == 0) return Response.ok('');
 
       final int lastEncChunkSize = encryptedLength - ((totalChunks - 1) * encChunkSize);
       final int lastPlainChunkSize = max(0, lastEncChunkSize - overhead);
@@ -122,7 +105,6 @@ class LocalProxyService {
         }
       }
 
-      // تصحيح النطاق
       if (start >= originalFileSize) {
          return Response(416, body: 'Requested Range Not Satisfiable', headers: {'Content-Range': 'bytes */$originalFileSize'});
       }
@@ -130,10 +112,7 @@ class LocalProxyService {
       
       final contentLength = end - start + 1;
 
-      // تسجيل نطاق البث
-      FirebaseCrashlytics.instance.log('Range Request: $start-$end / $originalFileSize (Type: $contentType)');
-
-      // ✅ الرد على طلب HEAD فقط بالمعلومات (بدون داتا)
+      // ✅ الرد على طلب HEAD بالمعلومات فقط
       if (request.method == 'HEAD') {
         return Response.ok(
           null, 
@@ -156,13 +135,14 @@ class LocalProxyService {
           'Content-Range': 'bytes $start-$end/$originalFileSize',
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-cache, no-store, must-revalidate', // منع الكاش
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Connection': 'keep-alive',
         },
       );
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Request Handling Error');
-      return Response.internalServerError(body: 'Internal Error: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Request Error');
+      return Response.internalServerError(body: 'Internal Error');
     }
   }
 
@@ -194,6 +174,9 @@ class LocalProxyService {
 
         Uint8List encryptedBlock = await raf.read(bytesToRead);
         
+        // حماية من الكتل التالفة
+        if (encryptedBlock.length < EncryptionHelper.IV_LENGTH) break;
+
         try {
           Uint8List decryptedBlock = EncryptionHelper.decryptBlock(encryptedBlock);
 
@@ -205,14 +188,11 @@ class LocalProxyService {
             yield decryptedBlock.sublist(sliceStart, sliceEnd);
           }
         } catch (e) {
-           // تسجيل خطأ فك التشفير مع رقم القطعة (Chunk)
-           FirebaseCrashlytics.instance.log("🚨 Decryption Error at Chunk Index: $i");
            print("Decryption error at chunk $i: $e");
-           throw e; 
+           // ✅ الاستمرار لتجنب قطع الفيديو بالكامل في حال وجود خطأ بسيط
+           continue; 
         }
       }
-    } catch (e, s) {
-       FirebaseCrashlytics.instance.recordError(e, s, reason: 'Stream Generation Error');
     } finally {
       await raf?.close();
     }
