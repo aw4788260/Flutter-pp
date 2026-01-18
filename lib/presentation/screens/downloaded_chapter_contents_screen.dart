@@ -60,7 +60,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
       await proxy.start(); 
 
       // 3. تجهيز الروابط (Video & Audio)
-      // نستخدم 127.0.0.1 لأننا تأكدنا أن السيرفر يعمل ويستمع (حتى لو كان مربوطاً بـ 0.0.0.0)
+      // نستخدم 127.0.0.1 لأننا تأكدنا أن السيرفر يعمل ويستمع
       String playUrl = 'http://127.0.0.1:${proxy.port}/video?path=${Uri.encodeComponent(filePath)}&ext=.mp4';
       String? audioUrl;
 
@@ -75,6 +75,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
       }
 
       // 4. (خطوة أمان) إجراء "Ping" سريع جداً للتأكد أن البروكسي يرد
+      // هذا يضمن أن السيرفر مستقر قبل فتح المشغل
       try {
         final dio = Dio();
         // Timeout قصير جداً (500ms) لأننا نتصل محلياً
@@ -94,13 +95,13 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
           context,
           MaterialPageRoute(
             builder: (_) => VideoPlayerScreen(
-              // نمرر الرابط الجاهز في الـ streams
+              // نمرر رابط الفيديو الجاهز
               streams: {"Offline": playUrl}, 
               title: item['title'] ?? "Offline Video",
-              // نمرر رابط الصوت الجاهز (تأكد أنك حدثت VideoPlayerScreen لاستقبال هذا المتغير)
-              // إذا لم تحدثه، يمكنك تمريره مدمجاً في الستريم: "$playUrl|$audioUrl" وتعديل المشغل ليفصله
-              // لكن يفضل استخدام المتغير المنفصل كما شرحنا سابقاً.
-              // هنا سأفترض أنك حدثت VideoPlayerScreen لاستقبال preReadyAudioUrl أو عدلته ليتعامل معه
+              
+              // ✅✅ هام جداً: نمرر رابط الصوت الجاهز هنا
+              // هذا يضمن أن المشغل يعرف بوجود صوت ويطلبه فوراً
+              preReadyAudioUrl: audioUrl, 
             ),
           ),
         );
