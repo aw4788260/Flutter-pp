@@ -7,7 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/app_state.dart'; // ✅ استيراد AppState للوصول السريع للبيانات
+import '../../core/services/app_state.dart';
 
 class YoutubePlayerScreen extends StatefulWidget {
   final String videoId;
@@ -29,13 +29,13 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
   // متغيرات العلامة المائية
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
-  String _userIdText = ""; // سنضع فيه رقم الهاتف
+  String _userIdText = ""; 
 
   @override
   void initState() {
     super.initState();
     
-    // ✅ 1. تفعيل وضع ملء الشاشة الحقيقي
+    // ✅ 1. تفعيل وضع ملء الشاشة الأفقي
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
@@ -72,16 +72,13 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
     }
   }
 
-  // ✅ تعديل: جلب رقم الهاتف من AppState أولاً (الأسرع والأدق)
   void _getUserId() {
     String displayText = '';
     
-    // 1. المحاولة الأولى: من الذاكرة الحية
     if (AppState().userData != null) {
       displayText = AppState().userData!['phone'] ?? '';
     }
 
-    // 2. المحاولة الثانية: من التخزين المحلي
     if (displayText.isEmpty) {
       try {
         if (Hive.isBoxOpen('auth_box')) {
@@ -123,10 +120,13 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
     _controller.removeListener(_playerListener);
     _controller.dispose();
     
-    // ✅ استعادة وضع النظام اليدوي لمنع تداخل الواجهة
+    // ✅ استعادة وضع النظام الطبيعي (إظهار الأشرطة العلوية والسفلية)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    // ✅ استعادة توجيه الشاشة للوضع الطبيعي (السماح بالتدوير أو العودة للعمودي)
+    // يمكنك استخدام DeviceOrientation.portraitUp إذا كنت تريد إجبار الوضع العمودي فقط
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values); 
+    
     super.dispose();
   }
 
@@ -166,17 +166,15 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  // ✅ تباين عالي (خلفية داكنة)
                   color: Colors.black.withOpacity(0.6), 
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   _userIdText,
                   style: TextStyle(
-                    // ✅ تباين عالي (نص فاتح)
                     color: Colors.white.withOpacity(0.9), 
                     fontWeight: FontWeight.bold,
-                    fontSize: 11, // ✅ الحفاظ على الحجم
+                    fontSize: 11, 
                   ),
                 ),
               ),
