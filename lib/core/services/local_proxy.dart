@@ -19,18 +19,16 @@ class LocalProxyService {
 
   HttpServer? _server;
   final int port = 8080;
-  
   int _usageCount = 0;
 
   Future<void> start() async {
     _usageCount++; 
-    
     if (_server != null) return;
 
     try {
       await EncryptionHelper.init();
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Encryption Init Failed', fatal: true);
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Encryption Init Failed');
       return;
     }
 
@@ -39,12 +37,12 @@ class LocalProxyService {
     router.get('/video', _handleRequest);
 
     try {
-      // ✅ التعديل 1: الربط بـ anyIPv4 (0.0.0.0) بدلاً من loopbackIPv4
-      // هذا يجعله مرئياً لكل مكونات النظام بما فيها ExoPlayer بشكل مؤكد
+      // ✅ 1. استخدام AnyIPv4 لحل مشاكل الاتصال في أندرويد
+      // ✅ 2. shared: true يحسن الأداء عند تعدد الطلبات (صوت + صورة)
       _server = await shelf_io.serve(router, InternetAddress.anyIPv4, port, shared: true);
       
       _server?.autoCompress = false; 
-      // إيقاف الـ idle timeout لمنع إغلاق الاتصال أثناء التوقف المؤقت للفيديو
+      // ✅ 3. تعطيل مهلة الانتظار لمنع قطع الاتصال أثناء التخزين المؤقت
       _server?.idleTimeout = null; 
       
       FirebaseCrashlytics.instance.log('🔒 Proxy Started on ${_server!.address.host}:${_server!.port}');
@@ -58,7 +56,6 @@ class LocalProxyService {
     if (_usageCount <= 0) {
         _usageCount = 0;
         if (_server != null) {
-            FirebaseCrashlytics.instance.log('🛑 Proxy Stopped');
             _server?.close(force: true);
             _server = null;
         }
@@ -70,19 +67,16 @@ class LocalProxyService {
       final pathParam = request.url.queryParameters['path'];
       if (pathParam == null) return Response.notFound('Path missing');
 
-      // ✅ التعديل 2: فك ترميز المسار بعناية لدعم المسافات والرموز
       final decodedPath = Uri.decodeComponent(pathParam);
       final file = File(decodedPath);
       
       if (!await file.exists()) {
-        FirebaseCrashlytics.instance.log('❌ Proxy: File missing at $decodedPath');
         return Response.notFound('File not found');
       }
 
+      // ✅ 4. استخدام octet-stream هو الأكثر أماناً مع التشفير لتجنب خطأ MediaCodec
       String contentType = 'application/octet-stream'; 
-      if (decodedPath.toLowerCase().contains('.pdf')) {
-         contentType = 'application/pdf';
-      } 
+      if (decodedPath.toLowerCase().contains('.pdf')) contentType = 'application/pdf';
 
       final encryptedLength = await file.length();
       final int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
@@ -94,7 +88,6 @@ class LocalProxyService {
 
       final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + max(0, (encryptedLength - ((totalChunks - 1) * encChunkSize)) - overhead);
 
-      // معالجة الـ Range Header
       final rangeHeader = request.headers['range'];
       int start = 0;
       int end = originalFileSize - 1;
@@ -119,7 +112,6 @@ class LocalProxyService {
         });
       }
 
-      // ✅ التعديل 3: إضافة هيدر Connection: close لمنع تعليق المشغل
       return Response(
         206, 
         body: _createDecryptedStream(file, start, end),
@@ -130,6 +122,7 @@ class LocalProxyService {
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*',
           'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
         },
       );
 
@@ -144,7 +137,6 @@ class LocalProxyService {
     try {
       raf = await file.open(mode: FileMode.read);
       
-      // ثوابت التشفير
       const int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       const int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
 
@@ -157,14 +149,16 @@ class LocalProxyService {
         if (seekPos >= fileLen) break;
 
         await raf.setPosition(seekPos);
+        
+        // قراءة حجم الكتلة بالضبط
         int bytesToRead = min(encChunkSize, fileLen - seekPos);
-
-        // ✅ حماية من قراءة 0 بايت
+        
         if (bytesToRead <= EncryptionHelper.IV_LENGTH) break;
 
         Uint8List encryptedBlock = await raf.read(bytesToRead);
         
         try {
+          // ✅ 5. فك التشفير وإرسال البيانات
           Uint8List decryptedBlock = EncryptionHelper.decryptBlock(encryptedBlock);
 
           int blockStartInPlain = i * plainChunkSize;
@@ -175,7 +169,9 @@ class LocalProxyService {
             yield decryptedBlock.sublist(sliceStart, sliceEnd);
           }
         } catch (e) {
-           print("Decryption Skip at chunk $i: $e");
+           print("⚠️ Decryption Skip at chunk $i: $e");
+           // ✅ 6. في حال فشل تشفير كتلة واحدة، نتجاوزها بدلاً من إيقاف الفيديو بالكامل
+           // هذا يمنع Crashlytics Fatal Exception ويجعل الفيديو يكمل مع "قفزة" بسيطة
            continue; 
         }
       }
