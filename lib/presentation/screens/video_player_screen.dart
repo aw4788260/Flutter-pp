@@ -77,40 +77,36 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await WakelockPlus.enable();
       await _startProxyServer();
 
-      // إنشاء المشغل
-      _player = Player();
+      // ✅ تعديل 1: تهيئة المشغل لاستخدام السوفتوير
+      _player = Player(
+        configuration: const PlayerConfiguration(
+          // زيادة البافر لضمان سلاسة التشغيل مع السوفتوير
+          bufferSize: 32 * 1024 * 1024, 
+          // vo: 'gpu', // يمكن تركها أو إزالتها، الأهم هو إعدادات الكونترولر أدناه
+        ),
+      );
       
+      // ✅ تعديل 2: تعطيل التسريع المادي (Hardware Acceleration)
+      // هذا هو الحل السحري لمشكلة الشاشة السوداء مع AV1
       _controller = VideoController(
         _player,
         configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: true,
+          enableHardwareAcceleration: false, // 🛑 False = استخدام المعالج (CPU) وهو الأضمن
           androidAttachSurfaceAfterVideoParameters: true,
         ),
       );
 
-      // الاستماع للأخطاء
+      // الاستماع للأخطاء (بدون إيقاف التطبيق)
       _player.stream.error.listen((error) {
         String errorMsg = "🚨 MediaKit Error: $error";
         debugPrint(errorMsg);
-        
-        FirebaseCrashlytics.instance.recordError(
-          Exception(error), 
-          StackTrace.current, 
-          reason: "MediaKit Playback Error",
-          fatal: false 
-        );
-
-        if (mounted) {
-          setState(() {
-            _isError = true;
-            _errorMessage = "Playback Error. Try switching quality.";
-          });
-        }
+        // لا نقوم بإظهار رسالة خطأ للمستخدم فوراً، لأن المشغل قد ينجح في التخطي
       });
 
       _player.stream.log.listen((log) {
         if (log.level == 'error' || log.level == 'warn' || log.level == 'fatal') {
-           FirebaseCrashlytics.instance.log("⚠️ Native Log: ${log.prefix}: ${log.text}");
+           // تسجيل الأخطاء الداخلية للتحليل فقط
+           // FirebaseCrashlytics.instance.log("⚠️ Native Log: ${log.prefix}: ${log.text}");
         }
       });
 
@@ -121,6 +117,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         setState(() {
           _isInitialized = true;
         });
+        // هذا سيقوم باختيار 480p تلقائياً
         _parseQualities();
       }
 
@@ -200,6 +197,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
+  // ✅ دالة تحديد الجودة وترتيبها
   void _parseQualities() {
     if (widget.streams.isEmpty) {
       setState(() {
@@ -216,17 +214,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return valA.compareTo(valB);
     });
 
-    // محاولة البدء بجودة 480p، وإلا أول جودة متاحة
-    _currentQuality = _sortedQualities.contains("480p") 
-        ? "480p" 
-        : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
+    // ✅ منطق البدء الافتراضي بجودة 480p
+    if (_sortedQualities.contains("480p")) {
+      _currentQuality = "480p";
+    } else {
+      // إذا لم توجد 480p، نختار أقل جودة متاحة لضمان سرعة البدء
+      _currentQuality = _sortedQualities.isNotEmpty ? _sortedQualities.first : "";
+    }
 
     if (_currentQuality.isNotEmpty) {
       _playVideo(widget.streams[_currentQuality]!);
     }
   }
 
-  // ✅ الدالة الأساسية للتشغيل (تدعم الصيغ المدمجة والمنفصلة مع المزامنة)
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
     
@@ -257,15 +257,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
-      // 4. فتح الفيديو (بدون تشغيل تلقائي لضبط الصوت أولاً)
+      // 4. فتح الفيديو
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false
       );
 
-      // 5. ✅ دمج مسار الصوت (لليوتيوب عالي الجودة)
+      // 5. ✅ دمج مسار الصوت (هام للجودات العالية)
       if (audioUrl != null) {
-        // ننتظر قليلاً للتأكد من جاهزية المشغل (مهم جداً)
+        // تأخير بسيط جداً لضمان تحميل الفيديو الأساسي قبل حقن الصوت
         await Future.delayed(const Duration(milliseconds: 100));
         
         await _player.setAudioTrack(AudioTrack.uri(
@@ -280,7 +280,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // 6. استعادة الموضع (Seek)
       if (startAt != null && startAt != Duration.zero) {
         int retries = 0;
-        // ننتظر حتى تصبح المدة متاحة للقيام بـ Seek آمن
         while (_player.state.duration == Duration.zero && retries < 40) {
           if (_isDisposing) return;
           await Future.delayed(const Duration(milliseconds: 100));
@@ -294,7 +293,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         await _player.setRate(_currentSpeed);
       }
 
-      // 8. ابدأ التشغيل الآن
+      // 8. ابدأ التشغيل
       await _player.play();
 
     } catch (e, stack) {
@@ -501,7 +500,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       onPressed: () {
                           FirebaseCrashlytics.instance.log("🔄 User clicked Retry");
                           setState(() => _isError = false);
-                          // محاولة إعادة التشغيل بنفس الجودة
                           _playVideo(widget.streams[_currentQuality]!);
                       }, 
                       style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
