@@ -38,19 +38,19 @@ class LocalProxyService {
     router.get('/video', _handleRequest);
 
     try {
-      // ✅ التعديل الجذري 1: استخدام loopbackIPv4 بدلاً من anyIPv4
-      // هذا يحل مشكلة عدم وصول الطلب على الأجهزة القديمة
-      // ✅ التعديل 2: إزالة shared: true لتجنب مشاكل المنافذ المعلقة
+      // ✅ تعديل 1: استخدام anyIPv4 لضمان قبول الاتصال من "localhost" و "127.0.0.1" على جميع الأجهزة
       _server = await shelf_io.serve(
         router, 
-        InternetAddress.loopbackIPv4, // (127.0.0.1)
+        InternetAddress.anyIPv4, // تم التغيير من loopbackIPv4
         port, 
         shared: false 
       );
 
       _server?.autoCompress = false;
-      // مهلة قصيرة لقتل الاتصالات الميتة فوراً
-      _server?.idleTimeout = const Duration(seconds: 1);
+      
+      // ✅ تعديل 2 (الحل الجذري): زيادة المهلة إلى 60 ثانية
+      // الأجهزة القديمة تحتاج وقتاً أطول عند انشغال المعالج بفك التشفير
+      _server?.idleTimeout = const Duration(seconds: 60); 
       
       FirebaseCrashlytics.instance.log('🔒 Proxy Started on ${_server!.address.host}:${_server!.port}');
     } catch (e, stack) {
@@ -78,11 +78,9 @@ class LocalProxyService {
       final decodedPath = Uri.decodeComponent(pathParam);
       final file = File(decodedPath);
       
-      // تسجيل وصول الطلب للتأكد من حل مشكلة الاتصال
-      final bool isLikelyAudio = decodedPath.contains('aud_') || decodedPath.contains('audio');
-      final String logMsg = "📡 Proxy Request: ${isLikelyAudio ? 'AUDIO' : 'VIDEO'} | Path: ${decodedPath.split('/').last} | Range: ${request.headers['range']}";
-      print(logMsg);
-      // FirebaseCrashlytics.instance.log(logMsg); 
+      // تسجيل للتشخيص (اختياري)
+      // final bool isLikelyAudio = decodedPath.contains('aud_') || decodedPath.contains('audio');
+      // print("📡 Proxy Request: ${isLikelyAudio ? 'AUDIO' : 'VIDEO'} | Path: ${decodedPath.split('/').last}");
 
       if (!await file.exists()) {
         return Response.notFound('File not found');
@@ -118,14 +116,15 @@ class LocalProxyService {
       
       final contentLength = end - start + 1;
 
-      // ✅ التعديل 3: إغلاق الاتصال فوراً (Connection: close)
+      // ✅ تعديل 3: السماح بإبقاء الاتصال حياً (keep-alive) بدلاً من قطعه (close)
+      // هذا يساعد المشغل على طلب أجزاء أخرى دون إعادة إنشاء الاتصال
       final Map<String, Object> headers = {
           'Content-Type': contentType, 
           'Content-Length': contentLength.toString(),
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Connection': 'close', 
+          'Connection': 'keep-alive', // تم التغيير من close
       };
 
       if (request.method == 'HEAD') {
@@ -181,7 +180,7 @@ class LocalProxyService {
           outputBlock = EncryptionHelper.decryptBlock(encryptedBlock);
         } catch (e) {
            print("❌ Decryption ERROR at chunk $i: $e");
-           // إرسال أصفار في حالة الخطأ البسيط
+           // إرسال أصفار في حالة الخطأ لتجنب قطع البث
            int expectedSize = (bytesToRead == encChunkSize) 
                ? plainChunkSize 
                : max(0, bytesToRead - ivLen - tagLen);
@@ -203,16 +202,13 @@ class LocalProxyService {
     } catch(e) {
        print("Stream Interrupted: $e");
     } finally {
-      // ✅ التعديل 4: المنطق الذكي للفجوات (Smart Gap Handling)
+      // التعامل مع الفجوات الصغيرة (Smart Gap Handling)
       if (totalSent < requiredLength) {
           int missingBytes = requiredLength - totalSent;
           
           if (missingBytes < 512 * 1024) {
-             print("⚠️ Small Gap ($missingBytes bytes): Filling with zeros.");
+             // تعويض النقص بأصفار للفجوات الصغيرة
              yield Uint8List(missingBytes);
-          } else {
-             // إغلاق الاتصال للفجوات الكبيرة لإجبار المشغل على إعادة الطلب
-             print("🛑 Large Gap ($missingBytes bytes): Closing connection.");
           }
       }
       await raf?.close();
