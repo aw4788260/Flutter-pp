@@ -35,15 +35,19 @@ class LocalProxyService {
     }
 
     final router = Router();
-    // ✅ دعم طلبات HEAD و GET (ضروري لتوافق ExoPlayer)
     router.head('/video', _handleRequest);
     router.get('/video', _handleRequest);
 
     try {
-      // استخدام shared: true للمساعدة في الاستقرار
-      _server = await shelf_io.serve(router, InternetAddress.loopbackIPv4, port, shared: true);
+      // ✅ التعديل 1: الربط بـ anyIPv4 (0.0.0.0) بدلاً من loopbackIPv4
+      // هذا يجعله مرئياً لكل مكونات النظام بما فيها ExoPlayer بشكل مؤكد
+      _server = await shelf_io.serve(router, InternetAddress.anyIPv4, port, shared: true);
+      
       _server?.autoCompress = false; 
-      FirebaseCrashlytics.instance.log('🔒 Proxy Started on port ${_server!.port}');
+      // إيقاف الـ idle timeout لمنع إغلاق الاتصال أثناء التوقف المؤقت للفيديو
+      _server?.idleTimeout = null; 
+      
+      FirebaseCrashlytics.instance.log('🔒 Proxy Started on ${_server!.address.host}:${_server!.port}');
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Start Failed');
     }
@@ -54,6 +58,7 @@ class LocalProxyService {
     if (_usageCount <= 0) {
         _usageCount = 0;
         if (_server != null) {
+            FirebaseCrashlytics.instance.log('🛑 Proxy Stopped');
             _server?.close(force: true);
             _server = null;
         }
@@ -61,25 +66,25 @@ class LocalProxyService {
   }
 
   Future<Response> _handleRequest(Request request) async {
-    final path = request.url.queryParameters['path'];
-    if (path == null) return Response.notFound('Path not provided');
-
-    final decodedPath = Uri.decodeComponent(path);
-    final file = File(decodedPath);
-    
-    if (!await file.exists()) {
-      return Response.notFound('File not found');
-    }
-
-    // ✅ استخدام octet-stream لإجبار المشغل على اكتشاف الكودك بنفسه
-    String contentType = 'application/octet-stream'; 
-    if (decodedPath.toLowerCase().contains('.pdf')) {
-       contentType = 'application/pdf';
-    } 
-
     try {
-      final encryptedLength = await file.length();
+      final pathParam = request.url.queryParameters['path'];
+      if (pathParam == null) return Response.notFound('Path missing');
+
+      // ✅ التعديل 2: فك ترميز المسار بعناية لدعم المسافات والرموز
+      final decodedPath = Uri.decodeComponent(pathParam);
+      final file = File(decodedPath);
       
+      if (!await file.exists()) {
+        FirebaseCrashlytics.instance.log('❌ Proxy: File missing at $decodedPath');
+        return Response.notFound('File not found');
+      }
+
+      String contentType = 'application/octet-stream'; 
+      if (decodedPath.toLowerCase().contains('.pdf')) {
+         contentType = 'application/pdf';
+      } 
+
+      final encryptedLength = await file.length();
       final int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
       final int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       final int overhead = encChunkSize - plainChunkSize; 
@@ -87,62 +92,50 @@ class LocalProxyService {
       final int totalChunks = (encryptedLength / encChunkSize).ceil();
       if (totalChunks == 0) return Response.ok('');
 
-      final int lastEncChunkSize = encryptedLength - ((totalChunks - 1) * encChunkSize);
-      final int lastPlainChunkSize = max(0, lastEncChunkSize - overhead);
-      final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + lastPlainChunkSize;
+      final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + max(0, (encryptedLength - ((totalChunks - 1) * encChunkSize)) - overhead);
 
+      // معالجة الـ Range Header
       final rangeHeader = request.headers['range'];
       int start = 0;
       int end = originalFileSize - 1;
 
       if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
         final parts = rangeHeader.substring(6).split('-');
-        if (parts.isNotEmpty) {
-          start = int.tryParse(parts[0]) ?? 0;
-        }
-        if (parts.length > 1 && parts[1].isNotEmpty) {
-          end = int.tryParse(parts[1]) ?? originalFileSize - 1;
-        }
+        if (parts.isNotEmpty) start = int.tryParse(parts[0]) ?? 0;
+        if (parts.length > 1 && parts[1].isNotEmpty) end = int.tryParse(parts[1]) ?? originalFileSize - 1;
       }
 
       if (start >= originalFileSize) {
-         return Response(416, body: 'Requested Range Not Satisfiable', headers: {'Content-Range': 'bytes */$originalFileSize'});
+         return Response(416, body: 'Invalid Range', headers: {'Content-Range': 'bytes */$originalFileSize'});
       }
-      if (end >= originalFileSize) end = originalFileSize - 1;
       
       final contentLength = end - start + 1;
 
-      // ✅ الرد على طلب HEAD بالمعلومات فقط
       if (request.method == 'HEAD') {
-        return Response.ok(
-          null, 
-          headers: {
+        return Response.ok(null, headers: {
             'Content-Type': contentType,
             'Content-Length': originalFileSize.toString(),
             'Accept-Ranges': 'bytes',
-          }
-        );
+        });
       }
 
-      final stream = _createDecryptedStream(file, start, end);
-
+      // ✅ التعديل 3: إضافة هيدر Connection: close لمنع تعليق المشغل
       return Response(
         206, 
-        body: stream,
+        body: _createDecryptedStream(file, start, end),
         headers: {
           'Content-Type': contentType, 
           'Content-Length': contentLength.toString(),
           'Content-Range': 'bytes $start-$end/$originalFileSize',
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache',
         },
       );
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Request Error');
-      return Response.internalServerError(body: 'Internal Error');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Proxy Request Handler Error');
+      return Response.internalServerError(body: 'Proxy Error');
     }
   }
 
@@ -151,12 +144,12 @@ class LocalProxyService {
     try {
       raf = await file.open(mode: FileMode.read);
       
+      // ثوابت التشفير
       const int plainChunkSize = EncryptionHelper.CHUNK_SIZE;
       const int encChunkSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
 
       int startChunkIndex = reqStart ~/ plainChunkSize;
       int endChunkIndex = reqEnd ~/ plainChunkSize;
-
       final fileLen = await file.length();
 
       for (int i = startChunkIndex; i <= endChunkIndex; i++) {
@@ -164,19 +157,13 @@ class LocalProxyService {
         if (seekPos >= fileLen) break;
 
         await raf.setPosition(seekPos);
+        int bytesToRead = min(encChunkSize, fileLen - seekPos);
 
-        int bytesToRead = encChunkSize;
-        if (seekPos + bytesToRead > fileLen) {
-           bytesToRead = fileLen - seekPos;
-        }
-
+        // ✅ حماية من قراءة 0 بايت
         if (bytesToRead <= EncryptionHelper.IV_LENGTH) break;
 
         Uint8List encryptedBlock = await raf.read(bytesToRead);
         
-        // حماية من الكتل التالفة
-        if (encryptedBlock.length < EncryptionHelper.IV_LENGTH) break;
-
         try {
           Uint8List decryptedBlock = EncryptionHelper.decryptBlock(encryptedBlock);
 
@@ -188,11 +175,12 @@ class LocalProxyService {
             yield decryptedBlock.sublist(sliceStart, sliceEnd);
           }
         } catch (e) {
-           print("Decryption error at chunk $i: $e");
-           // ✅ الاستمرار لتجنب قطع الفيديو بالكامل في حال وجود خطأ بسيط
+           print("Decryption Skip at chunk $i: $e");
            continue; 
         }
       }
+    } catch(e) {
+       print("Stream Error: $e");
     } finally {
       await raf?.close();
     }
