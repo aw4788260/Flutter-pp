@@ -42,7 +42,7 @@ dependencies:
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
-  safe_device: ^1.1.4
+  safe_device: ^1.3.8
   flutter_local_notifications: ^19.5.0
   flutter_background_service: ^5.1.0
   
@@ -53,30 +53,30 @@ dependencies:
   # Security & Privacy
   flutter_windowmanager_plus: ^1.0.1 # منع تصوير الشاشة
   encrypt: ^5.0.3 # التشفير (AES)
-  flutter_secure_storage: ^9.0.0
+  flutter_secure_storage: ^10.0.0
 
   # Networking
-  dio: ^5.4.0
+  dio: ^5.9.0
   
   # Storage & Local Database
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  path_provider: ^2.1.2 # الوصول لمسارات الملفات
-  permission_handler: ^11.3.0 # إدارة الأذونات
+  path_provider: ^2.1.5 # الوصول لمسارات الملفات
+  permission_handler: ^12.0.1 # إدارة الأذونات
 
   # File Handling & Uploads
-  image_picker: ^1.0.7 # اختيار صور الإيصالات
+  image_picker: ^1.2.1 # اختيار صور الإيصالات
 
   # Video Players
-  video_player: ^2.8.2
-  chewie: ^1.7.4 # مشغل فيديو متقدم
-  youtube_player_flutter: ^9.0.0 # مشغل يوتيوب
+  video_player: ^2.10.1
+  chewie: ^1.13.0 # مشغل فيديو متقدم
+  youtube_player_flutter: ^9.1.3 # مشغل يوتيوب
 
   # PDF Viewer
-  flutter_pdfview: ^1.3.2
+  flutter_pdfview: ^1.4.4
 
   # Local Server (Offline Playback Proxy)
-  shelf: ^1.4.1
+  shelf: ^1.4.2
   shelf_router: ^1.1.4
 
 dev_dependencies:
