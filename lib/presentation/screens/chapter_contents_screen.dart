@@ -5,7 +5,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/download_manager.dart';
-// ❌ تم إزالة استيراد youtube_service.dart نهائياً
 import 'video_player_screen.dart';
 import 'youtube_player_screen.dart';
 import 'pdf_viewer_screen.dart';
@@ -101,7 +100,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // الدالة القديمة (للخيارين الأول والثاني - تعتمد على get-video-id)
+  // الدالة القديمة (للخيارين الأول والثاني)
   Future<void> _fetchAndPlayVideo(Map<String, dynamic> video, {required bool useYoutube}) async {
     showDialog(
       context: context,
@@ -416,6 +415,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       subjectName: widget.subjectTitle,
       chapterName: widget.chapter['title'] ?? "Chapter",
       isPdf: true,
+      quality: "PDF", // ✅✅✅ التصحيح هنا: إضافة الجودة المطلوبة لملف الـ PDF
       onProgress: (p) {},
       onComplete: () {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success));
