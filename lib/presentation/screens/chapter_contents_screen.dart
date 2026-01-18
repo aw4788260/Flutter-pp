@@ -177,6 +177,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
   // الدالة الجديدة للخيار الأول (الأقوى - دمج الصوت والصورة)
   Future<void> _fetchAndPlayWithExplode(Map<String, dynamic> video) async {
+    FirebaseCrashlytics.instance.log("🚀 Starting Direct Play (Explode) for: ${video['title']}");
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -230,6 +231,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           }
 
           if (processedQualities.isNotEmpty) {
+            FirebaseCrashlytics.instance.log("✅ Streams processed. Launching player.");
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -240,12 +242,14 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
             );
           } else {
+            FirebaseCrashlytics.instance.log("⚠️ No valid video qualities processed.");
             _showErrorSnackBar("No playable streams found.");
           }
         } else {
           _showErrorSnackBar("Video streams unavailable.");
         }
       } else {
+        FirebaseCrashlytics.instance.log("❌ Server Error: ${res.statusCode}");
         _showErrorSnackBar("Server Error: ${res.statusCode}");
       }
     } catch (e, stack) {
@@ -260,6 +264,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   // ===========================================================================
 
   Future<void> _prepareVideoDownload(String videoId, String videoTitle, String duration) async {
+    FirebaseCrashlytics.instance.log("⬇️ Fetching download info for: $videoTitle");
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -304,6 +309,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                bestAudioUrl 
              );
           } else {
+             FirebaseCrashlytics.instance.log("⚠️ No video-only streams found for download.");
              _showErrorSnackBar("No compatible video streams found.");
           }
         } else {
@@ -312,21 +318,28 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       } else {
         _showErrorSnackBar("Server Error: ${res.statusCode}");
       }
-    } catch (e) {
+    } catch (e, stack) {
       if (mounted) Navigator.pop(context);
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Prepare Download Failed');
       _showErrorSnackBar("Failed to fetch download info");
     }
   }
 
+  // ✅ تم التعديل: إصلاح مشكلة السكرول في القائمة
   void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration, String? audioUrl) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.backgroundSecondary,
+      isScrollControlled: true, // 1. السماح بالتحكم في الارتفاع والتمرير
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return Padding(
+        return Container(
+          // 2. تحديد حد أقصى للارتفاع لضمان عدم تغطية الشاشة بالكامل إلا عند الحاجة
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+          ),
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -341,24 +354,32 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              ...qualities.map((q) {
-                return ListTile(
-                  leading: const Icon(LucideIcons.download, color: AppColors.accentYellow),
-                  title: Text(
-                    "${q['quality']}p", 
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                  // ✅ تم إزالة الـ subtitle هنا كما طلبت
-                  trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
-                  onTap: () {
-                    Navigator.pop(context);
-                    
-                    String? targetAudio = (q['type'] == 'video_only') ? audioUrl : null;
+              
+              // 3. استخدام Flexible + SingleChildScrollView لجعل القائمة قابلة للتمرير
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: qualities.map((q) {
+                      return ListTile(
+                        leading: const Icon(LucideIcons.download, color: AppColors.accentYellow),
+                        title: Text(
+                          "${q['quality']}p", 
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                        trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
+                        onTap: () {
+                          Navigator.pop(context);
+                          
+                          String? targetAudio = (q['type'] == 'video_only') ? audioUrl : null;
 
-                    _startVideoDownload(videoId, title, q['url'], targetAudio, "${q['quality']}p", duration);
-                  },
-                );
-              }),
+                          _startVideoDownload(videoId, title, q['url'], targetAudio, "${q['quality']}p", duration);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
             ],
           ),
         );
@@ -368,6 +389,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
   void _startVideoDownload(String videoId, String videoTitle, String? downloadUrl, String? audioUrl, String quality, String duration) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
+    FirebaseCrashlytics.instance.log("⬇️ Starting download: $videoTitle ($quality)");
     
     DownloadManager().startDownload(
       lessonId: videoId,
@@ -389,9 +411,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // ✅ منطق تحميل PDF (المسترجع من الكود القديم والمدمج مع التشفير)
+  // ✅ منطق تحميل PDF
   void _startPdfDownload(String pdfId, String pdfTitle) {
      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
+     FirebaseCrashlytics.instance.log("⬇️ Starting PDF download: $pdfTitle");
      
      DownloadManager().startDownload(
       lessonId: pdfId, 
@@ -400,7 +423,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       subjectName: widget.subjectTitle,
       chapterName: widget.chapter['title'] ?? "Chapter",
       isPdf: true,
-      quality: "PDF", // ✅ تمرير الجودة المطلوبة لتجنب الأخطاء
+      quality: "PDF", 
       onProgress: (p) {},
       onComplete: () {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success));
@@ -618,7 +641,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         bool isDownloaded = DownloadManager().isFileDownloaded(videoId);
                         bool isDownloading = DownloadManager().isFileDownloading(videoId);
 
-                        // ✅ قراءة البيانات المحفوظة لعرض الحجم
                         String? sizeStr;
                         if (isDownloaded) {
                            final item = box.get(videoId);
