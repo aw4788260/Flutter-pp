@@ -311,7 +311,8 @@ class DownloadManager {
       // إذا فشل الـ HEAD، نحاول GET لـ 1 بايت
       try {
         final rangeRes = await _dio.get(url, options: Options(headers: {...headers, 'Range': 'bytes=0-0'}));
-        final rangeHeader = rangeRes.headers.value(Headers.contentRangeHeader) ?? "";
+        // ✅ التصحيح: استخدام النص الصريح بدلاً من الثابت غير الموجود
+        final rangeHeader = rangeRes.headers.value('content-range') ?? "";
         if (rangeHeader.contains("/")) {
            totalBytes = int.parse(rangeHeader.split("/").last);
         }
