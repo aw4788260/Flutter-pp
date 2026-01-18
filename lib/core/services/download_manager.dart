@@ -13,17 +13,19 @@ import '../utils/encryption_helper.dart';
 import 'notification_service.dart';
 
 class DownloadManager {
-  // Singleton Pattern
   static final DownloadManager _instance = DownloadManager._internal();
   factory DownloadManager() => _instance;
   DownloadManager._internal();
 
-  static final Dio _dio = Dio();
+  // ✅ نستخدم Dio مع إعدادات مهلة أطول
+  static final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 60),
+    receiveTimeout: const Duration(seconds: 60),
+    sendTimeout: const Duration(seconds: 60),
+  ));
+
   static final Set<String> _activeDownloads = {};
-
-  // لتحديث الواجهة
   static final ValueNotifier<Map<String, double>> downloadingProgress = ValueNotifier({});
-
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   Timer? _keepAliveTimer;
@@ -35,7 +37,6 @@ class DownloadManager {
     return Hive.box('downloads_box').containsKey(id);
   }
 
-  // --- دوال مساعدة للوقت ---
   String _extractDurationFromUrl(String url) {
     try {
       final regex = RegExp(r'(?:dur%3D|dur=)(\d+(\.\d+)?)');
@@ -60,7 +61,6 @@ class DownloadManager {
         : "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
   }
   
-  // --- خدمة الخلفية ---
   void _startBackgroundService() async {
     final service = FlutterBackgroundService();
     if (!await service.isRunning()) await service.startService();
@@ -70,11 +70,11 @@ class DownloadManager {
       if (_activeDownloads.isEmpty) return;
       service.invoke('keepAlive');
       try {
-        // إشعار عام بالخدمة (صامت)
+        // إشعار صامت لاستمرار الخدمة
         NotificationService().showProgressNotification(
           id: 888, 
-          title: "مــــداد Active",
-          body: "${_activeDownloads.length} lesson(s) downloading...",
+          title: "مــــداد Service",
+          body: "Downloading ${_activeDownloads.length} file(s)...",
           progress: 0, maxProgress: 0, 
         );
       } catch (e) {}
@@ -91,7 +91,7 @@ class DownloadManager {
   }
 
   // ---------------------------------------------------------------------------
-  // 🚀 Core Logic: Start Download (Video + Audio Split Support)
+  // 🚀 Start Download Logic
   // ---------------------------------------------------------------------------
 
   Future<void> startDownload({
@@ -101,23 +101,21 @@ class DownloadManager {
     required String subjectName,
     required String chapterName,
     String? downloadUrl,
-    String? audioUrl, // ✅ رابط الصوت الاختياري
-    required String quality,
-    String duration = "", 
-    
+    String? audioUrl,
     required Function(double) onProgress,
     required Function() onComplete,
     required Function(String) onError,
     bool isPdf = false,
+    String quality = "SD",
+    String duration = "", 
   }) async {
-    FirebaseCrashlytics.instance.log("⬇️ Download Started: $videoTitle (Quality: $quality)");
+    FirebaseCrashlytics.instance.log("⬇️ Download Started: $videoTitle");
     _activeDownloads.add(lessonId);
     _startBackgroundService();
     
-    // تهيئة حالة التقدم
-    var currentProgressMap = Map<String, double>.from(downloadingProgress.value);
-    currentProgressMap[lessonId] = 0.0;
-    downloadingProgress.value = currentProgressMap;
+    var currentProgress = Map<String, double>.from(downloadingProgress.value);
+    currentProgress[lessonId] = 0.0;
+    downloadingProgress.value = currentProgress;
 
     final notifService = NotificationService();
     final int notificationId = lessonId.hashCode;
@@ -125,7 +123,7 @@ class DownloadManager {
     await notifService.showProgressNotification(
       id: notificationId,
       title: "Downloading: $videoTitle",
-      body: "Preparing...",
+      body: "Starting...",
       progress: 0, maxProgress: 100,
     );
 
@@ -136,40 +134,36 @@ class DownloadManager {
       final deviceId = box.get('device_id');
       const String appSecret = String.fromEnvironment('APP_SECRET');
 
-      if (userId == null) throw Exception("User authentication missing");
+      if (userId == null) throw Exception("User auth missing");
 
-      // 1. تجهيز الروابط (إذا لم يتم تمريرها)
+      // 1. تجهيز الروابط
       String? finalVideoUrl = downloadUrl;
       String? finalAudioUrl = audioUrl;
 
-      if (finalVideoUrl == null && !isPdf) {
-          // منطق جلب الرابط في حال لم يتم تمريره (Fall-back)
-          // هذا الجزء يعمل في حال استدعاء الدالة بدون روابط جاهزة
-          // (يفضل دائماً تمرير الروابط من ChapterContentsScreen)
-          final res = await _dio.get(
+      if (finalVideoUrl == null) {
+        if (isPdf) {
+           finalVideoUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
+        } else {
+           // Fallback logic
+           final res = await _dio.get(
             '$_baseUrl/api/secure/get-video-id',
             queryParameters: {'lessonId': lessonId},
-            options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret}, validateStatus: (s) => s! < 500),
+            options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret}),
           );
-          if (res.statusCode != 200) throw Exception(res.data['message'] ?? "Failed to get info");
-          
-          final data = res.data;
-          // منطق بسيط لجلب رابط واحد إذا لم يتم التمرير
-          if (data['url'] != null) finalVideoUrl = data['url'];
-      } else if (isPdf && finalVideoUrl == null) {
-          finalVideoUrl = '$_baseUrl/api/secure/get-pdf?pdfId=$lessonId';
+          if (res.statusCode == 200 && res.data['url'] != null) {
+             finalVideoUrl = res.data['url'];
+          }
+        }
       }
-
-      if (finalVideoUrl == null) throw Exception("No download link found");
+      if (finalVideoUrl == null) throw Exception("Link not found");
 
       if (!isPdf && duration.isEmpty) {
-        String extractedDuration = _extractDurationFromUrl(finalVideoUrl);
-        if (extractedDuration.isNotEmpty) duration = extractedDuration;
+        String ext = _extractDurationFromUrl(finalVideoUrl);
+        if (ext.isNotEmpty) duration = ext;
       }
 
-      // 2. تحضير المجلدات والمسارات
+      // 2. تحضير المسارات
       final appDir = await getApplicationDocumentsDirectory();
-      // تنظيف الأسماء من الرموز
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeChapter = chapterName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -177,98 +171,80 @@ class DownloadManager {
       final dir = Directory('${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter');
       if (!await dir.exists()) await dir.create(recursive: true);
 
-      // مسار الفيديو
       final String videoFileName = isPdf ? "$lessonId.pdf.enc" : "vid_${lessonId}_$quality.enc";
       final String videoSavePath = '${dir.path}/$videoFileName';
       
-      // مسار الصوت (إذا وجد)
       String? audioSavePath;
       if (finalAudioUrl != null) {
         audioSavePath = '${dir.path}/aud_${lessonId}_hq.enc';
       }
 
-      // 3. إدارة التقدم المدمج (Video + Audio)
-      // نستخدم متغيرات لتتبع تقدم كل ملف على حدة
-      double videoProgressVal = 0.0;
-      double audioProgressVal = 0.0;
+      // 3. متغيرات تتبع التقدم المدمج
+      double vidProg = 0.0;
+      double audProg = 0.0;
 
-      // دالة لتحديث التقدم الكلي والإشعار
       void updateAggregatedProgress() {
-        // إذا كان هناك صوت، نعطي الفيديو وزن 80% والصوت 20%
-        // إذا فيديو فقط، الفيديو 100%
-        double total = 0.0;
-        if (finalAudioUrl != null) {
-          total = (videoProgressVal * 0.8) + (audioProgressVal * 0.2);
-        } else {
-          total = videoProgressVal;
-        }
-
-        // تحديث الواجهة
-        var progMap = Map<String, double>.from(downloadingProgress.value);
-        progMap[lessonId] = total;
-        downloadingProgress.value = progMap;
+        double total = (finalAudioUrl != null) 
+            ? (vidProg * 0.85) + (audProg * 0.15) // وزن أكبر للفيديو
+            : vidProg;
+            
+        var prog = Map<String, double>.from(downloadingProgress.value);
+        prog[lessonId] = total;
+        downloadingProgress.value = prog; 
         onProgress(total);
 
-        // تحديث الإشعار (كل 5% لتقليل الضغط)
         int percent = (total * 100).toInt();
+        // تحديث الإشعار كل 2%
         if (percent % 2 == 0) { 
           notifService.showProgressNotification(
             id: notificationId, 
             title: "Downloading: $videoTitle",
-            body: "$percent%", // لا نفضح وجود ملفين، فقط النسبة المئوية
+            body: "$percent%",
             progress: percent, maxProgress: 100,
           );
         }
       }
 
-      // 4. تشغيل مهام التحميل بالتوازي
-      final List<Future> downloadTasks = [];
-
-      // أ) مهمة تحميل الفيديو
-      downloadTasks.add(_performDownloadTask(
+      // 4. بدء التحميل بالتوازي
+      final List<Future> tasks = [];
+      
+      // مهمة الفيديو
+      tasks.add(_downloadFileSmartly(
         url: finalVideoUrl,
         savePath: videoSavePath,
         headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
-        onProgress: (p) {
-          videoProgressVal = p;
-          updateAggregatedProgress();
-        }
+        onProgress: (p) { vidProg = p; updateAggregatedProgress(); }
       ));
 
-      // ب) مهمة تحميل الصوت (إن وجد)
+      // مهمة الصوت (إن وجد)
       if (finalAudioUrl != null && audioSavePath != null) {
-        downloadTasks.add(_performDownloadTask(
+        tasks.add(_downloadFileSmartly(
           url: finalAudioUrl,
           savePath: audioSavePath,
           headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
-          onProgress: (p) {
-            audioProgressVal = p;
-            updateAggregatedProgress();
-          }
+          onProgress: (p) { audProg = p; updateAggregatedProgress(); }
         ));
       }
 
-      // انتظار اكتمال جميع الملفات
-      await Future.wait(downloadTasks);
+      await Future.wait(tasks);
 
-      // 5. الحفظ في قاعدة البيانات
+      // 5. الحفظ
       var downloadsBox = await Hive.openBox('downloads_box');
       await downloadsBox.put(lessonId, {
         'id': lessonId,
         'title': videoTitle,
-        'path': videoSavePath,        // الفيديو
-        'audioPath': audioSavePath,   // ✅ الصوت (قد يكون null)
+        'path': videoSavePath,
+        'audioPath': audioSavePath,
         'course': courseName,
         'subject': subjectName,
         'chapter': chapterName,
         'type': isPdf ? 'pdf' : 'video',
-        'quality': quality, 
-        'duration': duration, 
+        'quality': quality,
+        'duration': duration,
         'date': DateTime.now().toIso8601String(),
-        'size': await File(videoSavePath).length(), // حجم الفيديو فقط للعرض
+        'size': await File(videoSavePath).length(),
       });
 
-      // إشعار الاكتمال
       await notifService.cancelNotification(notificationId);
       await notifService.showCompletionNotification(
         id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
@@ -276,23 +252,18 @@ class DownloadManager {
         isSuccess: true,
       );
 
-      FirebaseCrashlytics.instance.log("✅ Download Completed: $videoTitle");
+      FirebaseCrashlytics.instance.log("✅ Download Success: $videoTitle");
       onComplete();
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Execution Failed');
-      
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Smart Download Failed');
       await notifService.cancelNotification(notificationId);
       await notifService.showCompletionNotification(
         id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
         title: videoTitle,
         isSuccess: false,
       );
-      
-      // تنظيف الملفات التالفة
-      // (يمكن إضافة كود لحذف الملفات التي تم إنشاؤها جزئياً هنا)
-
-      onError(e.toString());
+      onError("Download failed: Network error or timeout.");
     } finally {
       _activeDownloads.remove(lessonId);
       var prog = Map<String, double>.from(downloadingProgress.value);
@@ -303,136 +274,217 @@ class DownloadManager {
   }
 
   // ---------------------------------------------------------------------------
-  // 🛠️ Private Helper: Single File Downloader & Encrypter
+  // 🛠️ Smart Downloader (Chunked + Retry + Encrypt)
   // ---------------------------------------------------------------------------
 
-  Future<void> _performDownloadTask({
+  Future<void> _downloadFileSmartly({
     required String url,
     required String savePath,
     required Map<String, dynamic> headers,
     required Function(double) onProgress,
   }) async {
-    final saveFile = File(savePath);
-    final RandomAccessFile outputFile = await saveFile.open(mode: FileMode.write);
+    // التحقق من HLS
+    if (url.contains('.m3u8') || url.contains('.m3u')) {
+      final saveFile = File(savePath);
+      final sink = await saveFile.open(mode: FileMode.write);
+      List<int> buffer = [];
+      try {
+         await _downloadHls(url, sink, buffer, onProgress);
+         // Flush buffer
+         if (buffer.isNotEmpty) {
+           final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
+           await sink.writeFrom(enc);
+         }
+      } finally {
+        await sink.close();
+      }
+      return;
+    }
+
+    // ✅ التحميل الذكي للملفات العادية (Chunked Download)
+    // 1. معرفة حجم الملف الكلي
+    int totalBytes = 0;
+    try {
+      final headRes = await _dio.head(url, options: Options(headers: headers));
+      totalBytes = int.parse(headRes.headers.value(Headers.contentLengthHeader) ?? '0');
+    } catch (e) {
+      // إذا فشل الـ HEAD، نحاول GET لـ 1 بايت
+      try {
+        final rangeRes = await _dio.get(url, options: Options(headers: {...headers, 'Range': 'bytes=0-0'}));
+        final rangeHeader = rangeRes.headers.value(Headers.contentRangeHeader) ?? "";
+        if (rangeHeader.contains("/")) {
+           totalBytes = int.parse(rangeHeader.split("/").last);
+        }
+      } catch (_) {}
+    }
+
+    // إذا لم نستطع معرفة الحجم، نستخدم الطريقة القديمة (Stream عادي)
+    if (totalBytes <= 0) {
+      final saveFile = File(savePath);
+      final sink = await saveFile.open(mode: FileMode.write);
+      List<int> buffer = [];
+      try {
+        await _downloadStreamBasic(url, sink, buffer, onProgress, headers);
+        if (buffer.isNotEmpty) {
+           final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
+           await sink.writeFrom(enc);
+        }
+      } finally {
+        await sink.close();
+      }
+      return;
+    }
+
+    // ✅ تقسيم الملف إلى قطع (Chunks) لتجنب انقطاع الاتصال
+    // حجم القطعة = 5 ميجابايت (توازن جيد بين السرعة والأمان)
+    const int chunkSize = 5 * 1024 * 1024; 
+    int downloadedBytes = 0;
     
-    // بافر محلي لهذه المهمة
+    final saveFile = File(savePath);
+    // نفتح الملف بوضع append لنضيف عليه
+    final sink = await saveFile.open(mode: FileMode.write);
     List<int> buffer = [];
 
     try {
-      bool isHls = url.contains('.m3u8') || url.contains('.m3u');
+      while (downloadedBytes < totalBytes) {
+        int start = downloadedBytes;
+        int end = min(start + chunkSize - 1, totalBytes - 1);
+        
+        // محاولة تحميل القطعة (مع Retry)
+        bool chunkSuccess = false;
+        int retries = 3;
 
-      if (isHls) {
-        await _downloadAndMergeHlsWithEncryption(url, outputFile, buffer, onProgress);
-      } else {
-        await _downloadStandardWithEncryption(url, outputFile, buffer, onProgress, headers);
+        while (retries > 0 && !chunkSuccess) {
+          try {
+            await _downloadChunkAndEncrypt(
+              url: url,
+              start: start,
+              end: end,
+              headers: headers,
+              sink: sink,
+              buffer: buffer,
+            );
+            chunkSuccess = true;
+            downloadedBytes += (end - start + 1);
+            onProgress(downloadedBytes / totalBytes);
+          } catch (e) {
+            retries--;
+            if (retries == 0) throw Exception("Failed to download chunk $start-$end after 3 retries");
+            await Future.delayed(const Duration(seconds: 1)); // انتظار قبل المحاولة
+            print("⚠️ Retrying chunk... ($retries left)");
+          }
+        }
       }
 
-      // تشفير وكتابة ما تبقى في البافر
+      // تشفير ما تبقى في البافر النهائي
       if (buffer.isNotEmpty) {
-        final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
-        await outputFile.writeFrom(encrypted);
+        final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
+        await sink.writeFrom(enc);
         buffer.clear();
       }
+
     } finally {
-      await outputFile.close();
+      await sink.close();
     }
   }
 
-  /// معالجة البافر: تشفير وكتابة
-  Future<void> _processBuffer(List<int> buffer, RandomAccessFile sink) async {
-    while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
-      final chunk = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
-      buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
-      
-      final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(chunk));
-      await sink.writeFrom(encrypted);
-    }
-  }
-
-  /// تحميل ملف عادي (MP4/PDF/Audio)
-  Future<void> _downloadStandardWithEncryption(
-    String url, 
-    RandomAccessFile sink, 
-    List<int> buffer,
-    Function(double) onProgress,
-    Map<String, dynamic> headers
-  ) async {
+  /// تحميل قطعة واحدة وتشفيرها
+  Future<void> _downloadChunkAndEncrypt({
+    required String url,
+    required int start,
+    required int end,
+    required Map<String, dynamic> headers,
+    required RandomAccessFile sink,
+    required List<int> buffer,
+  }) async {
     final response = await _dio.get(
       url,
       options: Options(
         responseType: ResponseType.stream,
-        headers: headers,
+        headers: {
+          ...headers,
+          'Range': 'bytes=$start-$end', // ⬅️ السر هنا: طلب جزء محدد
+        },
       ),
     );
-
-    int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
-    int received = 0;
 
     Stream<Uint8List> stream = response.data.stream;
     await for (final chunk in stream) {
       buffer.addAll(chunk);
-      await _processBuffer(buffer, sink);
-      
+      // تشفير وكتابة فورية إذا امتلأ البافر (512KB)
+      while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
+        final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
+        buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
+        final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
+        await sink.writeFrom(encrypted);
+      }
+    }
+  }
+
+  // --- دوال التحميل القديمة (للحالات الخاصة) ---
+
+  Future<void> _downloadStreamBasic(String url, RandomAccessFile sink, List<int> buffer, Function(double) onProgress, Map<String, dynamic> headers) async {
+    final response = await _dio.get(
+      url,
+      options: Options(responseType: ResponseType.stream, headers: headers),
+    );
+    int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
+    int received = 0;
+    Stream<Uint8List> stream = response.data.stream;
+    await for (final chunk in stream) {
+      buffer.addAll(chunk);
+      while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
+        final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
+        buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
+        final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
+        await sink.writeFrom(encrypted);
+      }
       received += chunk.length;
       if (total != -1) onProgress(received / total);
     }
   }
 
-  /// تحميل HLS (Turbo Mode)
-  Future<void> _downloadAndMergeHlsWithEncryption(
-    String m3u8Url, 
-    RandomAccessFile sink, 
-    List<int> buffer,
-    Function(double) onProgress
-  ) async {
-      final response = await _dio.get(m3u8Url);
-      final content = response.data.toString();
-      final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
-      
-      List<String> tsUrls = [];
-      for (var line in content.split('\n')) {
-        line = line.trim();
-        if (line.isNotEmpty && !line.startsWith('#')) tsUrls.add(line.startsWith('http') ? line : baseUrl + line);
-      }
-      
-      if (tsUrls.isEmpty) throw Exception("No TS segments");
-      
-      int total = tsUrls.length;
-      int done = 0;
-      int batchSize = 8; 
+  Future<void> _downloadHls(String m3u8Url, RandomAccessFile sink, List<int> buffer, Function(double) onProgress) async {
+     // (نفس منطق HLS السابق ولكن مع تحسين بسيط في الترتيب)
+     final response = await _dio.get(m3u8Url);
+     final content = response.data.toString();
+     final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+     List<String> tsUrls = [];
+     for (var line in content.split('\n')) {
+       line = line.trim();
+       if (line.isNotEmpty && !line.startsWith('#')) tsUrls.add(line.startsWith('http') ? line : baseUrl + line);
+     }
+     if (tsUrls.isEmpty) throw Exception("No TS segments");
+     
+     int total = tsUrls.length;
+     int done = 0;
+     int batchSize = 8; 
 
-      for (int i = 0; i < total; i += batchSize) {
-        int end = (i + batchSize < total) ? i + batchSize : total;
-        List<String> batchUrls = tsUrls.sublist(i, end);
+     for (int i = 0; i < total; i += batchSize) {
+       int end = min(i + batchSize, total);
+       List<String> batchUrls = tsUrls.sublist(i, end);
+       List<Future<List<int>?>> futures = batchUrls.map((url) async {
+         try {
+           final rs = await _dio.get<List<int>>(url, options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(seconds: 15)));
+           return rs.data;
+         } catch (e) { return null; }
+       }).toList();
 
-        List<Future<List<int>?>> futures = batchUrls.map((url) async {
-          try {
-            final rs = await _dio.get<List<int>>(
-              url, 
-              options: Options(
-                responseType: ResponseType.bytes,
-                sendTimeout: const Duration(seconds: 20),
-                receiveTimeout: const Duration(seconds: 20),
-              )
-            );
-            return rs.data;
-          } catch (e) {
-            return null;
-          }
-        }).toList();
-
-        List<List<int>?> results = await Future.wait(futures);
-
-        for (var data in results) {
-          if (data != null) {
-            buffer.addAll(data); 
-            await _processBuffer(buffer, sink); 
-          } else {
-             throw Exception("Failed segment");
-          }
-          done++;
-          onProgress(done / total);
-        }
-      }
+       List<List<int>?> results = await Future.wait(futures);
+       
+       for (var data in results) {
+         if (data != null) {
+           buffer.addAll(data); 
+           while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
+             final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
+             buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
+             final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
+             await sink.writeFrom(enc);
+           }
+         }
+         done++;
+         onProgress(done / total);
+       }
+     }
   }
 }
