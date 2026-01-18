@@ -71,9 +71,9 @@ class LocalProxyService {
       
       // 🔍 تتبع 1: تسجيل الطلب ونوعه
       final bool isLikelyAudio = decodedPath.contains('aud_') || decodedPath.contains('audio');
-      final String logMsg = "📡 Proxy Request: ${isLikelyAudio ? 'AUDIO' : 'VIDEO'} | Path: ${decodedPath.split('/').last} | Range: ${request.headers['range']}";
-      print(logMsg);
-      FirebaseCrashlytics.instance.log(logMsg);
+      // final String logMsg = "📡 Proxy Request: ${isLikelyAudio ? 'AUDIO' : 'VIDEO'} | Path: ${decodedPath.split('/').last} | Range: ${request.headers['range']}";
+      // print(logMsg);
+      // FirebaseCrashlytics.instance.log(logMsg);
 
       if (!await file.exists()) {
         FirebaseCrashlytics.instance.log("❌ File not found: $decodedPath");
@@ -95,7 +95,7 @@ class LocalProxyService {
       final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + max(0, (encryptedLength - ((totalChunks - 1) * encChunkSize)) - overhead);
 
       // 🔍 تتبع 2: تسجيل الحجم المتوقع
-      FirebaseCrashlytics.instance.log("📏 Expected Size: $originalFileSize | Type: $contentType");
+      // FirebaseCrashlytics.instance.log("📏 Expected Size: $originalFileSize | Type: $contentType");
 
       final rangeHeader = request.headers['range'];
       int start = 0;
@@ -141,10 +141,13 @@ class LocalProxyService {
     }
   }
 
-  // ✅ الدالة المعدلة مع الإصلاح وسجلات التتبع
+  // ✅ الدالة المعدلة جذرياً لإصلاح مشكلة الأجهزة القديمة
   Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd) async* {
     RandomAccessFile? raf;
-    int totalSent = 0; // عداد للبيانات المرسلة
+    int totalSent = 0; 
+    
+    // ✅ 1. حساب الطول المطلوب بدقة لضمان إرساله كاملاً
+    final int requiredLength = reqEnd - reqStart + 1;
 
     try {
       raf = await file.open(mode: FileMode.read);
@@ -159,6 +162,9 @@ class LocalProxyService {
       final fileLen = await file.length();
 
       for (int i = startChunkIndex; i <= endChunkIndex; i++) {
+        // إذا أرسلنا ما يكفي، نتوقف
+        if (totalSent >= requiredLength) break;
+
         int seekPos = i * encChunkSize;
         if (seekPos >= fileLen) break;
 
@@ -172,22 +178,15 @@ class LocalProxyService {
         Uint8List outputBlock;
 
         try {
-          // 1. محاولة فك التشفير
           outputBlock = EncryptionHelper.decryptBlock(encryptedBlock);
         } catch (e) {
-           // 🔍 تتبع 3: تسجيل فشل فك التشفير
            print("❌ Decryption ERROR at chunk $i: $e");
-           FirebaseCrashlytics.instance.recordError(e, null, reason: 'Proxy Decrypt Fail chunk $i');
-
-           // 2. الإصلاح: إرسال أصفار بدلاً من البيانات التالفة
-           int expectedSize = 0;
-           if (bytesToRead == encChunkSize) {
-             expectedSize = plainChunkSize; 
-           } else {
-             expectedSize = max(0, bytesToRead - ivLen - tagLen);
-           }
+           // ✅ 2. في حالة فشل فك التشفير، نرسل كتلة فارغة (أصفار) للحفاظ على التدفق
+           // هذا يمنع انقطاع الصوت إذا كان الملف تالفاً جزئياً
+           int expectedSize = (bytesToRead == encChunkSize) 
+               ? plainChunkSize 
+               : max(0, bytesToRead - ivLen - tagLen);
            
-           // إنشاء بيانات فارغة للحفاظ على الاتصال
            outputBlock = Uint8List(expectedSize);
         }
 
@@ -198,7 +197,7 @@ class LocalProxyService {
 
           if (sliceStart < sliceEnd) {
             final dataChunk = outputBlock.sublist(sliceStart, sliceEnd);
-            totalSent += dataChunk.length; // تحديث العداد
+            totalSent += dataChunk.length;
             yield dataChunk;
           }
         }
@@ -207,15 +206,15 @@ class LocalProxyService {
        print("Stream Critical Error: $e");
        FirebaseCrashlytics.instance.recordError(e, s, reason: 'Stream Critical Error');
     } finally {
-      // 🔍 تتبع 4: التحقق من اكتمال البيانات
-      int requestedSize = reqEnd - reqStart + 1;
-      if (totalSent < requestedSize) {
-          String msg = "⚠️ Data Mismatch! Requested: $requestedSize, Sent: $totalSent (Gap: ${requestedSize - totalSent})";
-          print(msg);
-          FirebaseCrashlytics.instance.log(msg);
-      } else {
-          print("✅ Stream Completed Successfully ($totalSent bytes sent)");
+      // ✅✅ 3. الإصلاح الجذري (Safety Net Padding):
+      // إذا انتهت الحلقة لأي سبب (بطء، خطأ قراءة) ولم نرسل الحجم الكامل المطلوب
+      // نقوم بإرسال أصفار لتكملة الملف. هذا يمنع خطأ "Can not open external file"
+      if (totalSent < requiredLength) {
+          int missingBytes = requiredLength - totalSent;
+          print("⚠️ Filling Gap: Sending $missingBytes padding bytes to keep stream alive.");
+          yield Uint8List(missingBytes);
       }
+      
       await raf?.close();
     }
   }
