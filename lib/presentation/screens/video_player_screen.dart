@@ -94,7 +94,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       _player.stream.error.listen((error) {
         debugPrint("🚨 MediaKit Error: $error");
-        // لا نظهر الخطأ فوراً لتجنب المقاطعة إلا إذا توقف التشغيل
+        // لا نظهر الخطأ فوراً لتجنب المقاطعة إلا إذا توقف التشغيل فعلياً
       });
 
       _loadUserData();
@@ -164,9 +164,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       } catch (e) { /* ignore */ }
     }
-    setState(() {
-      _watermarkText = displayText.isNotEmpty ? displayText : 'User';
-    });
+    if (mounted) {
+      setState(() {
+        _watermarkText = displayText.isNotEmpty ? displayText : 'User';
+      });
+    }
   }
 
   void _startWatermarkAnimation() {
@@ -284,7 +286,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           await Future.delayed(const Duration(milliseconds: 100));
           retries++;
         }
-        await _player.seek(startAt);
+        
+        // ✅ حماية إضافية ضد Seek إذا كانت المدة غير متاحة
+        if (_player.state.duration > Duration.zero) {
+           await _player.seek(startAt);
+        }
       }
 
       if (_currentSpeed != 1.0) {
@@ -306,12 +312,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _seekRelative(Duration amount) async {
     try {
+      if (_player.state.duration == Duration.zero) return; // حماية
       final currentPos = _player.state.position;
       await _player.seek(currentPos + amount);
     } catch (e) {/*ignore*/}
   }
 
   void _showSettingsSheet() {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -350,6 +358,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _showQualitySelection() {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -376,6 +385,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _showSpeedSelection() {
     final speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -399,11 +409,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void dispose() {
     if (!_isDisposing) {
+       _isDisposing = true;
+       _watermarkTimer?.cancel();
        _player.dispose(); 
        _proxyService.stop();
        _resetSystemChrome();
        WakelockPlus.disable();
-       _watermarkTimer?.cancel();
     }
     super.dispose();
   }
