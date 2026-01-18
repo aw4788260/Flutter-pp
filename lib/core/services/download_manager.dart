@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart'; // ✅ مهم للـ Observer
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -12,10 +12,26 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import '../utils/encryption_helper.dart';
 import 'notification_service.dart';
 
-class DownloadManager {
+class DownloadManager with WidgetsBindingObserver {
   static final DownloadManager _instance = DownloadManager._internal();
   factory DownloadManager() => _instance;
-  DownloadManager._internal();
+
+  DownloadManager._internal() {
+    // ✅ 1. مراقبة حالة التطبيق لإلغاء التحميل عند الخروج
+    WidgetsBinding.instance.addObserver(this);
+    
+    // ✅ 2. تنظيف أي إشعارات عالقة من المرة السابقة عند فتح التطبيق
+    NotificationService().cancelAll();
+  }
+
+  // ✅ التعامل مع إغلاق التطبيق
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      // التطبيق يتم إغلاقه كلياً (Swipe away or Kill)
+      cancelAllDownloads();
+    }
+  }
 
   static final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 60),
@@ -25,10 +41,10 @@ class DownloadManager {
 
   static final Set<String> _activeDownloads = {};
   
-  // ✅ خريطة لتخزين عناوين الدروس الجاري تحميلها لعرضها في الواجهة
+  // خريطة لتخزين عناوين الدروس الجاري تحميلها لعرضها في الواجهة
   final Map<String, String> activeTitles = {}; 
 
-  // ✅ خريطة لتخزين توكن الإلغاء لكل درس
+  // خريطة لتخزين توكن الإلغاء لكل درس
   static final Map<String, CancelToken> _cancelTokens = {}; 
   
   static final ValueNotifier<Map<String, double>> downloadingProgress = ValueNotifier({});
@@ -67,9 +83,19 @@ class DownloadManager {
         : "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
   }
 
-  // ✅ دالة إلغاء التحميل
+  // ✅ دالة لإلغاء كل التحميلات دفعة واحدة (تستخدم عند الخروج)
+  Future<void> cancelAllDownloads() async {
+    final List<String> allIds = List.from(_cancelTokens.keys);
+    for (var id in allIds) {
+      await cancelDownload(id);
+    }
+    // تنظيف شامل
+    await NotificationService().cancelAll();
+    _stopBackgroundService();
+  }
+
+  // ✅ دالة إلغاء تحميل محدد
   Future<void> cancelDownload(String lessonId) async {
-    // 1. إلغاء الطلب من الشبكة
     if (_cancelTokens.containsKey(lessonId)) {
       try {
         _cancelTokens[lessonId]?.cancel("User cancelled download");
@@ -79,18 +105,16 @@ class DownloadManager {
       _cancelTokens.remove(lessonId);
     }
     
-    // 2. تنظيف القوائم
     _activeDownloads.remove(lessonId);
-    activeTitles.remove(lessonId); // إزالة العنوان
+    activeTitles.remove(lessonId);
     
     var prog = Map<String, double>.from(downloadingProgress.value);
     prog.remove(lessonId);
     downloadingProgress.value = prog;
 
-    // 3. إزالة الإشعار فوراً
+    // ✅ حذف الإشعار فوراً
     await NotificationService().cancelNotification(lessonId.hashCode);
     
-    // 4. إيقاف الخدمة إذا لم يتبق تحميلات
     if (_activeDownloads.isEmpty) {
       _stopBackgroundService();
     }
@@ -110,7 +134,6 @@ class DownloadManager {
       }
       service.invoke('keepAlive');
       
-      // إشعار الخدمة الصامت (يظهر فقط أثناء النشاط)
       try {
         NotificationService().showProgressNotification(
           id: 888, 
@@ -151,10 +174,9 @@ class DownloadManager {
     String quality = "SD",
     String duration = "", 
   }) async {
-    // ✅ 1. التجهيزات الأولية (Tokens, Titles, Service)
     final CancelToken cancelToken = CancelToken();
     _cancelTokens[lessonId] = cancelToken;
-    activeTitles[lessonId] = videoTitle; // تخزين الاسم للعرض
+    activeTitles[lessonId] = videoTitle; 
 
     FirebaseCrashlytics.instance.log("⬇️ Download Started: $videoTitle (PDF: $isPdf)");
     _activeDownloads.add(lessonId);
@@ -183,7 +205,7 @@ class DownloadManager {
 
       if (userId == null) throw Exception("User auth missing");
 
-      // 2. تجهيز الروابط
+      // Links Preparation
       String? finalVideoUrl = downloadUrl;
       String? finalAudioUrl = audioUrl;
 
@@ -211,7 +233,7 @@ class DownloadManager {
         if (ext.isNotEmpty) duration = ext;
       }
 
-      // 3. تحضير المسارات
+      // Paths
       final appDir = await getApplicationDocumentsDirectory();
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -228,7 +250,7 @@ class DownloadManager {
         audioSavePath = '${dir.path}/aud_${lessonId}_hq.enc';
       }
 
-      // 4. التنفيذ حسب النوع
+      // Execution
       if (isPdf) {
         await _downloadPdfWithEncryption(
           url: finalVideoUrl,
@@ -302,7 +324,6 @@ class DownloadManager {
         await Future.wait(tasks);
       }
 
-      // 5. فحص أخير وحفظ
       if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
 
       int totalSizeBytes = await File(videoSavePath).length();
@@ -338,7 +359,7 @@ class DownloadManager {
       onComplete();
 
     } catch (e, stack) {
-      // ✅ التعامل مع الإلغاء أو الخطأ
+      // ✅ حذف الإشعار في حالة الخطأ أو الإلغاء
       await notifService.cancelNotification(notificationId);
       
       bool isCancelled = (e is DioException && e.type == DioExceptionType.cancel);
@@ -353,7 +374,7 @@ class DownloadManager {
         onError("Download failed. Please check internet.");
       }
       
-      // ✅ تنظيف الملفات الجزئية
+      // Cleanup partial files
       try {
         final appDir = await getApplicationDocumentsDirectory();
         final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -375,10 +396,10 @@ class DownloadManager {
       }
 
     } finally {
-      // ✅ التنظيف النهائي
+      // Final Cleanup
       _activeDownloads.remove(lessonId);
       _cancelTokens.remove(lessonId); 
-      activeTitles.remove(lessonId); // إزالة الاسم
+      activeTitles.remove(lessonId); 
       
       var prog = Map<String, double>.from(downloadingProgress.value);
       prog.remove(lessonId);
