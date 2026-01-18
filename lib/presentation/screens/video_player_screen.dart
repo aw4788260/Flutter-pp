@@ -158,7 +158,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _safeExit() async {
     if (_isDisposing) return;
-    _isDisposing = true;
+    
+    // ✅ التعديل الأول (هام جداً):
+    // تحديث الحالة فوراً لإزالة الفيديو من الشاشة قبل بدء عملية التنظيف
+    // هذا يمنع المستخدم من لمس الشريط أثناء التدمير ويمنع الـ Null Check Error
+    if (mounted) {
+      setState(() {
+        _isDisposing = true;
+      });
+    }
 
     try {
       _watermarkTimer?.cancel();
@@ -547,8 +555,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            if (!_isInitialized)
+            // ✅ التعديل الثاني (هام):
+            // التحقق من حالة التدمير أولاً. إذا كانت true، لا نعرض المشغل بتاتاً.
+            if (_isDisposing)
               const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+            
+            else if (!_isInitialized)
+              const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+            
             else if (_isError)
               Center(
                 child: Column(
@@ -571,7 +585,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               )
             else
-              // ✅ عرض المشغل (سيكون الإطار الأول ظاهراً في الخلفية)
+              // ✅ عرض المشغل (فقط إذا لم نكن نغلق الصفحة)
               Center(
                 child: MaterialVideoControlsTheme(
                   normal: controlsTheme,
@@ -584,7 +598,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
 
             // ✅ شاشة التحميل + العداد (مع شفافية لرؤية الفيديو)
-            if (!_isError && (_isVideoLoading || !_isInitialized || _stabilizingCountdown > 0))
+            if (!_isDisposing && !_isError && (_isVideoLoading || !_isInitialized || _stabilizingCountdown > 0))
               Container(
                 // شفافية 60% لإظهار الإطار الأول بوضوح
                 color: Colors.black.withOpacity(0.6), 
@@ -626,7 +640,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
 
             // العلامة المائية
-            if (!_isError && _isInitialized)
+            if (!_isDisposing && !_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
                 curve: Curves.easeInOut,
