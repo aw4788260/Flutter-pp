@@ -66,8 +66,13 @@ class DownloadManager {
     
     _keepAliveTimer?.cancel();
     _keepAliveTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_activeDownloads.isEmpty) return;
+      if (_activeDownloads.isEmpty) {
+         _stopBackgroundService(); // ✅ إيقاف تلقائي إذا لم يكن هناك تحميلات
+         return;
+      }
       service.invoke('keepAlive');
+      
+      // إشعار الخدمة الصامت (يظهر فقط أثناء النشاط)
       try {
         NotificationService().showProgressNotification(
           id: 888, 
@@ -80,11 +85,15 @@ class DownloadManager {
   }
 
   void _stopBackgroundService() async {
-    if (_activeDownloads.isEmpty) {
-      _keepAliveTimer?.cancel();
-      final service = FlutterBackgroundService();
-      service.invoke('stopService');
-      try { await NotificationService().cancelNotification(888); } catch (e) {}
+    _keepAliveTimer?.cancel();
+    
+    // ✅ التأكد من إلغاء الإشعار العام للخدمة
+    try { await NotificationService().cancelNotification(888); } catch (e) {}
+
+    // ✅ إيقاف خدمة الخلفية نفسها
+    final service = FlutterBackgroundService();
+    if (await service.isRunning()) {
+       service.invoke('stopService');
     }
   }
 
@@ -178,7 +187,7 @@ class DownloadManager {
 
       // 3. التنفيذ حسب النوع
       if (isPdf) {
-        // ✅ مسار خاص للـ PDF (مستقر ومباشر)
+        // ✅ منطق PDF المباشر (Stream + Encrypt)
         await _downloadPdfWithEncryption(
           url: finalVideoUrl,
           savePath: videoSavePath,
@@ -201,7 +210,7 @@ class DownloadManager {
           }
         );
       } else {
-        // ✅ مسار الفيديو (المعقد مع التجزئة والصوت)
+        // ✅ منطق الفيديو الذكي (Chunked + Retry + Audio)
         double vidProg = 0.0;
         double audProg = 0.0;
 
@@ -269,7 +278,10 @@ class DownloadManager {
         'size': totalSizeBytes,
       });
 
+      // ✅ حذف إشعار التقدم عند الاكتمال
       await notifService.cancelNotification(notificationId);
+      
+      // إظهار إشعار النجاح (اختياري)
       await notifService.showCompletionNotification(
         id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
         title: videoTitle,
@@ -281,7 +293,10 @@ class DownloadManager {
 
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed');
+      
+      // ✅ حذف إشعار التقدم عند الفشل أيضاً
       await notifService.cancelNotification(notificationId);
+      
       await notifService.showCompletionNotification(
         id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
         title: videoTitle,
@@ -293,12 +308,16 @@ class DownloadManager {
       var prog = Map<String, double>.from(downloadingProgress.value);
       prog.remove(lessonId);
       downloadingProgress.value = prog;
-      _stopBackgroundService();
+      
+      // ✅ إيقاف الخدمة (والتي بدورها تحذف إشعار الخدمة 888)
+      if (_activeDownloads.isEmpty) {
+         _stopBackgroundService();
+      }
     }
   }
 
   // ---------------------------------------------------------------------------
-  // 📄 PDF Downloader (Direct Stream + Encrypt) - مستوحى من الكود القديم
+  // 📄 PDF Downloader
   // ---------------------------------------------------------------------------
   Future<void> _downloadPdfWithEncryption({
     required String url,
@@ -326,20 +345,16 @@ class DownloadManager {
       Stream<Uint8List> stream = response.data.stream;
       await for (final chunk in stream) {
         buffer.addAll(chunk);
-        
-        // تشفير فوري كلما تجمع 512KB
         while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
           final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
           buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
           final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
           await sink.writeFrom(encrypted);
         }
-
         received += chunk.length;
         if (total != -1) onProgress(received / total);
       }
 
-      // تشفير ما تبقى
       if (buffer.isNotEmpty) {
         final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
         await sink.writeFrom(encrypted);
@@ -352,7 +367,7 @@ class DownloadManager {
 
 
   // ---------------------------------------------------------------------------
-  // 🎥 Video Downloader (Chunked + Retry + Encrypt)
+  // 🎥 Video Downloader
   // ---------------------------------------------------------------------------
 
   Future<void> _downloadFileSmartly({
@@ -377,7 +392,6 @@ class DownloadManager {
       return;
     }
 
-    // ✅ التحميل الذكي للملفات العادية
     int totalBytes = 0;
     try {
       final headRes = await _dio.head(url, options: Options(headers: headers));
@@ -393,7 +407,6 @@ class DownloadManager {
     }
 
     if (totalBytes <= 0) {
-      // Fallback
       final saveFile = File(savePath);
       final sink = await saveFile.open(mode: FileMode.write);
       List<int> buffer = [];
@@ -409,12 +422,10 @@ class DownloadManager {
       return;
     }
 
-    // ✅ تقليل حجم القطعة إلى 1MB فقط لزيادة الاستقرار
     const int chunkSize = 1 * 1024 * 1024; 
     int downloadedBytes = 0;
     
     final saveFile = File(savePath);
-    // نستخدم mode: write لنبدأ الملف من جديد (لضمان سلامته)
     final sink = await saveFile.open(mode: FileMode.write);
     List<int> buffer = [];
 
@@ -424,7 +435,6 @@ class DownloadManager {
         int end = min(start + chunkSize - 1, totalBytes - 1);
         
         bool chunkSuccess = false;
-        // ✅ زيادة عدد المحاولات إلى 10
         int retries = 10;
 
         while (retries > 0 && !chunkSuccess) {
@@ -443,7 +453,6 @@ class DownloadManager {
           } catch (e) {
             retries--;
             if (retries == 0) throw Exception("Failed to download chunk $start-$end");
-            // انتظار تصاعدي (1ث، 2ث، 3ث...)
             await Future.delayed(Duration(seconds: (11 - retries))); 
             print("⚠️ Retrying chunk... ($retries left)");
           }
@@ -492,7 +501,6 @@ class DownloadManager {
     }
   }
 
-  // الدوال المساعدة القديمة (StreamBasic, HLS) تبقى كما هي...
   Future<void> _downloadStreamBasic(String url, RandomAccessFile sink, List<int> buffer, Function(double) onProgress, Map<String, dynamic> headers) async {
     final response = await _dio.get(
       url,
