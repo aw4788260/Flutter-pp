@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ استيراد Crashlytics
 import '../../core/constants/app_colors.dart';
-import '../../core/services/local_proxy.dart';
 import 'video_player_screen.dart';
-import 'pdf_viewer_screen.dart'; // ✅ تأكد من استيراد شاشة PDF
+import 'pdf_viewer_screen.dart'; 
 
 class DownloadedChapterContentsScreen extends StatefulWidget {
   final String courseTitle;
@@ -25,131 +25,198 @@ class DownloadedChapterContentsScreen extends StatefulWidget {
 class _DownloadedChapterContentsScreenState extends State<DownloadedChapterContentsScreen> {
   String activeTab = 'videos';
 
+  @override
+  void initState() {
+    super.initState();
+    // ✅ تسجيل دخول المستخدم للشاشة مع تفاصيل المكان
+    FirebaseCrashlytics.instance.log(
+      "📂 Opened Downloaded Chapter: ${widget.chapterTitle} (Course: ${widget.courseTitle})"
+    );
+  }
+
   // --- تشغيل الفيديو أوفلاين ---
   void _playOfflineVideo(Map<dynamic, dynamic> item) {
-    final proxyUrl = "http://127.0.0.1:8080/video?path=${Uri.encodeComponent(item['path'])}";
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => VideoPlayerScreen(
-          streams: {"Offline": proxyUrl}, 
-          title: item['title'] ?? "Offline Video",
+    try {
+      final String filePath = item['path'] ?? '';
+      
+      if (filePath.isEmpty) {
+        throw Exception("File path is null or empty for item: ${item['title']}");
+      }
+
+      FirebaseCrashlytics.instance.log("▶️ User requested offline video playback: ${item['title']}");
+      FirebaseCrashlytics.instance.setCustomKey('offline_video_path', filePath);
+
+      // ✅ التعديل الجذري: نمرر المسار الخام (Raw Path) بدلاً من رابط البروكسي
+      // هذا يسمح لـ VideoPlayerScreen باكتشاف أنه ملف محلي وتشغيل منطق الصوت المدمج
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VideoPlayerScreen(
+            streams: {"Offline": filePath}, 
+            title: item['title'] ?? "Offline Video",
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to open offline video');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Error opening video"), backgroundColor: AppColors.error),
+      );
+    }
   }
 
   // --- تشغيل PDF أوفلاين ---
   void _openOfflinePdf(String key, String title) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PdfViewerScreen(
-          pdfId: key,
-          title: title,
+    try {
+      FirebaseCrashlytics.instance.log("📄 User requested offline PDF: $title (Key: $key)");
+      
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PdfViewerScreen(
+            pdfId: key,
+            title: title,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to open offline PDF');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Error opening PDF"), backgroundColor: AppColors.error),
+      );
+    }
   }
 
   // --- حذف الملف ---
   Future<void> _deleteFile(String key) async {
-    var box = await Hive.openBox('downloads_box');
-    await box.delete(key);
-    setState(() {});
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File removed"), backgroundColor: AppColors.accentOrange));
+    try {
+      FirebaseCrashlytics.instance.log("🗑️ User requested file deletion: $key");
+      
+      var box = await Hive.openBox('downloads_box');
+      
+      if (box.containsKey(key)) {
+        await box.delete(key);
+        FirebaseCrashlytics.instance.log("✅ File deleted successfully from Hive: $key");
+      } else {
+        FirebaseCrashlytics.instance.log("⚠️ File key not found in Hive during deletion: $key");
+      }
+
+      setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("File removed"), backgroundColor: AppColors.accentOrange)
+        );
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to delete offline file');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Failed to delete file"), backgroundColor: AppColors.error)
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    var box = Hive.box('downloads_box');
-    
-    List<Map<String, dynamic>> videoItems = [];
-    List<Map<String, dynamic>> pdfItems = [];
-
-    for (var key in box.keys) {
-      final item = box.get(key);
-      if (item['course'] == widget.courseTitle && 
-          item['subject'] == widget.subjectTitle &&
-          item['chapter'] == widget.chapterTitle) {
+    // استخدم ValueListenableBuilder لتحديث الواجهة تلقائياً عند الحذف دون الحاجة لـ setState يدوي
+    return ValueListenableBuilder(
+      valueListenable: Hive.box('downloads_box').listenable(),
+      builder: (context, Box box, _) {
         
-        final itemMap = Map<String, dynamic>.from(item);
-        itemMap['key'] = key;
+        List<Map<String, dynamic>> videoItems = [];
+        List<Map<String, dynamic>> pdfItems = [];
 
-        if (item['type'] == 'pdf') {
-          pdfItems.add(itemMap);
-        } else {
-          videoItems.add(itemMap);
+        try {
+          for (var key in box.keys) {
+            final item = box.get(key);
+            // تصفية العناصر بناءً على الهيكل الشجري (كورس > مادة > فصل)
+            if (item['course'] == widget.courseTitle && 
+                item['subject'] == widget.subjectTitle &&
+                item['chapter'] == widget.chapterTitle) {
+              
+              final itemMap = Map<String, dynamic>.from(item);
+              itemMap['key'] = key;
+
+              if (item['type'] == 'pdf') {
+                pdfItems.add(itemMap);
+              } else {
+                videoItems.add(itemMap);
+              }
+            }
+          }
+        } catch (e, stack) {
+          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error parsing Hive data in build');
         }
-      }
-    }
 
-    return Scaffold(
-      backgroundColor: AppColors.backgroundPrimary,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(24.0),
-              color: AppColors.backgroundPrimary.withOpacity(0.95),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 24),
+        return Scaffold(
+          backgroundColor: AppColors.backgroundPrimary,
+          body: SafeArea(
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(24.0),
+                  color: AppColors.backgroundPrimary.withOpacity(0.95),
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 24),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.chapterTitle.toUpperCase(),
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              "${widget.courseTitle} > ${widget.subjectTitle}",
+                              style: TextStyle(fontSize: 10, color: AppColors.textSecondary.withOpacity(0.7)),
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+
+                // Tab Switcher
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundSecondary,
+                      borderRadius: BorderRadius.circular(50),
+                      border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    ),
+                    child: Row(
                       children: [
-                        Text(
-                          widget.chapterTitle.toUpperCase(),
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "${widget.courseTitle} > ${widget.subjectTitle}",
-                          style: TextStyle(fontSize: 10, color: AppColors.textSecondary.withOpacity(0.7)),
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                        ),
+                        _buildTab("Videos (${videoItems.length})", 'videos'),
+                        _buildTab("PDFs (${pdfItems.length})", 'pdfs'),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-
-            // Tab Switcher
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundSecondary,
-                  borderRadius: BorderRadius.circular(50),
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
                 ),
-                child: Row(
-                  children: [
-                    _buildTab("Videos (${videoItems.length})", 'videos'),
-                    _buildTab("PDFs (${pdfItems.length})", 'pdfs'),
-                  ],
-                ),
-              ),
-            ),
 
-            // List
-            Expanded(
-              child: activeTab == 'videos'
-                  ? _buildFileList(videoItems, LucideIcons.play)
-                  : _buildFileList(pdfItems, LucideIcons.fileText),
+                // List
+                Expanded(
+                  child: activeTab == 'videos'
+                      ? _buildFileList(videoItems, LucideIcons.play)
+                      : _buildFileList(pdfItems, LucideIcons.fileText),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      }
     );
   }
 
@@ -218,7 +285,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
         final sizeMB = (sizeBytes / (1024 * 1024)).toStringAsFixed(1);
         final duration = item['duration'] ?? "--:--";
         
-        // ✅ تحديد الجودة فقط إذا كان فيديو، وإلا نتركها فارغة أو نعطيها قيمة خاصة
+        // تحديد الجودة فقط إذا كان فيديو
         final quality = activeTab == 'videos' ? (item['quality'] ?? "SD") : null;
 
         return GestureDetector(
@@ -243,7 +310,6 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
               children: [
                 // 1. الصف العلوي (أيقونة - عنوان - حذف)
                 Row(
-                  // ✅ محاذاة في المنتصف عمودياً لضمان توسط العنوان مع الأيقونة
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Container(
@@ -291,14 +357,11 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                     _buildMetaTag(LucideIcons.hardDrive, "$sizeMB MB"),
                     const SizedBox(width: 16),
                     
-                    // ✅ عرض تفاصيل إضافية حسب النوع
                     if(activeTab == 'videos') ...[
                       _buildMetaTag(LucideIcons.clock, duration),
                       const SizedBox(width: 16),
-                      // ✅ عرض الجودة فقط للفيديو
                       if (quality != null) _buildMetaTag(LucideIcons.monitor, quality),
                     ] else ...[
-                       // ✅ للملفات: نعرض "PDF" فقط ولا نعرض SD
                        _buildMetaTag(LucideIcons.fileText, "PDF"),
                     ]
                   ],
