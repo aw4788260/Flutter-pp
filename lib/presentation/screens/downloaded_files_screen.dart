@@ -21,41 +21,24 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
   @override
   void initState() {
     super.initState();
-    // تسجيل فتح الشاشة لتتبع مسار المستخدم
     FirebaseCrashlytics.instance.log("User opened DownloadedFilesScreen");
     _init();
   }
 
   Future<void> _init() async {
     try {
-      // تسجيل بدء عملية التهيئة
       FirebaseCrashlytics.instance.log("Initializing Downloads Box and Proxy...");
 
       if (!Hive.isBoxOpen('downloads_box')) {
         await Hive.openBox('downloads_box');
-        FirebaseCrashlytics.instance.log("Downloads Box opened successfully");
       }
       
       await _proxy.start();
-      FirebaseCrashlytics.instance.log("Local Proxy Server started successfully");
-
+      
       if (mounted) setState(() {});
 
     } catch (e, stack) {
-      // تسجيل الأخطاء غير القاتلة (Non-fatal)
-      FirebaseCrashlytics.instance.recordError(
-        e, 
-        stack, 
-        reason: 'Error initializing DownloadedFilesScreen',
-        fatal: false // نحدد أنه خطأ غير قاتل حتى لا يغلق التطبيق
-      );
-      
-      // اختيارياً: عرض رسالة للمستخدم
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Warning: Initialization error ($e)"), backgroundColor: AppColors.accentOrange),
-        );
-      }
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error initializing DownloadedFilesScreen', fatal: false);
     }
   }
 
@@ -63,9 +46,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
   void dispose() {
     try {
       _proxy.stop();
-      FirebaseCrashlytics.instance.log("Local Proxy stopped successfully");
     } catch (e, stack) {
-      // تسجيل خطأ عند الإغلاق (نادر الحدوث لكن وارد)
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error stopping Local Proxy');
     }
     super.dispose();
@@ -123,7 +104,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                     ],
                   ),
                   
-                  // Active Downloads Badge (Dynamic)
+                  // Active Downloads Badge
                   ValueListenableBuilder<Map<String, double>>(
                     valueListenable: DownloadManager.downloadingProgress,
                     builder: (context, progressMap, _) {
@@ -138,11 +119,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                         ),
                         child: Text(
                           "${progressMap.length} ACTIVE",
-                          style: const TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.accentYellow,
-                          ),
+                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accentYellow),
                         ),
                       );
                     }
@@ -163,10 +140,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                       final courseName = item['course'] ?? 'Unknown Course';
                       groupedCourses[courseName] = (groupedCourses[courseName] ?? 0) + 1;
                     }
-                  } catch (e, stack) {
-                    // حماية حلقة التكرار وتسجيل الخطأ في حال كانت البيانات في Hive تالفة
-                    FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error parsing downloads box data');
-                  }
+                  } catch (e) {}
 
                   return ValueListenableBuilder<Map<String, double>>(
                     valueListenable: DownloadManager.downloadingProgress,
@@ -178,12 +152,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                             padding: EdgeInsets.symmetric(vertical: 80),
                             child: Text(
                               "NO STORED FILES",
-                              style: TextStyle(
-                                fontSize: 12, 
-                                fontWeight: FontWeight.bold, 
-                                color: Colors.white24, 
-                                letterSpacing: 2.0
-                              ),
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white24, letterSpacing: 2.0),
                             ),
                           ),
                         );
@@ -194,7 +163,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // قسم التحميلات النشطة
+                            // ✅ قسم التحميلات النشطة المعدل
                             if (progressMap.isNotEmpty) ...[
                               const Padding(
                                 padding: EdgeInsets.only(left: 4, bottom: 12),
@@ -205,6 +174,15 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                               ),
                               ...progressMap.entries.map((entry) {
                                 final percent = (entry.value * 100).toInt();
+                                final id = entry.key;
+                                
+                                // محاولة جلب الاسم (يتطلب إضافة خريطة titles في DownloadManager)
+                                // أو سيظهر المعرف مؤقتاً
+                                String title = "Downloading Item...";
+                                if (DownloadManager().activeTitles.containsKey(id)) {
+                                   title = DownloadManager().activeTitles[id]!;
+                                }
+
                                 return Container(
                                   margin: const EdgeInsets.only(bottom: 12),
                                   padding: const EdgeInsets.all(16),
@@ -219,8 +197,39 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          const Text("Downloading...", style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
-                                          Text("$percent%", style: const TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold)),
+                                          // اسم الملف
+                                          Expanded(
+                                            child: Text(
+                                              title,
+                                              style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold),
+                                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          
+                                          // النسبة وزر الإلغاء
+                                          Row(
+                                            children: [
+                                              Text("$percent%", style: const TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold)),
+                                              const SizedBox(width: 12),
+                                              
+                                              // ✅ زر الإلغاء (X)
+                                              GestureDetector(
+                                                onTap: () {
+                                                  // استدعاء دالة الإلغاء من المدير
+                                                  DownloadManager().cancelDownload(id);
+                                                },
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(6),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.error.withOpacity(0.2),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: const Icon(LucideIcons.x, size: 14, color: AppColors.error),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ],
                                       ),
                                       const SizedBox(height: 8),
@@ -238,7 +247,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                               const SizedBox(height: 24),
                             ],
 
-                            // قسم الكورسات المحملة
+                            // قسم الكورسات المحملة (كما هو)
                             if (groupedCourses.isNotEmpty) ...[
                               ...groupedCourses.entries.map((entry) => GestureDetector(
                                 onTap: () {
@@ -315,6 +324,20 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
           ],
         ),
       ),
+    );
+  }
+  
+  Widget _buildMetaTag(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: AppColors.textSecondary.withOpacity(0.7)),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary.withOpacity(0.9), fontWeight: FontWeight.w500),
+        ),
+      ],
     );
   }
 }
