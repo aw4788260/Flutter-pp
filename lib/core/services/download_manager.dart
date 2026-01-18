@@ -17,7 +17,6 @@ class DownloadManager {
   factory DownloadManager() => _instance;
   DownloadManager._internal();
 
-  // ✅ إعدادات مهلة أطول للشبكات البطيئة
   static final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 120),
     receiveTimeout: const Duration(seconds: 120),
@@ -108,7 +107,7 @@ class DownloadManager {
     String quality = "SD",
     String duration = "", 
   }) async {
-    FirebaseCrashlytics.instance.log("⬇️ Download Started: $videoTitle");
+    FirebaseCrashlytics.instance.log("⬇️ Download Started: $videoTitle (PDF: $isPdf)");
     _activeDownloads.add(lessonId);
     _startBackgroundService();
     
@@ -155,7 +154,6 @@ class DownloadManager {
       }
       if (finalVideoUrl == null) throw Exception("Link not found");
 
-      // ✅ استخراج المدة إذا كانت فارغة
       if (!isPdf && (duration.isEmpty || duration == "--:--")) {
         String ext = _extractDurationFromUrl(finalVideoUrl);
         if (ext.isNotEmpty) duration = ext;
@@ -178,59 +176,83 @@ class DownloadManager {
         audioSavePath = '${dir.path}/aud_${lessonId}_hq.enc';
       }
 
-      // 3. متغيرات تتبع التقدم
-      double vidProg = 0.0;
-      double audProg = 0.0;
-
-      void updateAggregatedProgress() {
-        double total = (finalAudioUrl != null) 
-            ? (vidProg * 0.80) + (audProg * 0.20) // 80% للفيديو، 20% للصوت
-            : vidProg;
-            
-        var prog = Map<String, double>.from(downloadingProgress.value);
-        prog[lessonId] = total;
-        downloadingProgress.value = prog; 
-        onProgress(total);
-
-        int percent = (total * 100).toInt();
-        if (percent % 2 == 0) { 
-          notifService.showProgressNotification(
-            id: notificationId, 
-            title: "Downloading: $videoTitle",
-            body: "$percent%",
-            progress: percent, maxProgress: 100,
-          );
-        }
-      }
-
-      // 4. بدء التحميل بالتوازي
-      final List<Future> tasks = [];
-      
-      tasks.add(_downloadFileSmartly(
-        url: finalVideoUrl,
-        savePath: videoSavePath,
-        headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
-        onProgress: (p) { vidProg = p; updateAggregatedProgress(); }
-      ));
-
-      if (finalAudioUrl != null && audioSavePath != null) {
-        tasks.add(_downloadFileSmartly(
-          url: finalAudioUrl,
-          savePath: audioSavePath,
+      // 3. التنفيذ حسب النوع
+      if (isPdf) {
+        // ✅ مسار خاص للـ PDF (مستقر ومباشر)
+        await _downloadPdfWithEncryption(
+          url: finalVideoUrl,
+          savePath: videoSavePath,
           headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
-          onProgress: (p) { audProg = p; updateAggregatedProgress(); }
+          onProgress: (p) {
+             var prog = Map<String, double>.from(downloadingProgress.value);
+             prog[lessonId] = p;
+             downloadingProgress.value = prog; 
+             onProgress(p);
+             
+             int percent = (p * 100).toInt();
+             if (percent % 5 == 0) {
+               notifService.showProgressNotification(
+                 id: notificationId, 
+                 title: "Downloading PDF...",
+                 body: "$percent%",
+                 progress: percent, maxProgress: 100
+               );
+             }
+          }
+        );
+      } else {
+        // ✅ مسار الفيديو (المعقد مع التجزئة والصوت)
+        double vidProg = 0.0;
+        double audProg = 0.0;
+
+        void updateAggregatedProgress() {
+          double total = (finalAudioUrl != null) 
+              ? (vidProg * 0.80) + (audProg * 0.20)
+              : vidProg;
+              
+          var prog = Map<String, double>.from(downloadingProgress.value);
+          prog[lessonId] = total;
+          downloadingProgress.value = prog; 
+          onProgress(total);
+
+          int percent = (total * 100).toInt();
+          if (percent % 2 == 0) { 
+            notifService.showProgressNotification(
+              id: notificationId, 
+              title: "Downloading: $videoTitle",
+              body: "$percent%",
+              progress: percent, maxProgress: 100,
+            );
+          }
+        }
+
+        final List<Future> tasks = [];
+        
+        tasks.add(_downloadFileSmartly(
+          url: finalVideoUrl,
+          savePath: videoSavePath,
+          headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
+          onProgress: (p) { vidProg = p; updateAggregatedProgress(); }
         ));
+
+        if (finalAudioUrl != null && audioSavePath != null) {
+          tasks.add(_downloadFileSmartly(
+            url: finalAudioUrl,
+            savePath: audioSavePath,
+            headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
+            onProgress: (p) { audProg = p; updateAggregatedProgress(); }
+          ));
+        }
+
+        await Future.wait(tasks);
       }
 
-      await Future.wait(tasks);
-
-      // ✅ 5. حساب الحجم الكلي الصحيح (فيديو + صوت)
+      // 5. حساب الحجم والحفظ
       int totalSizeBytes = await File(videoSavePath).length();
       if (audioSavePath != null && await File(audioSavePath).exists()) {
         totalSizeBytes += await File(audioSavePath).length();
       }
 
-      // 6. الحفظ في قاعدة البيانات
       var downloadsBox = await Hive.openBox('downloads_box');
       await downloadsBox.put(lessonId, {
         'id': lessonId,
@@ -242,9 +264,9 @@ class DownloadManager {
         'chapter': chapterName,
         'type': isPdf ? 'pdf' : 'video',
         'quality': quality,
-        'duration': duration, // ✅ حفظ المدة
+        'duration': duration,
         'date': DateTime.now().toIso8601String(),
-        'size': totalSizeBytes, // ✅ حفظ الحجم الكلي
+        'size': totalSizeBytes,
       });
 
       await notifService.cancelNotification(notificationId);
@@ -254,11 +276,11 @@ class DownloadManager {
         isSuccess: true,
       );
 
-      FirebaseCrashlytics.instance.log("✅ Download Success: $videoTitle ($totalSizeBytes bytes)");
+      FirebaseCrashlytics.instance.log("✅ Download Success: $videoTitle");
       onComplete();
 
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Smart Download Failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Download Failed');
       await notifService.cancelNotification(notificationId);
       await notifService.showCompletionNotification(
         id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
@@ -276,7 +298,61 @@ class DownloadManager {
   }
 
   // ---------------------------------------------------------------------------
-  // 🛠️ Smart Downloader (Small Chunks + More Retries)
+  // 📄 PDF Downloader (Direct Stream + Encrypt) - مستوحى من الكود القديم
+  // ---------------------------------------------------------------------------
+  Future<void> _downloadPdfWithEncryption({
+    required String url,
+    required String savePath,
+    required Map<String, dynamic> headers,
+    required Function(double) onProgress,
+  }) async {
+    final saveFile = File(savePath);
+    final sink = await saveFile.open(mode: FileMode.write);
+    List<int> buffer = [];
+
+    try {
+      final response = await _dio.get(
+        url,
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: headers,
+          followRedirects: true, 
+        ),
+      );
+
+      int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
+      int received = 0;
+
+      Stream<Uint8List> stream = response.data.stream;
+      await for (final chunk in stream) {
+        buffer.addAll(chunk);
+        
+        // تشفير فوري كلما تجمع 512KB
+        while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
+          final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
+          buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
+          final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
+          await sink.writeFrom(encrypted);
+        }
+
+        received += chunk.length;
+        if (total != -1) onProgress(received / total);
+      }
+
+      // تشفير ما تبقى
+      if (buffer.isNotEmpty) {
+        final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
+        await sink.writeFrom(encrypted);
+      }
+
+    } finally {
+      await sink.close();
+    }
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // 🎥 Video Downloader (Chunked + Retry + Encrypt)
   // ---------------------------------------------------------------------------
 
   Future<void> _downloadFileSmartly({
@@ -286,7 +362,6 @@ class DownloadManager {
     required Function(double) onProgress,
   }) async {
     if (url.contains('.m3u8') || url.contains('.m3u')) {
-      // HLS Logic (كما هو، لا يحتاج تغيير كبير)
       final saveFile = File(savePath);
       final sink = await saveFile.open(mode: FileMode.write);
       List<int> buffer = [];
@@ -367,7 +442,7 @@ class DownloadManager {
             onProgress(downloadedBytes / totalBytes);
           } catch (e) {
             retries--;
-            if (retries == 0) throw Exception("Failed chunk $start-$end");
+            if (retries == 0) throw Exception("Failed to download chunk $start-$end");
             // انتظار تصاعدي (1ث، 2ث، 3ث...)
             await Future.delayed(Duration(seconds: (11 - retries))); 
             print("⚠️ Retrying chunk... ($retries left)");
