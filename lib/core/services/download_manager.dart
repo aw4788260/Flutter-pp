@@ -412,7 +412,7 @@ class DownloadManager with WidgetsBindingObserver {
   }
 
   // ---------------------------------------------------------------------------
-  // 📄 PDF Downloader
+  // 📄 PDF Downloader (Simplified)
   // ---------------------------------------------------------------------------
   Future<void> _downloadPdfWithEncryption({
     required String url,
@@ -423,36 +423,38 @@ class DownloadManager with WidgetsBindingObserver {
   }) async {
     final saveFile = File(savePath);
     final sink = await saveFile.open(mode: FileMode.write);
-    List<int> buffer = [];
 
     try {
-      final response = await _dio.get(
+      // ✅ تحميل الملف كاملاً في الذاكرة لتبسيط العملية
+      final response = await _dio.get<List<int>>(
         url,
-        options: Options(responseType: ResponseType.stream, headers: headers, followRedirects: true),
+        options: Options(
+          responseType: ResponseType.bytes, // استلام الملف كبايتات مباشرة
+          headers: headers, 
+          followRedirects: true
+        ),
         cancelToken: cancelToken,
+        onReceiveProgress: (received, total) {
+           if (total != -1) onProgress(received / total);
+        },
       );
 
-      int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
-      int received = 0;
+      final bytes = response.data!;
+      int offset = 0;
 
-      Stream<Uint8List> stream = response.data.stream;
-      await for (final chunk in stream) {
+      // ✅ حلقة بسيطة لتقسيم وتشفير الملف
+      while (offset < bytes.length) {
         if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
         
-        buffer.addAll(chunk);
-        while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
-          final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
-          buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
-          final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
-          await sink.writeFrom(encrypted);
-        }
-        received += chunk.length;
-        if (total != -1) onProgress(received / total);
-      }
-
-      if (buffer.isNotEmpty) {
-        final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
+        // أخذ كتلة بحجم CHUNK_SIZE أو ما تبقى
+        int end = min(offset + EncryptionHelper.CHUNK_SIZE, bytes.length);
+        final block = bytes.sublist(offset, end);
+        
+        // التشفير والكتابة
+        final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
         await sink.writeFrom(encrypted);
+        
+        offset += EncryptionHelper.CHUNK_SIZE;
       }
 
     } finally {
