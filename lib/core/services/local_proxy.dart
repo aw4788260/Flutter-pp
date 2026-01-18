@@ -69,11 +69,18 @@ class LocalProxyService {
       final decodedPath = Uri.decodeComponent(pathParam);
       final file = File(decodedPath);
       
+      // 🔍 تتبع 1: تسجيل الطلب ونوعه
+      final bool isLikelyAudio = decodedPath.contains('aud_') || decodedPath.contains('audio');
+      final String logMsg = "📡 Proxy Request: ${isLikelyAudio ? 'AUDIO' : 'VIDEO'} | Path: ${decodedPath.split('/').last} | Range: ${request.headers['range']}";
+      print(logMsg);
+      FirebaseCrashlytics.instance.log(logMsg);
+
       if (!await file.exists()) {
+        FirebaseCrashlytics.instance.log("❌ File not found: $decodedPath");
         return Response.notFound('File not found');
       }
 
-      String contentType = 'application/octet-stream'; 
+      String contentType = 'video/mp4'; 
       if (decodedPath.toLowerCase().contains('.pdf')) contentType = 'application/pdf';
 
       final encryptedLength = await file.length();
@@ -86,6 +93,9 @@ class LocalProxyService {
       if (totalChunks == 0) return Response.ok('');
 
       final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + max(0, (encryptedLength - ((totalChunks - 1) * encChunkSize)) - overhead);
+
+      // 🔍 تتبع 2: تسجيل الحجم المتوقع
+      FirebaseCrashlytics.instance.log("📏 Expected Size: $originalFileSize | Type: $contentType");
 
       final rangeHeader = request.headers['range'];
       int start = 0;
@@ -131,9 +141,11 @@ class LocalProxyService {
     }
   }
 
-  // ✅✅ التعديل الجوهري هنا في هذه الدالة
+  // ✅ الدالة المعدلة مع الإصلاح وسجلات التتبع
   Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd) async* {
     RandomAccessFile? raf;
+    int totalSent = 0; // عداد للبيانات المرسلة
+
     try {
       raf = await file.open(mode: FileMode.read);
       
@@ -154,42 +166,40 @@ class LocalProxyService {
         
         int bytesToRead = min(encChunkSize, fileLen - seekPos);
         
-        // إذا كان المتبقي أصغر من حجم الـ IV، فهذا ملف تالف جداً
         if (bytesToRead <= ivLen) break;
 
         Uint8List encryptedBlock = await raf.read(bytesToRead);
-        
         Uint8List outputBlock;
-        bool isCorrupted = false;
 
         try {
-          // محاولة فك التشفير الطبيعية
+          // 1. محاولة فك التشفير
           outputBlock = EncryptionHelper.decryptBlock(encryptedBlock);
         } catch (e) {
-           isCorrupted = true;
-           // ✅ الإصلاح: بدلاً من تجاهل الخطأ، نقوم بتوليد "صمت" أو "بيانات فارغة"
-           // حساب الحجم المتوقع للنص الأصلي لهذه الكتلة
+           // 🔍 تتبع 3: تسجيل فشل فك التشفير
+           print("❌ Decryption ERROR at chunk $i: $e");
+           FirebaseCrashlytics.instance.recordError(e, null, reason: 'Proxy Decrypt Fail chunk $i');
+
+           // 2. الإصلاح: إرسال أصفار بدلاً من البيانات التالفة
            int expectedSize = 0;
            if (bytesToRead == encChunkSize) {
-             expectedSize = plainChunkSize; // كتلة كاملة
+             expectedSize = plainChunkSize; 
            } else {
-             expectedSize = max(0, bytesToRead - ivLen - tagLen); // آخر كتلة
+             expectedSize = max(0, bytesToRead - ivLen - tagLen);
            }
            
-           print("⚠️ Corruption at chunk $i. Replacing with $expectedSize zero bytes. Error: $e");
-           
-           // إنشاء بيانات فارغة (أصفار) للحفاظ على تدفق البيانات وعدم كسر الـ Content-Length
+           // إنشاء بيانات فارغة للحفاظ على الاتصال
            outputBlock = Uint8List(expectedSize);
         }
 
-        // إرسال البيانات (سواء كانت مفكوكة بنجاح أو أصفار تعويضية)
         if (outputBlock.isNotEmpty) {
           int blockStartInPlain = i * plainChunkSize;
           int sliceStart = max(0, reqStart - blockStartInPlain);
           int sliceEnd = min(outputBlock.length, reqEnd - blockStartInPlain + 1);
 
           if (sliceStart < sliceEnd) {
-            yield outputBlock.sublist(sliceStart, sliceEnd);
+            final dataChunk = outputBlock.sublist(sliceStart, sliceEnd);
+            totalSent += dataChunk.length; // تحديث العداد
+            yield dataChunk;
           }
         }
       }
@@ -197,6 +207,15 @@ class LocalProxyService {
        print("Stream Critical Error: $e");
        FirebaseCrashlytics.instance.recordError(e, s, reason: 'Stream Critical Error');
     } finally {
+      // 🔍 تتبع 4: التحقق من اكتمال البيانات
+      int requestedSize = reqEnd - reqStart + 1;
+      if (totalSent < requestedSize) {
+          String msg = "⚠️ Data Mismatch! Requested: $requestedSize, Sent: $totalSent (Gap: ${requestedSize - totalSent})";
+          print(msg);
+          FirebaseCrashlytics.instance.log(msg);
+      } else {
+          print("✅ Stream Completed Successfully ($totalSent bytes sent)");
+      }
       await raf?.close();
     }
   }
