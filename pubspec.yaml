@@ -11,26 +11,26 @@ dependencies:
     sdk: flutter
   
   # Firebase Core & Crashlytics
-  firebase_core: ^2.24.2
-  firebase_crashlytics: ^3.4.9
+  firebase_core: ^4.3.0
+  firebase_crashlytics: ^5.0.6
   
   # State Management
-  flutter_bloc: ^8.1.3
-  equatable: ^2.0.5
-  get_it: ^7.6.6
+  flutter_bloc: ^9.1.1
+  equatable: ^2.0.8
+  get_it: ^9.2.0
   
   # UI Components & Icons
-  google_fonts: ^6.1.0
-  flutter_svg: ^2.0.9
-  url_launcher: ^6.3.0
+  google_fonts: ^7.0.2
+  flutter_svg: ^2.2.3
+  url_launcher: ^6.3.2
   lucide_icons: ^0.257.0 
-  cached_network_image: ^3.3.1
-  percent_indicator: ^4.2.3 # شريط التقدم للتحميل
-  device_info_plus: ^10.1.0
-  android_id: ^0.4.0
-  wakelock_plus: ^1.1.0        # لإبقاء الشاشة تعمل
-  syncfusion_flutter_pdfviewer: ^28.1.37
-  syncfusion_flutter_pdf: ^28.1.37
+  cached_network_image: ^3.4.1
+  percent_indicator: ^4.2.5 # شريط التقدم للتحميل
+  device_info_plus: ^12.3.0
+  android_id: ^0.5.1
+  wakelock_plus: ^1.4.0        # لإبقاء الشاشة تعمل
+  syncfusion_flutter_pdfviewer: ^32.1.23
+  syncfusion_flutter_pdf: ^32.1.23
   
   
   # ✅ التعديل 1: استخدام نسخة GitHub للحصول على دوال الاستماع (addListener)
