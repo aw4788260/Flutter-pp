@@ -5,7 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/download_manager.dart';
-import '../../core/services/youtube_service.dart'; // ✅ 1. استيراد خدمة اليوتيوب الجديدة
+// ❌ تم حذف استيراد youtube_service.dart لأنه لم يعد مستخدماً
 import 'video_player_screen.dart';
 import 'youtube_player_screen.dart';
 import 'pdf_viewer_screen.dart';
@@ -84,7 +84,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
               const SizedBox(height: 16),
 
-              // ✅ الخيار الثالث: المشغل المباشر (YoutubeExplode)
+              // ✅ الخيار الثالث: المشغل المباشر (Direct Stream)
               _buildOptionTile(
                 icon: LucideIcons.rocket, // أيقونة مميزة
                 title: "Direct Stream (High Quality)",
@@ -176,7 +176,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // ✅ الدالة الجديدة للخيار الثالث (YoutubeExplode)
+  // ✅ الدالة الجديدة كلياً للخيار الثالث (تستخدم البروكسي الجديد وتدمج الصوت)
   Future<void> _fetchAndPlayWithExplode(Map<String, dynamic> video) async {
     showDialog(
       context: context,
@@ -184,13 +184,13 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
     );
 
-    final ytService = YoutubeService();
-
     try {
-      // 1. جلب الـ ID من السيرفر أولاً
       var box = await Hive.openBox('auth_box');
+      
+      // 1. الاتصال بنقطة النهاية الجديدة (get-stream-proxy)
+      // هذه النقطة تتصل بسيرفر البايثون وتعود بقائمة الجودات (مفصولة ومدمجة)
       final res = await Dio().get(
-        '$_baseUrl/api/secure/get-video-id',
+        '$_baseUrl/api/secure/get-stream-proxy', 
         queryParameters: {'lessonId': video['id'].toString()},
         options: Options(headers: {
           'x-user-id': box.get('user_id'),
@@ -199,55 +199,68 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         }),
       );
 
+      if (mounted) Navigator.pop(context); // إخفاء التحميل
+
       if (res.statusCode == 200) {
         final data = res.data;
-        String? youtubeId = data['youtube_video_id']; 
-        String videoTitle = data['db_video_title'] ?? video['title'];
+        final String videoTitle = data['db_video_title'] ?? video['title'];
+        final List<dynamic> rawQualities = data['availableQualities'] ?? [];
 
-        // محاولة استخراج الـ ID من الرابط إذا لم يكن موجوداً بشكل مباشر
-        if (youtubeId == null || youtubeId.isEmpty) {
-           if (data['url'] != null) {
-              youtubeId = ytService.extractVideoId(data['url']);
-           }
-        }
+        if (rawQualities.isNotEmpty) {
+          Map<String, String> processedQualities = {};
 
-        if (youtubeId != null) {
-          // 2. استخدام الخدمة لجلب الروابط (بما في ذلك Muxed و Video+Audio المدمج)
-          final qualities = await ytService.getVideoQualities(youtubeId);
+          // أ) البحث عن أفضل رابط صوتي (Audio Only) لدمجه مع الفيديوهات الصامتة
+          String? bestAudioUrl;
+          try {
+            // عادةً البايثون يرسل أفضل صوت كأول عنصر من نوع audio_only
+            final audioObj = rawQualities.firstWhere(
+              (q) => q['type'] == 'audio_only', 
+              orElse: () => null
+            );
+            bestAudioUrl = audioObj?['url'];
+          } catch (_) {}
 
-          if (mounted) {
-            Navigator.pop(context); // إخفاء التحميل
-            
-            if (qualities.isNotEmpty) {
-              // الانتقال للمشغل مع الروابط المستخرجة
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => VideoPlayerScreen(
-                    streams: qualities, 
-                    title: videoTitle,
-                  ),
-                ),
-              );
+          // ب) معالجة القائمة ودمج الصوت إذا لزم الأمر
+          for (var item in rawQualities) {
+            String url = item['url'];
+            String qualityKey = "${item['quality']}p"; // مثال: 1080p
+            String type = item['type']; // video_only, audio_only, video_audio
+
+            // لا نعرض ملفات الصوت كخيارات للمشاهدة
+            if (type == 'audio_only') continue;
+
+            if (type == 'video_only' && bestAudioUrl != null) {
+              // ✅ هنا يتم الدمج: نضع فاصل | ليفهمه مشغل الفيديو (VideoPlayerScreen)
+              processedQualities[qualityKey] = "$url|$bestAudioUrl";
             } else {
-              _showErrorSnackBar("No playable streams found via Explode.");
+              // ملفات مدمجة جاهزة (مثل 360p) أو في حال عدم وجود صوت منفصل
+              processedQualities[qualityKey] = url;
             }
           }
+
+          if (processedQualities.isNotEmpty) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => VideoPlayerScreen(
+                  streams: processedQualities,
+                  title: videoTitle,
+                ),
+              ),
+            );
+          } else {
+            _showErrorSnackBar("No playable streams found.");
+          }
         } else {
-          if (mounted) Navigator.pop(context);
-          _showErrorSnackBar("Youtube ID not found.");
+          _showErrorSnackBar("Video streams unavailable.");
         }
       } else {
-        if (mounted) Navigator.pop(context);
-        _showErrorSnackBar("Failed to get video info from server.");
+        _showErrorSnackBar("Server Error: ${res.statusCode}");
       }
     } catch (e, stack) {
       if (mounted) Navigator.pop(context);
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: "Explode Stream Error");
-      debugPrint("Explode Error: $e");
-      _showErrorSnackBar("Error extracting links. Try other players.");
-    } finally {
-      ytService.dispose();
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: "Direct Stream Error");
+      _showErrorSnackBar("Connection Error or Timeout.");
     }
   }
 
@@ -282,7 +295,16 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         List<dynamic> qualities = data['availableQualities'] ?? [];
 
         if (qualities.isNotEmpty) {
-          _showQualitySelectionDialog(videoId, videoTitle, qualities, duration);
+          // فلترة الجودات للتحميل (نستبعد الصوت فقط حالياً)
+          var downloadQualities = qualities.where((q) => q['type'] != 'audio_only').toList();
+          
+          if (downloadQualities.isNotEmpty) {
+             _showQualitySelectionDialog(videoId, videoTitle, downloadQualities, duration);
+          } else if (data['url'] != null) {
+             _startVideoDownload(videoId, videoTitle, data['url'], "Auto", duration);
+          } else {
+             _showErrorSnackBar("No compatible download links found.");
+          }
         } else if (data['url'] != null) {
           _startVideoDownload(videoId, videoTitle, data['url'], "Auto", duration);
         } else {
@@ -327,6 +349,9 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     "${q['quality']}p", 
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                   ),
+                  subtitle: q['type'] == 'video_only' 
+                      ? const Text("Video Only (No Sound)", style: TextStyle(color: Colors.grey, fontSize: 10)) 
+                      : null,
                   trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
                   onTap: () {
                     Navigator.pop(context);
