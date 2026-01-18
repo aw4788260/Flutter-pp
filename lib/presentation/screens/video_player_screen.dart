@@ -47,6 +47,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // ✅ التحكم في شاشة الانتظار
   bool _isVideoLoading = true; 
   
+  // ✅ متغيرات العد التنازلي للاستقرار
+  int _stabilizingCountdown = 0;
+  Timer? _countdownTimer;
+  
   bool _isDisposing = false;
   
   Timer? _watermarkTimer;
@@ -145,6 +149,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     try {
       _watermarkTimer?.cancel();
+      _countdownTimer?.cancel(); // إيقاف العداد
       await _player.stop(); 
       await _player.dispose(); 
       _proxyService.stop(); // ✅ تقليل عداد استخدام البروكسي
@@ -231,11 +236,35 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       String playUrl = url;
       String? audioUrl; 
 
+      bool isOffline = false;
+
       // 1. أولوية للصوت المجهز مسبقاً (Pre-warmed Audio)
       if (widget.preReadyAudioUrl != null && !url.startsWith('http')) {
          // إذا كان الرابط محلياً ولدينا صوت مجهز، نستخدمه
          audioUrl = widget.preReadyAudioUrl;
+         isOffline = true;
+      } else if (url.contains('127.0.0.1')) {
+         // إذا كان الرابط يشير للسيرفر المحلي مباشرة
+         isOffline = true;
       }
+
+      // ✅ منطق التأخير القسري للأوفلاين (Stabilization Delay)
+      if (isOffline) {
+        // نضبط العداد على 10 ثواني
+        setState(() => _stabilizingCountdown = 10);
+        
+        // حلقة انتظار مع تحديث العداد
+        for (int i = 10; i > 0; i--) {
+          if (_isDisposing) return;
+          setState(() => _stabilizingCountdown = i);
+          await Future.delayed(const Duration(seconds: 1));
+        }
+        
+        // انتهى العد
+        setState(() => _stabilizingCountdown = 0);
+      }
+
+      // --- بدء التحضير للتشغيل بعد انتهاء العداد ---
 
       // 2. منطق الأونلاين (Split)
       if (url.contains('|')) {
@@ -276,7 +305,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // 4. إذا كان الرابط http ولكنه محلي (تم تجهيزه في الشاشة السابقة)
       else if (url.contains('127.0.0.1')) {
          playUrl = url;
-         // audioUrl already set from preReadyAudioUrl potentially
+         
+         // ✅ التقاط الصوت الممرر عبر preReadyAudioUrl إذا لم يتم تمريره مع الرابط
+         if (audioUrl == null && widget.preReadyAudioUrl != null) {
+            audioUrl = widget.preReadyAudioUrl;
+         }
       }
       
       await _player.stop();
@@ -291,8 +324,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
 
       if (audioUrl != null) {
-        // تأخير بسيط لضمان تهيئة الفيديو
-        await Future.delayed(const Duration(milliseconds: 150));
+        // تأخير بسيط إضافي (احتياطي) لضمان تهيئة الفيديو
+        await Future.delayed(const Duration(milliseconds: 500));
         await _player.setAudioTrack(AudioTrack.uri(
           audioUrl,
           title: "HQ Audio",
@@ -427,6 +460,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (!_isDisposing) {
        _isDisposing = true;
        _watermarkTimer?.cancel();
+       _countdownTimer?.cancel();
        _player.dispose(); 
        _proxyService.stop();
        _resetSystemChrome();
@@ -546,12 +580,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-            // ✅ شاشة التحميل الذكية: تظهر وتختفي بسلاسة
-            if (!_isError && (_isVideoLoading || !_isInitialized))
+            // ✅ شاشة التحميل الذكية + عداد التجهيز (Stabilization Countdown)
+            if (!_isError && (_isVideoLoading || !_isInitialized || _stabilizingCountdown > 0))
               Container(
                 color: Colors.black,
-                child: const Center(
-                  child: CircularProgressIndicator(color: AppColors.accentYellow),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(color: AppColors.accentYellow),
+                      if (_stabilizingCountdown > 0) ...[
+                        const SizedBox(height: 24),
+                        Text(
+                          "Stabilizing... $_stabilizingCountdown",
+                          style: const TextStyle(
+                            color: AppColors.accentYellow, 
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            letterSpacing: 2.0
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          "Preparing offline stream",
+                          style: TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
+                      ]
+                    ],
+                  ),
                 ),
               ),
 
