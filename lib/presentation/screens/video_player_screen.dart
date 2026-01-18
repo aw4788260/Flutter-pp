@@ -45,6 +45,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   
   bool _isVideoLoading = true; 
   
+  // ✅ متغير لتحديد وضع الأوفلاين
+  bool _isOfflineMode = false;
+
   // متغيرات العداد
   int _stabilizingCountdown = 0;
   Timer? _countdownTimer;
@@ -99,10 +102,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         FirebaseCrashlytics.instance.recordError(error, null, reason: 'MediaKit Stream Error (Non-Fatal)');
       });
 
-      // ✅ استماع لحالة التخزين المؤقت لإخفاء اللودر وإظهار الإطار الأول
+      // ✅ المستمع الذكي: ينفذ الإجراءات فقط عند انتهاء التخزين المؤقت (Buffering)
       _player.stream.buffering.listen((buffering) {
+        // إذا انتهى البفر (buffering == false) وكنا ننتظر التحميل (_isVideoLoading == true)
         if (!buffering && _isVideoLoading) {
-          if (mounted) setState(() => _isVideoLoading = false);
+          if (mounted) {
+            setState(() => _isVideoLoading = false);
+            
+            // الآن الفيديو جاهز تماماً (الإطار الأول محمل)
+            if (_isOfflineMode) {
+               // إذا أوفلاين: نبدأ العداد (والفيديو ثابت في الخلفية)
+               _startCountdown();
+            } else {
+               // إذا أونلاين: نشغل فوراً
+               _player.play();
+            }
+          }
         }
       });
 
@@ -196,7 +211,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  // ✅ دالة العداد المعدلة: تشغل الفيديو فقط عند الانتهاء
+  // ✅ دالة العداد: تشغل الفيديو بعد انتهاء الـ 10 ثواني
   void _startCountdown() {
     setState(() => _stabilizingCountdown = 10);
     _countdownTimer?.cancel();
@@ -211,7 +226,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         timer.cancel();
         if (mounted) {
           setState(() => _stabilizingCountdown = 0);
-          // 🚀 الآن فقط يبدأ التشغيل الفعلي
+          // 🚀 تشغيل الفيديو الآن بعد انتهاء المهلة
           _player.play(); 
         }
       } else {
@@ -249,18 +264,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
     
-    setState(() => _isVideoLoading = true);
+    // إعادة تعيين الحالة للتحميل
+    setState(() {
+      _isVideoLoading = true;
+      _stabilizingCountdown = 0;
+    });
+    _countdownTimer?.cancel();
     
     try {
       String playUrl = url;
       String? audioUrl; 
-      bool isOffline = false;
+      
+      // ✅ تحديد وضع الأوفلاين
+      _isOfflineMode = false;
 
       if (widget.preReadyAudioUrl != null && !url.startsWith('http')) {
          audioUrl = widget.preReadyAudioUrl;
-         isOffline = true;
+         _isOfflineMode = true;
       } else if (url.contains('127.0.0.1')) {
-         isOffline = true;
+         _isOfflineMode = true;
       }
 
       if (url.contains('|')) {
@@ -303,7 +325,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
       // ✅ فتح الميديا مع عدم التشغيل (play: false)
-      // سيتم تحميل أول "بفر" وعرض الإطار الأول
+      // سيتم الانتظار حتى يكتمل البفر، وعندها يقوم المستمع (Listener) بتشغيل العداد أو الفيديو
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false 
@@ -326,14 +348,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         await _player.setRate(_currentSpeed);
       }
 
-      // ✅ التحكم في التشغيل بناءً على الحالة (أونلاين/أوفلاين)
-      if (isOffline) {
-        // إذا أوفلاين: نشغل العداد، وننتظر انتهائه ليقوم هو باستدعاء _player.play()
-        _startCountdown();
-      } else {
-        // إذا أونلاين: نشغل فوراً
-        await _player.play();
-      }
+      // ⚠️ ملاحظة: لا نستدعي _player.play() هنا يدوياً.
+      // نترك المستمع _player.stream.buffering هو الذي يقرر متى يبدأ (بعد اكتمال التحميل).
 
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PlayVideo Function Failed');
@@ -580,7 +596,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       if (_isVideoLoading || !_isInitialized)
                         const CircularProgressIndicator(color: AppColors.accentYellow),
                         
-                      // إظهار العداد إذا كان فعالاً
+                      // إظهار العداد إذا كان فعالاً (فوق الفيديو الجاهز)
                       if (_stabilizingCountdown > 0) ...[
                         const SizedBox(height: 24),
                         Text(
