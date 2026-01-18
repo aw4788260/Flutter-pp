@@ -47,12 +47,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
 
-  // 1. هيدر خاص للمشغل الأول (السيرفر الخاص) - ضروري له
+  // 1. هيدر خاص للمشغل الأول (السيرفر الخاص)
   final Map<String, String> _serverHeaders = {
     'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
   };
 
-  // 2. هيدر خاص لليوتيوب (فارغ أو متصفح) - ضروري لتجنب الحظر 403
+  // 2. هيدر خاص لليوتيوب (فارغ أو متصفح) لتجنب الحظر
   final Map<String, String> _youtubeHeaders = {}; 
 
   @override
@@ -63,7 +63,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _initializePlayerScreen() async {
     FirebaseCrashlytics.instance.log("🎬 MediaKit: Init Started for '${widget.title}'");
-    // تسجيل عدد الروابط فقط للحفاظ على الخصوصية
     FirebaseCrashlytics.instance.log("📦 Incoming Streams Count: ${widget.streams.length}");
     
     await FirebaseCrashlytics.instance.setCustomKey('video_title', widget.title);
@@ -109,7 +108,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       });
 
-      // ✅ تصحيح: الاستماع للسجلات الداخلية باستخدام log.text
       _player.stream.log.listen((log) {
         if (log.level == 'error' || log.level == 'warn' || log.level == 'fatal') {
            FirebaseCrashlytics.instance.log("⚠️ Native Log: ${log.prefix}: ${log.text}");
@@ -228,7 +226,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ الدالة الأساسية للتشغيل (تدعم الصيغ المدمجة والمنفصلة)
+  // ✅ الدالة الأساسية للتشغيل (تدعم الصيغ المدمجة والمنفصلة مع المزامنة)
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
     
@@ -243,7 +241,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final parts = url.split('|');
         playUrl = parts[0];
         if (parts.length > 1) {
-          audioUrl = parts[1];
+          audioUrl = parts[1]; // ✅ الجزء الثاني هو رابط الصوت
         }
       } 
       // 2. التحقق مما إذا كان ملفاً محلياً
@@ -255,26 +253,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       await _player.stop();
       
-      // ✅ 3. اختيار الهيدر المناسب:
-      // إذا كان الرابط يوتيوب (Googlevideo) أو يحتوي على صوت منفصل (YoutubeExplode) -> لا ترسل Headers خاصة
-      // وإلا -> ارسل Headers السيرفر
-      final bool isYoutubeSource = playUrl.contains('googlevideo.com') || audioUrl != null;
+      // 3. تحديد الهيدر المناسب
+      final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
-      // 4. فتح الوسائط
+      // 4. فتح الفيديو (بدون تشغيل تلقائي لضبط الصوت أولاً)
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false
       );
 
-      // 5. دمج مسار الصوت (لليوتيوب عالي الجودة)
+      // 5. ✅ دمج مسار الصوت (لليوتيوب عالي الجودة)
       if (audioUrl != null) {
-        await _player.setAudioTrack(AudioTrack.uri(audioUrl));
+        // ننتظر قليلاً للتأكد من جاهزية المشغل (مهم جداً)
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        await _player.setAudioTrack(AudioTrack.uri(
+          audioUrl,
+          title: "HQ Audio",
+          language: "en"
+        ));
+        
+        debugPrint("🔊 Audio track injected successfully");
       }
       
       // 6. استعادة الموضع (Seek)
       if (startAt != null && startAt != Duration.zero) {
         int retries = 0;
+        // ننتظر حتى تصبح المدة متاحة للقيام بـ Seek آمن
         while (_player.state.duration == Duration.zero && retries < 40) {
           if (_isDisposing) return;
           await Future.delayed(const Duration(milliseconds: 100));
@@ -288,6 +294,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         await _player.setRate(_currentSpeed);
       }
 
+      // 8. ابدأ التشغيل الآن
       await _player.play();
 
     } catch (e, stack) {
