@@ -38,10 +38,13 @@ class LocalProxyService {
     router.get('/video', _handleRequest);
 
     try {
-      // استخدام shared: true مهم جداً لدعم الصوت والفيديو معاً
+      // ✅ التعديل 1: shared: true ضروري
       _server = await shelf_io.serve(router, InternetAddress.anyIPv4, port, shared: true);
       _server?.autoCompress = false;
-      _server?.idleTimeout = null;
+      
+      // ✅ التعديل 2 (هام جداً للأجهزة القديمة):
+      // تقليل مهلة الانتظار لقتل الاتصالات المعلقة بسرعة (بدل القيمة الافتراضية الطويلة)
+      _server?.idleTimeout = const Duration(seconds: 1); 
       
       FirebaseCrashlytics.instance.log('🔒 Proxy Started on ${_server!.address.host}:${_server!.port}');
     } catch (e, stack) {
@@ -69,14 +72,13 @@ class LocalProxyService {
       final decodedPath = Uri.decodeComponent(pathParam);
       final file = File(decodedPath);
       
-      // 🔍 تتبع 1: تسجيل الطلب ونوعه
+      // 🔍 تسجيل وصول الطلب (إذا لم يظهر هذا السطر في اللوج، فالمشكلة في الشبكة/السوكيت)
       final bool isLikelyAudio = decodedPath.contains('aud_') || decodedPath.contains('audio');
-      // final String logMsg = "📡 Proxy Request: ${isLikelyAudio ? 'AUDIO' : 'VIDEO'} | Path: ${decodedPath.split('/').last} | Range: ${request.headers['range']}";
-      // print(logMsg);
-      // FirebaseCrashlytics.instance.log(logMsg);
+      final String logMsg = "📡 Proxy Request: ${isLikelyAudio ? 'AUDIO' : 'VIDEO'} | Path: ${decodedPath.split('/').last} | Range: ${request.headers['range']}";
+      print(logMsg);
+      // FirebaseCrashlytics.instance.log(logMsg); // يمكنك تفعيلها للتتبع
 
       if (!await file.exists()) {
-        FirebaseCrashlytics.instance.log("❌ File not found: $decodedPath");
         return Response.notFound('File not found');
       }
 
@@ -94,9 +96,6 @@ class LocalProxyService {
 
       final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + max(0, (encryptedLength - ((totalChunks - 1) * encChunkSize)) - overhead);
 
-      // 🔍 تتبع 2: تسجيل الحجم المتوقع
-      // FirebaseCrashlytics.instance.log("📏 Expected Size: $originalFileSize | Type: $contentType");
-
       final rangeHeader = request.headers['range'];
       int start = 0;
       int end = originalFileSize - 1;
@@ -113,26 +112,29 @@ class LocalProxyService {
       
       final contentLength = end - start + 1;
 
+      // رؤوس الاستجابة المشتركة
+      final Map<String, Object> headers = {
+          'Content-Type': contentType, 
+          'Content-Length': contentLength.toString(),
+          'Accept-Ranges': 'bytes',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          // ✅ التعديل 3 (الحل الجذري): إجبار إغلاق الاتصال بعد كل طلب
+          // هذا يمنع تراكم الاتصالات المفتوحة (Zombie Connections) التي تخنق الأجهزة القديمة
+          'Connection': 'close', 
+      };
+
       if (request.method == 'HEAD') {
-        return Response.ok(null, headers: {
-            'Content-Type': contentType,
-            'Content-Length': originalFileSize.toString(),
-            'Accept-Ranges': 'bytes',
-        });
+        return Response.ok(null, headers: headers);
       }
+
+      // إضافة Content-Range فقط في استجابة الـ Body (206 Partial Content)
+      headers['Content-Range'] = 'bytes $start-$end/$originalFileSize';
 
       return Response(
         206, 
         body: _createDecryptedStream(file, start, end),
-        headers: {
-          'Content-Type': contentType, 
-          'Content-Length': contentLength.toString(),
-          'Content-Range': 'bytes $start-$end/$originalFileSize',
-          'Accept-Ranges': 'bytes',
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        },
+        headers: headers,
       );
 
     } catch (e, stack) {
@@ -141,12 +143,9 @@ class LocalProxyService {
     }
   }
 
-  // ✅ الدالة المعدلة جذرياً لإصلاح مشكلة الأجهزة القديمة
   Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd) async* {
     RandomAccessFile? raf;
     int totalSent = 0; 
-    
-    // ✅ 1. حساب الطول المطلوب بدقة لضمان إرساله كاملاً
     final int requiredLength = reqEnd - reqStart + 1;
 
     try {
@@ -162,7 +161,6 @@ class LocalProxyService {
       final fileLen = await file.length();
 
       for (int i = startChunkIndex; i <= endChunkIndex; i++) {
-        // إذا أرسلنا ما يكفي، نتوقف
         if (totalSent >= requiredLength) break;
 
         int seekPos = i * encChunkSize;
@@ -171,7 +169,6 @@ class LocalProxyService {
         await raf.setPosition(seekPos);
         
         int bytesToRead = min(encChunkSize, fileLen - seekPos);
-        
         if (bytesToRead <= ivLen) break;
 
         Uint8List encryptedBlock = await raf.read(bytesToRead);
@@ -181,11 +178,9 @@ class LocalProxyService {
           outputBlock = EncryptionHelper.decryptBlock(encryptedBlock);
         } catch (e) {
            print("❌ Decryption ERROR at chunk $i: $e");
-           // ✅ 2. في حالة فشل فك التشفير لكتلة واحدة، نرسل كتلة فارغة (أصفار) للحفاظ على التدفق
            int expectedSize = (bytesToRead == encChunkSize) 
                ? plainChunkSize 
                : max(0, bytesToRead - ivLen - tagLen);
-           
            outputBlock = Uint8List(expectedSize);
         }
 
@@ -201,27 +196,21 @@ class LocalProxyService {
           }
         }
       }
-    } catch(e, s) {
-       print("Stream Critical Error: $e");
-       FirebaseCrashlytics.instance.recordError(e, s, reason: 'Stream Critical Error');
+    } catch(e) {
+       // تجاهل أخطاء انقطاع الاتصال المعتادة (مثل إغلاق المشغل للاتصال)
+       print("Stream Interrupted: $e");
     } finally {
-      // ✅✅ 3. المنطق الذكي للفجوات (Smart Gap Handling)
-      // هذا الجزء هو الحل الحقيقي لمشكلتك
+      // منطق ملء الفراغات (Smart Gap)
       if (totalSent < requiredLength) {
           int missingBytes = requiredLength - totalSent;
-          
-          // إذا كانت الفجوة صغيرة (أقل من نصف ميجا)، نملؤها بأصفار لتجنب التقطيع البسيط
           if (missingBytes < 512 * 1024) {
-             print("⚠️ Small Gap ($missingBytes bytes): Filling with zeros to prevent glitch.");
+             // فجوة صغيرة: نرسل أصفار لتجنب التقطيع
              yield Uint8List(missingBytes);
           } else {
-             // إذا كانت الفجوة كبيرة (مثل 85 ميجا)، نغلق الاتصال فوراً.
-             // هذا يجعل المشغل (Player) يفهم أن الاتصال انقطع، فيقوم تلقائياً
-             // بعمل Retry ويطلب الجزء المتبقي بشكل صحيح بدلاً من تشغيل صمت/سواد.
-             print("🛑 Large Gap ($missingBytes bytes): Closing stream to trigger Player Retry.");
+             // فجوة كبيرة: نغلق فوراً ليقوم المشغل بطلب جديد (Retry)
+             print("🛑 Large Gap ($missingBytes bytes): Closing connection.");
           }
       }
-      
       await raf?.close();
     }
   }
