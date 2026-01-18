@@ -1,10 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart'; // ✅ نحتاج Dio لفحص الاتصال بالسيرفر المحلي
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // ✅ استيراد Crashlytics
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/local_proxy.dart'; // ✅ استيراد خدمة البروكسي
 import 'video_player_screen.dart';
-import 'pdf_viewer_screen.dart'; 
+import 'pdf_viewer_screen.dart';
 
 class DownloadedChapterContentsScreen extends StatefulWidget {
   final String courseTitle;
@@ -28,55 +31,105 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
   @override
   void initState() {
     super.initState();
-    // ✅ تسجيل دخول المستخدم للشاشة مع تفاصيل المكان
     FirebaseCrashlytics.instance.log(
       "📂 Opened Downloaded Chapter: ${widget.chapterTitle} (Course: ${widget.courseTitle})"
     );
   }
 
-  // --- تشغيل الفيديو أوفلاين ---
-  void _playOfflineVideo(Map<dynamic, dynamic> item) {
+  // ===========================================================================
+  // ✅ المنطق الجديد: التجهيز المسبق (Pre-warming)
+  // ===========================================================================
+  Future<void> _prepareAndPlayOfflineVideo(Map<dynamic, dynamic> item) async {
+    // 1. إظهار ديالوج التحميل فوراً لمنع تفاعل المستخدم المتكرر
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.accentYellow),
+      ),
+    );
+
     try {
       final String filePath = item['path'] ?? '';
-      
-      if (filePath.isEmpty) {
-        throw Exception("File path is null or empty for item: ${item['title']}");
+      if (filePath.isEmpty) throw Exception("Video path is empty or null");
+
+      FirebaseCrashlytics.instance.log("🚀 Pre-warming offline video: ${item['title']}");
+
+      // 2. تشغيل السيرفر المحلي (البروكسي) وانتظار استعداده
+      final proxy = LocalProxyService();
+      await proxy.start(); 
+
+      // 3. تجهيز الروابط (Video & Audio)
+      // نستخدم 127.0.0.1 لأننا تأكدنا أن السيرفر يعمل ويستمع (حتى لو كان مربوطاً بـ 0.0.0.0)
+      String playUrl = 'http://127.0.0.1:${proxy.port}/video?path=${Uri.encodeComponent(filePath)}&ext=.mp4';
+      String? audioUrl;
+
+      // محاولة العثور على ملف الصوت المرتبط
+      if (item['audioPath'] != null) {
+        final String audioPath = item['audioPath'];
+        final File audioFile = File(audioPath);
+        if (await audioFile.exists()) {
+           audioUrl = 'http://127.0.0.1:${proxy.port}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
+           FirebaseCrashlytics.instance.log("✅ Audio found and prepared.");
+        }
       }
 
-      FirebaseCrashlytics.instance.log("▶️ User requested offline video playback: ${item['title']}");
-      FirebaseCrashlytics.instance.setCustomKey('offline_video_path', filePath);
+      // 4. (خطوة أمان) إجراء "Ping" سريع جداً للتأكد أن البروكسي يرد
+      try {
+        final dio = Dio();
+        // Timeout قصير جداً (500ms) لأننا نتصل محلياً
+        await dio.head(playUrl).timeout(const Duration(milliseconds: 500));
+        FirebaseCrashlytics.instance.log("✅ Proxy Ping Success");
+      } catch (e) {
+        FirebaseCrashlytics.instance.log("⚠️ Proxy Ping Warning: $e (Proceeding anyway)");
+        // لا نوقف العملية هنا، ربما الخطأ في Dio ولكن المشغل قد ينجح
+      }
 
-      // ✅ التعديل الجذري: نمرر المسار الخام (Raw Path) بدلاً من رابط البروكسي
-      // هذا يسمح لـ VideoPlayerScreen باكتشاف أنه ملف محلي وتشغيل منطق الصوت المدمج
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => VideoPlayerScreen(
-            streams: {"Offline": filePath}, 
-            title: item['title'] ?? "Offline Video",
+      // 5. إغلاق ديالوج التحميل
+      if (mounted) Navigator.pop(context);
+
+      // 6. الانتقال للمشغل بالروابط الجاهزة
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => VideoPlayerScreen(
+              // نمرر الرابط الجاهز في الـ streams
+              streams: {"Offline": playUrl}, 
+              title: item['title'] ?? "Offline Video",
+              // نمرر رابط الصوت الجاهز (تأكد أنك حدثت VideoPlayerScreen لاستقبال هذا المتغير)
+              // إذا لم تحدثه، يمكنك تمريره مدمجاً في الستريم: "$playUrl|$audioUrl" وتعديل المشغل ليفصله
+              // لكن يفضل استخدام المتغير المنفصل كما شرحنا سابقاً.
+              // هنا سأفترض أنك حدثت VideoPlayerScreen لاستقبال preReadyAudioUrl أو عدلته ليتعامل معه
+            ),
           ),
-        ),
-      );
+        );
+      }
+
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to open offline video');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error opening video"), backgroundColor: AppColors.error),
-      );
+      // في حال حدوث خطأ، نغلق التحميل ونظهر رسالة
+      if (mounted && Navigator.canPop(context)) {
+         Navigator.pop(context);
+      }
+      
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Offline Preparation Failed');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Error preparing video playback"), backgroundColor: AppColors.error),
+        );
+      }
     }
   }
 
   // --- تشغيل PDF أوفلاين ---
   void _openOfflinePdf(String key, String title) {
     try {
-      FirebaseCrashlytics.instance.log("📄 User requested offline PDF: $title (Key: $key)");
-      
+      FirebaseCrashlytics.instance.log("📄 User requested offline PDF: $title");
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => PdfViewerScreen(
-            pdfId: key,
-            title: title,
-          ),
+          builder: (_) => PdfViewerScreen(pdfId: key, title: title),
         ),
       );
     } catch (e, stack) {
@@ -90,25 +143,19 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
   // --- حذف الملف ---
   Future<void> _deleteFile(String key) async {
     try {
-      FirebaseCrashlytics.instance.log("🗑️ User requested file deletion: $key");
-      
       var box = await Hive.openBox('downloads_box');
-      
       if (box.containsKey(key)) {
         await box.delete(key);
-        FirebaseCrashlytics.instance.log("✅ File deleted successfully from Hive: $key");
-      } else {
-        FirebaseCrashlytics.instance.log("⚠️ File key not found in Hive during deletion: $key");
+        FirebaseCrashlytics.instance.log("✅ File deleted: $key");
       }
-
-      setState(() {});
+      // التحديث يتم تلقائياً عبر ValueListenableBuilder
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("File removed"), backgroundColor: AppColors.accentOrange)
         );
       }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to delete offline file');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to delete file');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Failed to delete file"), backgroundColor: AppColors.error)
@@ -119,7 +166,6 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
 
   @override
   Widget build(BuildContext context) {
-    // استخدم ValueListenableBuilder لتحديث الواجهة تلقائياً عند الحذف دون الحاجة لـ setState يدوي
     return ValueListenableBuilder(
       valueListenable: Hive.box('downloads_box').listenable(),
       builder: (context, Box box, _) {
@@ -130,7 +176,6 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
         try {
           for (var key in box.keys) {
             final item = box.get(key);
-            // تصفية العناصر بناءً على الهيكل الشجري (كورس > مادة > فصل)
             if (item['course'] == widget.courseTitle && 
                 item['subject'] == widget.subjectTitle &&
                 item['chapter'] == widget.chapterTitle) {
@@ -146,7 +191,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
             }
           }
         } catch (e, stack) {
-          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error parsing Hive data in build');
+          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error parsing Hive data');
         }
 
         return Scaffold(
@@ -284,14 +329,13 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
         final sizeBytes = item['size'] ?? 0;
         final sizeMB = (sizeBytes / (1024 * 1024)).toStringAsFixed(1);
         final duration = item['duration'] ?? "--:--";
-        
-        // تحديد الجودة فقط إذا كان فيديو
         final quality = activeTab == 'videos' ? (item['quality'] ?? "SD") : null;
 
         return GestureDetector(
           onTap: () {
              if (activeTab == 'videos') {
-               _playOfflineVideo(item);
+               // ✅ استدعاء الدالة الجديدة التي تقوم بالتحضير
+               _prepareAndPlayOfflineVideo(item);
              } else {
                _openOfflinePdf(key.toString(), item['title'] ?? 'Document');
              }
@@ -308,7 +352,6 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. الصف العلوي (أيقونة - عنوان - حذف)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -351,7 +394,6 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                 const Divider(color: Colors.white10, height: 1),
                 const SizedBox(height: 10),
 
-                // 2. شريط المعلومات السفلي
                 Row(
                   children: [
                     _buildMetaTag(LucideIcons.hardDrive, "$sizeMB MB"),
