@@ -25,7 +25,7 @@ class NotificationService {
       iOS: initializationSettingsDarwin,
     );
 
-    // ✅ ضروري: طلب الأذونات في أندرويد 13+ لتجنب المشاكل
+    // طلب الأذونات (مهم لأندرويد 13+)
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
@@ -33,7 +33,7 @@ class NotificationService {
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse details) {
-        // Handle notification tap
+        // التعامل مع الضغط على الإشعار
       },
     );
   }
@@ -42,7 +42,7 @@ class NotificationService {
     try {
       await flutterLocalNotificationsPlugin.cancel(id);
     } catch (e) {
-      // Ignore
+      // تجاهل الأخطاء
     }
   }
 
@@ -61,15 +61,15 @@ class NotificationService {
     required int progress,
     required int maxProgress,
   }) async {
-    // ✅ التصحيح هنا: استخدام نفس ID القناة الموجود في main.dart
+    // ✅ تصحيح: استخدام نفس ID القناة الموجود في main.dart بالضبط
     const String channelId = 'downloads_channel'; 
     
     final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      channelId, // ✅ تم توحيد الاسم
+      channelId, 
       'Downloads',
       channelDescription: 'Notifications for file downloads',
-      importance: Importance.low, // Low لمنع الإزعاج الصوتي مع التحديث المستمر
+      importance: Importance.low, 
       priority: Priority.low,
       showProgress: true,
       maxProgress: maxProgress,
@@ -77,8 +77,7 @@ class NotificationService {
       onlyAlertOnce: true,
       ongoing: true,
       autoCancel: false,
-      // ✅ إضافة هامة لأندرويد 14: التأكد من أن الإشعار لا يغلق الخدمة بالخطأ
-      foregroundServiceBehavior: AndroidNotificationForegroundServiceBehavior.immediate,
+      // ❌ تم حذف foregroundServiceBehavior لحل مشكلة البناء
     );
 
     final NotificationDetails platformChannelSpecifics =
@@ -97,7 +96,6 @@ class NotificationService {
     required String title,
     required bool isSuccess,
   }) async {
-    // يمكن استخدام قناة مختلفة للإشعارات المكتملة (بصوت وتنبيه)
     const String channelId = 'download_completed_channel';
 
     final AndroidNotificationDetails androidPlatformChannelSpecifics =
