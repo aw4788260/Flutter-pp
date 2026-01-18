@@ -47,12 +47,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
 
-  // 1. هيدر خاص للمشغل الأول (السيرفر الخاص)
   final Map<String, String> _serverHeaders = {
     'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
   };
-
-  // 2. هيدر خاص لليوتيوب
   final Map<String, String> _youtubeHeaders = {}; 
 
   @override
@@ -63,7 +60,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _initializePlayerScreen() async {
     FirebaseCrashlytics.instance.log("🎬 MediaKit: Init Started for '${widget.title}'");
-    
     await FirebaseCrashlytics.instance.setCustomKey('video_title', widget.title);
 
     try {
@@ -76,14 +72,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await WakelockPlus.enable();
       await _startProxyServer();
 
-      // تهيئة المشغل
       _player = Player(
         configuration: const PlayerConfiguration(
-          bufferSize: 32 * 1024 * 1024, // زيادة البافر للأمان
+          bufferSize: 32 * 1024 * 1024, 
         ),
       );
       
-      // ✅ تفعيل التسريع المادي (Hardware Acceleration) الآن آمن ومطلوب للأداء
       _controller = VideoController(
         _player,
         configuration: const VideoControllerConfiguration(
@@ -94,7 +88,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       _player.stream.error.listen((error) {
         debugPrint("🚨 MediaKit Error: $error");
-        // لا نظهر الخطأ فوراً لتجنب المقاطعة إلا إذا توقف التشغيل فعلياً
       });
 
       _loadUserData();
@@ -201,7 +194,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return valA.compareTo(valB);
     });
 
-    // اختيار الجودة الافتراضية
     _currentQuality = _sortedQualities.contains("480p") 
         ? "480p" 
         : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
@@ -228,31 +220,45 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           audioUrl = parts[1];
         }
       } 
-      // 2. منطق الأوفلاين (Offline Encrypted Split)
+      // 2. منطق الأوفلاين (Offline Encrypted Split) - ✅ تم التحسين
       else if (!url.startsWith('http')) {
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
         
-        // تحويل مسار الفيديو للبروكسي
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}';
 
-        // البحث عن ملف صوت مرتبط في قاعدة البيانات
         if (Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
-           // البحث عن الدرس الذي يملك هذا المسار
+           
+           // ✅ البحث الذكي (تطبيع المسارات لمقارنة دقيقة)
+           final String absoluteVideoPath = file.absolute.path;
+           
            final downloadItem = box.values.firstWhere(
-             (item) => item['path'] == url, 
+             (item) {
+                if (item['path'] == null) return false;
+                return File(item['path']).absolute.path == absoluteVideoPath;
+             }, 
              orElse: () => null
            );
 
-           if (downloadItem != null && downloadItem['audioPath'] != null) {
-              final String audioPath = downloadItem['audioPath'];
-              final File audioFile = File(audioPath);
-              if (await audioFile.exists()) {
-                 // تحويل مسار الصوت للبروكسي
-                 audioUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(audioFile.path)}';
-                 debugPrint("📂 Loaded Offline Audio: $audioUrl");
+           if (downloadItem != null) {
+              print("✅ Found Hive Item: ${downloadItem['title']}");
+              if (downloadItem['audioPath'] != null) {
+                  final String audioPath = downloadItem['audioPath'];
+                  final File audioFile = File(audioPath);
+                  
+                  if (await audioFile.exists()) {
+                     // ✅ تمرير مسار الصوت للبروكسي
+                     audioUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(audioFile.path)}';
+                     print("📂 Loaded Offline Audio: $audioUrl");
+                  } else {
+                     print("⚠️ Audio file path exists in DB but file missing on disk: $audioPath");
+                  }
+              } else {
+                 print("ℹ️ No audioPath recorded for this video (Might be merged or SD)");
               }
+           } else {
+              print("⚠️ Could not find video in Hive DB using path: $absoluteVideoPath");
            }
         }
       }
@@ -275,19 +281,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           title: "HQ Audio",
           language: "en"
         ));
+        print("🔊 Audio Track Set");
       }
       
-      // استعادة الموضع
       if (startAt != null && startAt != Duration.zero) {
         int retries = 0;
-        // الانتظار الذكي (حتى 10 ثواني)
         while (_player.state.duration == Duration.zero && retries < 100) {
           if (_isDisposing) return;
           await Future.delayed(const Duration(milliseconds: 100));
           retries++;
         }
-        
-        // ✅ حماية إضافية ضد Seek إذا كانت المدة غير متاحة
         if (_player.state.duration > Duration.zero) {
            await _player.seek(startAt);
         }
@@ -312,7 +315,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _seekRelative(Duration amount) async {
     try {
-      if (_player.state.duration == Duration.zero) return; // حماية
+      if (_player.state.duration == Duration.zero) return; 
       final currentPos = _player.state.position;
       await _player.seek(currentPos + amount);
     } catch (e) {/*ignore*/}
@@ -371,7 +374,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
-                // حفظ الموضع الحالي بدقة
                 final currentPos = _player.state.position;
                 setState(() { _currentQuality = q; _isError = false; });
                 _playVideo(widget.streams[q]!, startAt: currentPos);
@@ -529,7 +531,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-            // العلامة المائية
             if (!_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
