@@ -41,6 +41,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String _errorMessage = "";
   bool _isInitialized = false;
   
+  // ✅ متغير التحكم في شاشة الانتظار
+  bool _isVideoLoading = true; 
+  
   bool _isDisposing = false;
   
   Timer? _watermarkTimer;
@@ -60,8 +63,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _initializePlayerScreen() async {
     FirebaseCrashlytics.instance.log("🎬 MediaKit: Init Started for '${widget.title}'");
-    await FirebaseCrashlytics.instance.setCustomKey('video_title', widget.title);
-
+    
     try {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       await SystemChrome.setPreferredOrientations([
@@ -107,6 +109,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         setState(() {
           _isError = true;
           _errorMessage = "Init Failed: $e";
+          _isVideoLoading = false; // إخفاء اللودر لإظهار الخطأ
         });
       }
     }
@@ -115,9 +118,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _startProxyServer() async {
     try {
       await _proxyService.start();
-      FirebaseCrashlytics.instance.log("✅ Proxy started on port ${_proxyService.port}");
     } catch (e, s) {
-      debugPrint("Proxy Error: $e");
       FirebaseCrashlytics.instance.recordError(e, s, reason: 'Proxy Start Error');
     }
   }
@@ -186,6 +187,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       setState(() {
         _isError = true;
         _errorMessage = "No video sources available";
+        _isVideoLoading = false;
       });
       return;
     }
@@ -209,47 +211,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
     
+    // ✅ إظهار شاشة الانتظار فور بدء العملية
+    setState(() => _isVideoLoading = true);
+    
     FirebaseCrashlytics.instance.log("▶️ _playVideo Called. Quality: $_currentQuality");
     
     try {
       String playUrl = url;
       String? audioUrl; 
 
-      // 1. منطق الأونلاين (Online Split)
       if (url.contains('|')) {
-        FirebaseCrashlytics.instance.log("🌐 Detected Online Split Stream");
         final parts = url.split('|');
         playUrl = parts[0];
-        if (parts.length > 1) {
-          audioUrl = parts[1];
-        }
-      } 
-      // 2. منطق الأونلاين البسيط (Online Simple)
-      else if (url.startsWith('http')) {
-         FirebaseCrashlytics.instance.log("🌐 Detected Online Simple Stream");
-         playUrl = url;
-      }
-      // 3. منطق الأوفلاين (Offline Encrypted)
-      else {
-        FirebaseCrashlytics.instance.log("📂 Detected Offline File Path: $url");
+        if (parts.length > 1) audioUrl = parts[1];
+      } else if (!url.startsWith('http')) {
         final file = File(url);
+        if (!await file.exists()) throw Exception("Offline file missing");
         
-        if (!await file.exists()) {
-           FirebaseCrashlytics.instance.log("❌ Offline file NOT FOUND at: $url");
-           throw Exception("Offline file missing");
-        }
-        
-        // ✅ إضافة &ext=.mp4 لمساعدة المشغل (ExoPlayer) على تحديد الحاوية
+        // ✅ إضافة &ext=.mp4 لمساعدة المشغل
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
-        FirebaseCrashlytics.instance.log("🔗 Generated Video Proxy URL: $playUrl");
 
-        // البحث عن ملف الصوت في قاعدة البيانات
         if (Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
            final String absoluteVideoPath = file.absolute.path;
            
            try {
-             // البحث عن العنصر الذي يملك نفس مسار الفيديو
              final downloadItem = box.values.firstWhere(
                (item) {
                   if (item['path'] == null) return false;
@@ -258,25 +244,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                orElse: () => null
              );
 
-             if (downloadItem != null) {
-                FirebaseCrashlytics.instance.log("✅ Hive: Found matching item: ${downloadItem['title']}");
+             if (downloadItem != null && downloadItem['audioPath'] != null) {
+                final String audioPath = downloadItem['audioPath'];
+                final File audioFile = File(audioPath);
                 
-                if (downloadItem['audioPath'] != null) {
-                    final String audioPath = downloadItem['audioPath'];
-                    final File audioFile = File(audioPath);
-                    
-                    if (await audioFile.exists()) {
-                       // ✅ تمرير مسار الصوت للبروكسي مع إضافة &ext=.mp4
-                       audioUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(audioFile.path)}&ext=.mp4';
-                       FirebaseCrashlytics.instance.log("🔗 Generated Audio Proxy URL: $audioUrl");
-                    } else {
-                       FirebaseCrashlytics.instance.log("⚠️ Hive: Audio file recorded but missing on disk: $audioPath");
-                    }
-                } else {
-                   FirebaseCrashlytics.instance.log("ℹ️ Hive: No audioPath for this item (Single file)");
+                if (await audioFile.exists()) {
+                   // ✅ إضافة &ext=.mp4 للصوت أيضاً
+                   audioUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(audioFile.path)}&ext=.mp4';
                 }
-             } else {
-                FirebaseCrashlytics.instance.log("⚠️ Hive: No item found matching path: $absoluteVideoPath");
              }
            } catch (e) {
              FirebaseCrashlytics.instance.log("❌ Hive Search Error: $e");
@@ -289,18 +264,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
-      FirebaseCrashlytics.instance.log("🎬 Opening Media...");
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false
       );
 
-      // دمج الصوت (سواء أونلاين أو أوفلاين)
       if (audioUrl != null) {
-        FirebaseCrashlytics.instance.log("🔊 Setting Audio Track...");
-        // ✅ تأخير بسيط لضمان تهيئة الفيديو
         await Future.delayed(const Duration(milliseconds: 200));
-        
         await _player.setAudioTrack(AudioTrack.uri(
           audioUrl,
           title: "HQ Audio",
@@ -310,7 +280,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       if (startAt != null && startAt != Duration.zero) {
         int retries = 0;
-        while (_player.state.duration == Duration.zero && retries < 50) { // تقليل المحاولات لتجنب التعليق
+        while (_player.state.duration == Duration.zero && retries < 50) {
           if (_isDisposing) return;
           await Future.delayed(const Duration(milliseconds: 100));
           retries++;
@@ -325,7 +295,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
 
       await _player.play();
-      FirebaseCrashlytics.instance.log("✅ Playback Started");
+      
+      // ✅ تم التشغيل بنجاح، إخفاء شاشة الانتظار
+      if (mounted) setState(() => _isVideoLoading = false);
 
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PlayVideo Function Failed');
@@ -333,6 +305,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         setState(() {
           _isError = true;
           _errorMessage = "Failed to load video.";
+          _isVideoLoading = false; // إخفاء اللودر لإظهار الخطأ
         });
       }
     }
@@ -545,6 +518,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               )
             else
+              // ✅ هنا يتم عرض المشغل فقط
               Center(
                 child: MaterialVideoControlsTheme(
                   normal: controlsTheme,
@@ -556,6 +530,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
+            // ✅ شاشة التحميل (تظهر فوق كل شيء إذا كان _isVideoLoading == true)
+            // ولن تختفي إلا بعد أن يصبح الفيديو جاهزاً وتعمل دالة play()
+            if (!_isError && (_isVideoLoading || !_isInitialized))
+              Container(
+                color: Colors.black,
+                child: const Center(
+                  child: CircularProgressIndicator(color: AppColors.accentYellow),
+                ),
+              ),
+
+            // العلامة المائية
             if (!_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
