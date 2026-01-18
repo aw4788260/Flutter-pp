@@ -38,13 +38,19 @@ class LocalProxyService {
     router.get('/video', _handleRequest);
 
     try {
-      // ✅ التعديل 1: shared: true ضروري
-      _server = await shelf_io.serve(router, InternetAddress.anyIPv4, port, shared: true);
+      // ✅ التعديل الجذري 1: استخدام loopbackIPv4 بدلاً من anyIPv4
+      // هذا يحل مشكلة عدم وصول الطلب على الأجهزة القديمة
+      // ✅ التعديل 2: إزالة shared: true لتجنب مشاكل المنافذ المعلقة
+      _server = await shelf_io.serve(
+        router, 
+        InternetAddress.loopbackIPv4, // (127.0.0.1)
+        port, 
+        shared: false 
+      );
+
       _server?.autoCompress = false;
-      
-      // ✅ التعديل 2 (هام جداً للأجهزة القديمة):
-      // تقليل مهلة الانتظار لقتل الاتصالات المعلقة بسرعة (بدل القيمة الافتراضية الطويلة)
-      _server?.idleTimeout = const Duration(seconds: 1); 
+      // مهلة قصيرة لقتل الاتصالات الميتة فوراً
+      _server?.idleTimeout = const Duration(seconds: 1);
       
       FirebaseCrashlytics.instance.log('🔒 Proxy Started on ${_server!.address.host}:${_server!.port}');
     } catch (e, stack) {
@@ -72,11 +78,11 @@ class LocalProxyService {
       final decodedPath = Uri.decodeComponent(pathParam);
       final file = File(decodedPath);
       
-      // 🔍 تسجيل وصول الطلب (إذا لم يظهر هذا السطر في اللوج، فالمشكلة في الشبكة/السوكيت)
+      // تسجيل وصول الطلب للتأكد من حل مشكلة الاتصال
       final bool isLikelyAudio = decodedPath.contains('aud_') || decodedPath.contains('audio');
       final String logMsg = "📡 Proxy Request: ${isLikelyAudio ? 'AUDIO' : 'VIDEO'} | Path: ${decodedPath.split('/').last} | Range: ${request.headers['range']}";
       print(logMsg);
-      // FirebaseCrashlytics.instance.log(logMsg); // يمكنك تفعيلها للتتبع
+      // FirebaseCrashlytics.instance.log(logMsg); 
 
       if (!await file.exists()) {
         return Response.notFound('File not found');
@@ -112,15 +118,13 @@ class LocalProxyService {
       
       final contentLength = end - start + 1;
 
-      // رؤوس الاستجابة المشتركة
+      // ✅ التعديل 3: إغلاق الاتصال فوراً (Connection: close)
       final Map<String, Object> headers = {
           'Content-Type': contentType, 
           'Content-Length': contentLength.toString(),
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
-          // ✅ التعديل 3 (الحل الجذري): إجبار إغلاق الاتصال بعد كل طلب
-          // هذا يمنع تراكم الاتصالات المفتوحة (Zombie Connections) التي تخنق الأجهزة القديمة
           'Connection': 'close', 
       };
 
@@ -128,7 +132,6 @@ class LocalProxyService {
         return Response.ok(null, headers: headers);
       }
 
-      // إضافة Content-Range فقط في استجابة الـ Body (206 Partial Content)
       headers['Content-Range'] = 'bytes $start-$end/$originalFileSize';
 
       return Response(
@@ -178,6 +181,7 @@ class LocalProxyService {
           outputBlock = EncryptionHelper.decryptBlock(encryptedBlock);
         } catch (e) {
            print("❌ Decryption ERROR at chunk $i: $e");
+           // إرسال أصفار في حالة الخطأ البسيط
            int expectedSize = (bytesToRead == encChunkSize) 
                ? plainChunkSize 
                : max(0, bytesToRead - ivLen - tagLen);
@@ -197,17 +201,17 @@ class LocalProxyService {
         }
       }
     } catch(e) {
-       // تجاهل أخطاء انقطاع الاتصال المعتادة (مثل إغلاق المشغل للاتصال)
        print("Stream Interrupted: $e");
     } finally {
-      // منطق ملء الفراغات (Smart Gap)
+      // ✅ التعديل 4: المنطق الذكي للفجوات (Smart Gap Handling)
       if (totalSent < requiredLength) {
           int missingBytes = requiredLength - totalSent;
+          
           if (missingBytes < 512 * 1024) {
-             // فجوة صغيرة: نرسل أصفار لتجنب التقطيع
+             print("⚠️ Small Gap ($missingBytes bytes): Filling with zeros.");
              yield Uint8List(missingBytes);
           } else {
-             // فجوة كبيرة: نغلق فوراً ليقوم المشغل بطلب جديد (Retry)
+             // إغلاق الاتصال للفجوات الكبيرة لإجبار المشغل على إعادة الطلب
              print("🛑 Large Gap ($missingBytes bytes): Closing connection.");
           }
       }
