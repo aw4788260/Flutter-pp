@@ -92,7 +92,7 @@ class DownloadManager with WidgetsBindingObserver {
         return 32 * 1024; // احتياطي للأمان
       }
     }
-    // للأجهزة الحديثة -> 64KB (توازن ممتاز بين السرعة والأداء)
+    // للأجهزة الحديثة -> 128KB (كما طلبت)
     return 128 * 1024;
   }
 
@@ -173,6 +173,10 @@ class DownloadManager with WidgetsBindingObserver {
   }) async {
     activeTitles[lessonId] = videoTitle; 
 
+    // ✅ متغيرات للتنظيف (معرفة خارج الـ try لتكون متاحة في الـ catch)
+    String? videoSavePathForCleanup;
+    String? audioSavePathForCleanup;
+
     FirebaseCrashlytics.instance.log("⬇️ Download Request: $videoTitle");
     _activeDownloads.add(lessonId);
     _startBackgroundService();
@@ -248,10 +252,12 @@ class DownloadManager with WidgetsBindingObserver {
           : "vid_${lessonId}_$quality$chunkTag.enc";
           
       final String videoSavePath = '${dir.path}/$videoFileName';
+      videoSavePathForCleanup = videoSavePath; // ✅ حفظ المسار للتنظيف
       
       String? audioSavePath;
       if (finalAudioUrl != null) {
         audioSavePath = '${dir.path}/aud_${lessonId}_hq$chunkTag.enc';
+        audioSavePathForCleanup = audioSavePath; // ✅ حفظ المسار للتنظيف
       }
 
       // 4. 🔥 بدء الـ Isolate (العزل)
@@ -323,7 +329,7 @@ class DownloadManager with WidgetsBindingObserver {
         'duration': duration,
         'date': DateTime.now().toIso8601String(),
         'size': totalSizeBytes,
-        'chunkSize': chunkSize, // تخزين الحجم كمرجع (اختياري)
+        'chunkSize': chunkSize, // تخزين الحجم كمرجع
       });
 
       await notifService.cancelNotification(notificationId);
@@ -349,10 +355,16 @@ class DownloadManager with WidgetsBindingObserver {
       _activeIsolates[lessonId]?.kill(priority: Isolate.immediate);
       _activeIsolates.remove(lessonId);
       
+      // ✅ عملية التنظيف المصححة (استخدام المتغيرات الخارجية)
       try {
-         // حذف الملفات المعطوبة
-         final file = File('$dir/${isPdf ? "$lessonId.pdf.enc" : "vid_${lessonId}_$quality.enc"}');
-         if (await file.exists()) await file.delete();
+         if (videoSavePathForCleanup != null) {
+            final file = File(videoSavePathForCleanup);
+            if (await file.exists()) await file.delete();
+         }
+         if (audioSavePathForCleanup != null) {
+            final file = File(audioSavePathForCleanup);
+            if (await file.exists()) await file.delete();
+         }
       } catch (_) {}
 
     } finally {
@@ -409,64 +421,119 @@ void _downloadIsolateEntryPoint(_DownloadTask task) async {
       final sink = await saveFile.open(mode: FileMode.write);
       
       try {
-        final response = await dio.get(
-          url,
-          options: Options(
-            responseType: ResponseType.stream, 
-            headers: task.headers,
-            followRedirects: true,
-          ),
-        );
-
-        int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
-        int received = 0;
-        
-        List<int> buffer = [];
-        final int CHUNK_SIZE = task.chunkSize; 
-
-        Stream<Uint8List> stream = response.data.stream;
-        int lastPercent = 0;
-
-        await for (final chunk in stream) {
-          buffer.addAll(chunk);
-          
-          // 🔥 التشفير المتزامن السريع داخل الـ Stream
-          // هذا اللوب يضمن أننا لا نراكم البيانات في الرام بل نعالجها فوراً
-          while (buffer.length >= CHUNK_SIZE) {
-            final block = buffer.sublist(0, CHUNK_SIZE);
-            buffer.removeRange(0, CHUNK_SIZE);
-            
-            final iv = encrypt.IV.fromSecureRandom(12);
-            final encrypted = encrypter.encryptBytes(block, iv: iv);
-            
-            final result = BytesBuilder();
-            result.add(iv.bytes);
-            result.add(encrypted.bytes); // GCM includes Tag inside bytes usually
-            
-            await sink.writeFrom(result.toBytes());
-          }
-          
-          received += chunk.length;
-          
-          // تحديث التقدم (Throttled) لعدم إبطاء الـ Isolate بكثرة الرسائل
-          if (total != -1 && onProg != null) {
-             int currentPercent = (received * 100) ~/ total;
-             // إرسال التحديث فقط إذا زادت النسبة 1%
-             if (currentPercent > lastPercent) {
-                lastPercent = currentPercent;
-                onProg(received / total);
+        // 🔥 دعم HLS بشكل مبسط داخل الـ Isolate
+        if (url.contains('.m3u8')) {
+           final response = await dio.get(url);
+           final content = response.data.toString();
+           final baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
+           
+           List<String> tsUrls = [];
+           for (var line in content.split('\n')) {
+             line = line.trim();
+             if (line.isNotEmpty && !line.startsWith('#')) {
+               tsUrls.add(line.startsWith('http') ? line : baseUrl + line);
              }
+           }
+           
+           int totalSegments = tsUrls.length;
+           int segmentsDone = 0;
+           List<int> buffer = [];
+           // نستخدم الحجم المحدد من الخيط الرئيسي
+           final int CHUNK_SIZE = task.chunkSize; 
+
+           for (String tsUrl in tsUrls) {
+              try {
+                final rs = await dio.get<List<int>>(tsUrl, options: Options(responseType: ResponseType.bytes));
+                if (rs.data != null) {
+                   buffer.addAll(rs.data!);
+                   // 🔥 التشفير الفوري داخل اللوب (سرعة القصوى)
+                   while (buffer.length >= CHUNK_SIZE) {
+                      final block = buffer.sublist(0, CHUNK_SIZE);
+                      buffer.removeRange(0, CHUNK_SIZE);
+                      
+                      final iv = encrypt.IV.fromSecureRandom(12);
+                      final encrypted = encrypter.encryptBytes(block, iv: iv);
+                      
+                      final result = BytesBuilder();
+                      result.add(iv.bytes);
+                      result.add(encrypted.bytes); 
+                      await sink.writeFrom(result.toBytes());
+                   }
+                }
+                segmentsDone++;
+                if (onProg != null) onProg(segmentsDone / totalSegments);
+              } catch (_) {}
+           }
+           // تشفير ما تبقى
+           if (buffer.isNotEmpty) {
+              final iv = encrypt.IV.fromSecureRandom(12);
+              final encrypted = encrypter.encryptBytes(buffer, iv: iv);
+              final result = BytesBuilder();
+              result.add(iv.bytes);
+              result.add(encrypted.bytes);
+              await sink.writeFrom(result.toBytes());
+           }
+           
+        } else {
+          // 🔥 تحميل عادي (Direct Stream)
+          final response = await dio.get(
+            url,
+            options: Options(
+              responseType: ResponseType.stream, 
+              headers: task.headers,
+              followRedirects: true,
+            ),
+          );
+
+          int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
+          int received = 0;
+          
+          List<int> buffer = [];
+          final int CHUNK_SIZE = task.chunkSize; 
+
+          Stream<Uint8List> stream = response.data.stream;
+          int lastPercent = 0;
+
+          await for (final chunk in stream) {
+            buffer.addAll(chunk);
+            
+            // 🔥 التشفير المتزامن السريع داخل الـ Stream
+            // هذا اللوب يضمن أننا لا نراكم البيانات في الرام بل نعالجها فوراً
+            while (buffer.length >= CHUNK_SIZE) {
+              final block = buffer.sublist(0, CHUNK_SIZE);
+              buffer.removeRange(0, CHUNK_SIZE);
+              
+              final iv = encrypt.IV.fromSecureRandom(12);
+              final encrypted = encrypter.encryptBytes(block, iv: iv);
+              
+              final result = BytesBuilder();
+              result.add(iv.bytes);
+              result.add(encrypted.bytes); // GCM includes Tag inside bytes usually
+              
+              await sink.writeFrom(result.toBytes());
+            }
+            
+            received += chunk.length;
+            
+            // تحديث التقدم (Throttled) لعدم إبطاء الـ Isolate بكثرة الرسائل
+            if (total != -1 && onProg != null) {
+               int currentPercent = (received * 100) ~/ total;
+               // إرسال التحديث فقط إذا زادت النسبة 1%
+               if (currentPercent > lastPercent) {
+                  lastPercent = currentPercent;
+                  onProg(received / total);
+               }
+            }
           }
-        }
-        
-        // تشفير ما تبقى في البفر
-        if (buffer.isNotEmpty) {
-            final iv = encrypt.IV.fromSecureRandom(12);
-            final encrypted = encrypter.encryptBytes(buffer, iv: iv);
-            final result = BytesBuilder();
-            result.add(iv.bytes);
-            result.add(encrypted.bytes);
-            await sink.writeFrom(result.toBytes());
+          
+          if (buffer.isNotEmpty) {
+              final iv = encrypt.IV.fromSecureRandom(12);
+              final encrypted = encrypter.encryptBytes(buffer, iv: iv);
+              final result = BytesBuilder();
+              result.add(iv.bytes);
+              result.add(encrypted.bytes);
+              await sink.writeFrom(result.toBytes());
+          }
         }
 
       } finally {
