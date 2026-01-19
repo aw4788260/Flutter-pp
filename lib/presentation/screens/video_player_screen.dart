@@ -47,6 +47,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isVideoLoading = true; 
   bool _isOfflineMode = false;
   
+  // تحديد الأجهزة الضعيفة (Android 9 وما قبل)
   bool _isWeakDevice = false; 
 
   int _stabilizingCountdown = 0;
@@ -86,9 +87,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       await WakelockPlus.enable();
       
+      // تشغيل البروكسي (لن يعيد التشغيل إذا كان يعمل بالفعل)
       await _startProxyServer();
 
-      // 1. الكشف عن الأجهزة القديمة
+      // 1. فحص مواصفات الجهاز
       bool forceSoftwareDecoding = false;
 
       if (Platform.isAndroid) {
@@ -98,7 +100,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           if (androidInfo.version.sdkInt <= 28) {
             _isWeakDevice = true;
             forceSoftwareDecoding = true;
-            FirebaseCrashlytics.instance.log("📱 Weak Device (API ${androidInfo.version.sdkInt}) - Forced SW Decoding & Small Buffer");
+            FirebaseCrashlytics.instance.log("📱 Weak Device (API ${androidInfo.version.sdkInt}) - Forced SW Decoding");
           }
         } catch (e) {
           _isWeakDevice = true; 
@@ -108,7 +110,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       _player = Player(
         configuration: PlayerConfiguration(
-          // تقليل البفر لـ 3MB للأجهزة الضعيفة لتسريع بداية التشغيل بعد التقديم
+          // ⚠️ تقليل البفر لـ 3MB للأجهزة الضعيفة لتسريع بداية التشغيل بعد التقديم
           bufferSize: _isWeakDevice ? 3 * 1024 * 1024 : 32 * 1024 * 1024,
           vo: 'gpu', 
         ),
@@ -194,15 +196,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       _isOfflineMode = false;
 
-      // ✅ منطق التوجيه (Offline vs Online)
-      if (!url.startsWith('http')) {
-        // --- 📂 OFFLINE MODE ---
+      // ============================================================
+      // 🔄 منطق التوجيه المدمج (أونلاين + أوفلاين + روابط مركبة)
+      // ============================================================
+
+      // 1. التعامل مع الروابط المركبة (فيديو | صوت)
+      if (url.contains('|')) {
+        final parts = url.split('|');
+        playUrl = parts[0];
+        if (parts.length > 1) {
+          audioUrl = parts[1];
+        }
+      }
+
+      // 2. التعامل مع الملفات المحلية (Offline)
+      if (!playUrl.startsWith('http')) {
         _isOfflineMode = true;
-        final file = File(url);
+        final file = File(playUrl);
         if (!await file.exists()) throw Exception("Offline file missing");
         
         playUrl = 'http://127.0.0.1:${_proxyService.videoPort}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
 
+        // البحث عن الصوت المحلي
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
            try {
@@ -219,10 +234,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
              }
            } catch (_) {}
         }
-      } else {
-         // --- 🌐 ONLINE MODE ---
-         playUrl = url;
-         // استخدام رابط الصوت الجاهز (الممرر من الصفحة السابقة)
+      } 
+      // 3. التعامل مع الأونلاين (Online HTTP/HTTPS)
+      else {
+         // إذا كان الرابط أونلاين، نستخدم preReadyAudioUrl إذا لم يتم تحديده مسبقاً
          if (audioUrl == null && widget.preReadyAudioUrl != null) {
             audioUrl = widget.preReadyAudioUrl;
          }
@@ -278,7 +293,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ دالة التقديم/التأخير (تم تصحيح الخطأ بإزالة smooth)
+  // ✅ دالة التقديم/التأخير (Debounce فقط بدون smooth)
   Future<void> _seekRelative(Duration amount) async {
     _accumulatedSeekAmount += amount;
 
@@ -291,8 +306,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final currentPos = _player.state.position;
         final targetPos = currentPos + _accumulatedSeekAmount;
 
-        // ✅ تم التصحيح: إزالة المعامل smooth لأنه غير مدعوم في هذه النسخة
-        // التقديم السريع سيتم الاعتماد فيه على سرعة المعالجة وتقليل البفر
         await _player.seek(targetPos);
 
       } catch (e) {
