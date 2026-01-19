@@ -9,7 +9,6 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-// ✅ استيراد مكتبة فحص الجهاز
 import 'package:device_info_plus/device_info_plus.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
@@ -48,7 +47,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isVideoLoading = true; 
   bool _isOfflineMode = false;
   
-  // ✅ متغير لتحديد الأجهزة الضعيفة (مثل Exynos 7870)
   bool _isWeakDevice = false; 
 
   int _stabilizingCountdown = 0;
@@ -83,36 +81,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ]);
 
       await WakelockPlus.enable();
+      
+      // ✅ تشغيل البروكسي (لن يعيد التشغيل إذا كان يعمل بالفعل)
       await _startProxyServer();
 
-      // ✅ 1. فحص مواصفات الجهاز لتحديد الإعدادات المناسبة
+      // 1. فحص مواصفات الجهاز
       if (Platform.isAndroid) {
         try {
           final androidInfo = await DeviceInfoPlugin().androidInfo;
-          // اعتبار الأجهزة بنظام أندرويد 9 (API 28) أو أقل أجهزة ضعيفة
           if (androidInfo.version.sdkInt <= 28) {
             _isWeakDevice = true;
             FirebaseCrashlytics.instance.log("📱 Weak Device Mode Enabled (API ${androidInfo.version.sdkInt})");
           }
         } catch (e) {
-          // في حال فشل الفحص، نفترض الأسوأ للأمان
           _isWeakDevice = true; 
         }
       }
 
       _player = Player(
         configuration: PlayerConfiguration(
-          // ✅ 2. تقليل البفر لـ 8MB للأجهزة الضعيفة لتخفيف الحمل على الرام والبروكسي
+          // 2. تقليل البفر لـ 8MB للأجهزة الضعيفة
           bufferSize: _isWeakDevice ? 8 * 1024 * 1024 : 32 * 1024 * 1024,
           vo: 'gpu', 
         ),
       );
       
-      // ✅ 3. تحسين إعدادات فك التشفير
+      // 3. تحسين إعدادات فك التشفير
       if (_isWeakDevice) {
-        // استخدام auto-safe لمحاولة استخدام الهاردوير بأمان
         await (_player.platform as dynamic).setProperty('hwdec', 'auto-safe'); 
-        // تحديد عدد خيوط المعالجة لتجنب استهلاك 100% من المعالج
         await (_player.platform as dynamic).setProperty('vd-lavc-threads', '2');
       } else {
         await (_player.platform as dynamic).setProperty('hwdec', 'auto');
@@ -189,14 +185,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       _isOfflineMode = false;
 
-      // ✅ 4. منطق توزيع المنافذ (8080 للفيديو و 8081 للصوت)
+      // ✅ 4. منطق توزيع المنافذ الديناميكية
       if (!url.startsWith('http')) {
         _isOfflineMode = true;
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
         
-        // الفيديو يذهب للمنفذ الأساسي 8080
-        playUrl = 'http://127.0.0.1:8080/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
+        // استخدام المنفذ الديناميكي للفيديو
+        playUrl = 'http://127.0.0.1:${_proxyService.videoPort}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
 
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
@@ -209,8 +205,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
              if (downloadItem != null && downloadItem['audioPath'] != null) {
                 final audioPath = downloadItem['audioPath'];
                 if (await File(audioPath).exists()) {
-                   // ✅ الصوت يذهب للمنفذ الثانوي 8081 (المعزول)
-                   audioUrl = 'http://127.0.0.1:8081/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
+                   // استخدام المنفذ الديناميكي للصوت
+                   audioUrl = 'http://127.0.0.1:${_proxyService.audioPort}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
                 }
              }
            } catch (_) {}
@@ -227,15 +223,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
-      // تشغيل الفيديو أولاً
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false 
       );
 
-      // ✅ 5. تحميل الصوت بتأخير ذكي
+      // 5. تحميل الصوت بتأخير ذكي
       if (audioUrl != null) {
-        // تأخير أطول للأجهزة الضعيفة (3.5 ثانية) للسماح للفيديو بالاستقرار
         int delayMs = _isWeakDevice ? 3500 : 500;
         await Future.delayed(Duration(milliseconds: delayMs));
 
@@ -368,7 +362,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _startCountdown() {
-    // تقليل الوقت للأجهزة الضعيفة لأنها تأخذ وقتاً أطول في التحميل المسبق أصلاً
     setState(() => _stabilizingCountdown = _isWeakDevice ? 6 : 10); 
     _countdownTimer?.cancel();
     
@@ -469,7 +462,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _countdownTimer?.cancel();
       await _player.stop(); 
       await _player.dispose(); 
-      _proxyService.stop(); 
+      // ❌ تم حذف _proxyService.stop() للحفاظ على السيرفر حياً
       await _resetSystemChrome();
       await WakelockPlus.disable();
     } catch (e) {
@@ -493,7 +486,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).viewPadding;
     
-    // تعريف عناصر التحكم
     final controlsTheme = MaterialVideoControlsThemeData(
       displaySeekBar: false,
       padding: EdgeInsets.only(
