@@ -85,39 +85,50 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // ✅ تشغيل البروكسي (لن يعيد التشغيل إذا كان يعمل بالفعل)
       await _startProxyServer();
 
-      // 1. فحص مواصفات الجهاز
+      // 1. فحص مواصفات الجهاز وتحديد استراتيجية فك التشفير
+      bool forceSoftwareDecoding = false;
+
       if (Platform.isAndroid) {
         try {
           final androidInfo = await DeviceInfoPlugin().androidInfo;
+          // Android 9 (API 28) وما قبل غالباً يواجه مشاكل Hardware Decoding مع الفيديوهات الحديثة
           if (androidInfo.version.sdkInt <= 28) {
             _isWeakDevice = true;
-            FirebaseCrashlytics.instance.log("📱 Weak Device Mode Enabled (API ${androidInfo.version.sdkInt})");
+            forceSoftwareDecoding = true; // ✅ تفعيل الوضع البرمجي الإجباري
+            FirebaseCrashlytics.instance.log("📱 Legacy Device detected (API ${androidInfo.version.sdkInt}) - Forcing SW Decoding");
           }
         } catch (e) {
           _isWeakDevice = true; 
+          forceSoftwareDecoding = true; // Fallback للأمان
         }
       }
 
       _player = Player(
         configuration: PlayerConfiguration(
-          // 2. تقليل البفر لـ 8MB للأجهزة الضعيفة
-          bufferSize: _isWeakDevice ? 8 * 1024 * 1024 : 32 * 1024 * 1024,
+          // 2. زيادة البفر قليلاً عند استخدام SW Decoding لتعويض ضغط المعالج
+          bufferSize: _isWeakDevice ? 16 * 1024 * 1024 : 32 * 1024 * 1024,
           vo: 'gpu', 
         ),
       );
       
-      // 3. تحسين إعدادات فك التشفير
-      if (_isWeakDevice) {
-        await (_player.platform as dynamic).setProperty('hwdec', 'auto-safe'); 
+      // 3. تطبيق إعدادات فك التشفير بناءً على نوع الجهاز
+      if (forceSoftwareDecoding) {
+        // ⛔ إيقاف الهاردوير تماماً لتجنب Unsupported Profile
+        await (_player.platform as dynamic).setProperty('hwdec', 'no'); 
+        // ✅ استخدام 4 خيوط معالجة لضمان سرعة الفك البرمجي
         await (_player.platform as dynamic).setProperty('vd-lavc-threads', '2');
+        // استخدام سكيلر سريع جداً لتوفير موارد الرسم
+        await (_player.platform as dynamic).setProperty('sws-scaler', 'fast-bilinear');
       } else {
+        // الأجهزة الحديثة: اترك النظام يقرر
         await (_player.platform as dynamic).setProperty('hwdec', 'auto');
       }
 
       _controller = VideoController(
         _player,
         configuration: VideoControllerConfiguration(
-          enableHardwareAcceleration: true, 
+          // إذا أجبرنا SW Decoding، نلغي تسريع الهاردوير في العرض لمنع التعارض
+          enableHardwareAcceleration: !forceSoftwareDecoding, 
           androidAttachSurfaceAfterVideoParameters: !_isWeakDevice, 
         ),
       );
@@ -230,6 +241,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       // 5. تحميل الصوت بتأخير ذكي
       if (audioUrl != null) {
+        // زيادة التأخير للأجهزة الضعيفة للسماح للفيديو بالاستقرار أولاً
         int delayMs = _isWeakDevice ? 3500 : 500;
         await Future.delayed(Duration(milliseconds: delayMs));
 
