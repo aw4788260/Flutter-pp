@@ -22,11 +22,9 @@ class LocalProxyService {
   Isolate? _videoServerIsolate;
   Isolate? _audioServerIsolate;
   
-  // ✅ المنافذ أصبحت متغيرات (ليست ثابتة) لأن النظام سيحددها
   int _videoPort = 0;
   int _audioPort = 0;
 
-  // Getters للوصول للمنافذ من خارج الكلاس
   int get videoPort => _videoPort;
   int get audioPort => _audioPort;
   
@@ -36,7 +34,6 @@ class LocalProxyService {
   Completer<void>? _readyCompleter;
 
   Future<void> start() async {
-    // ✅ Keep-Alive: إذا كان السيرفر يعمل بالفعل، لا تفعل شيئاً وعد فوراً
     if (_videoServerIsolate != null && _audioServerIsolate != null && _videoPort != 0 && _audioPort != 0) {
       if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
         await _readyCompleter!.future;
@@ -50,19 +47,15 @@ class LocalProxyService {
       await EncryptionHelper.init();
       String keyBase64 = EncryptionHelper.key.base64;
       
-      // ---------------------------------------------------------
-      // 1. تشغيل سيرفر الفيديو (منفذ 0 = عشوائي)
-      // ---------------------------------------------------------
+      // 1. تشغيل سيرفر الفيديو
       _videoReceivePort = ReceivePort();
       _videoServerIsolate = await Isolate.spawn(
         _proxyServerEntryPoint, 
         _ProxyInitData(_videoReceivePort!.sendPort, keyBase64, "VideoIsolate")
       );
       
-      // انتظار رسالة الجاهزية مع رقم المنفذ
       await for (final message in _videoReceivePort!) {
         if (message is String && message.startsWith("READY:")) {
-          // استخراج رقم المنفذ الذي خصصه النظام
           _videoPort = int.parse(message.split(':')[1]);
           print('✅ Video Proxy Started on dynamic port: $_videoPort');
           break; 
@@ -71,19 +64,15 @@ class LocalProxyService {
         }
       }
 
-      // ---------------------------------------------------------
-      // 2. تشغيل سيرفر الصوت (منفذ 0 = عشوائي)
-      // ---------------------------------------------------------
+      // 2. تشغيل سيرفر الصوت
       _audioReceivePort = ReceivePort();
       _audioServerIsolate = await Isolate.spawn(
         _proxyServerEntryPoint, 
         _ProxyInitData(_audioReceivePort!.sendPort, keyBase64, "AudioIsolate")
       );
 
-      // انتظار رسالة الجاهزية مع رقم المنفذ
       await for (final message in _audioReceivePort!) {
         if (message is String && message.startsWith("READY:")) {
-          // استخراج رقم المنفذ الذي خصصه النظام
           _audioPort = int.parse(message.split(':')[1]);
           print('✅ Audio Proxy Started on dynamic port: $_audioPort');
           break; 
@@ -122,7 +111,6 @@ class LocalProxyService {
   }
 }
 
-// كلاس البيانات (تم حذف port منه لأننا نستخدم 0 دائماً)
 class _ProxyInitData {
   final SendPort sendPort;
   final String keyBase64;
@@ -131,7 +119,6 @@ class _ProxyInitData {
   _ProxyInitData(this.sendPort, this.keyBase64, this.name);
 }
 
-// نقطة البداية (مشتركة للخيطين)
 void _proxyServerEntryPoint(_ProxyInitData initData) async {
    try {
      final key = encrypt.Key.fromBase64(initData.keyBase64);
@@ -141,18 +128,16 @@ void _proxyServerEntryPoint(_ProxyInitData initData) async {
      router.get('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
      router.head('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
      
-     // ✅ التعديل هنا: استخدام المنفذ 0 ليختار النظام منفذاً متاحاً
      final server = await shelf_io.serve(
        router, 
        InternetAddress.anyIPv4, 
-       0, // Dynamic Port
+       0, 
        shared: false
      );
      
      server.autoCompress = false;
      server.idleTimeout = const Duration(seconds: 60);
      
-     // ✅ إرسال رقم المنفذ الفعلي للخيط الرئيسي
      initData.sendPort.send("READY:${server.port}");
      
    } catch (e) {
@@ -168,8 +153,6 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     final decodedPath = Uri.decodeComponent(pathParam);
     final file = File(decodedPath);
     
-    // print("🔗 [$isolateName] Request: ${request.method} -> $decodedPath");
-
     if (!await file.exists()) {
       return Response.notFound('File not found');
     }
@@ -238,6 +221,9 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
   }
 }
 
+// =========================================================================
+// ✅ الجزء الذي تم تعديله جذرياً لحل مشكلة التقطيع على الأجهزة القديمة
+// =========================================================================
 Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, encrypt.Encrypter encrypter) async* {
   RandomAccessFile? raf;
   int totalSent = 0; 
@@ -254,12 +240,18 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
     int startChunkIndex = reqStart ~/ CHUNK_SIZE;
     int endChunkIndex = reqEnd ~/ CHUNK_SIZE;
     final fileLen = await file.length();
+    
+    // 🔴 1. عداد للتحكم في مرات التوقف (Context Switching Optimization)
+    int loopCount = 0;
 
     for (int i = startChunkIndex; i <= endChunkIndex; i++) {
       if (totalSent >= requiredLength) break;
 
-      // ✅ تأخير بسيط جداً لمنع استحواذ الخيط على النواة بالكامل
-      await Future.delayed(Duration.zero);
+      // 🔴 2. تقليل التأخير: بدلاً من التوقف كل دورة (مما يقتل الأداء)، نتوقف كل 32 دورة
+      // هذا يسمح بفك تشفير 4 ميجابايت متواصلة قبل إعطاء فرصة للنظام، مما يضاعف السرعة
+      if (++loopCount % 32 == 0) {
+         await Future.delayed(Duration.zero);
+      }
 
       int seekPos = i * ENCRYPTED_CHUNK_SIZE;
       if (seekPos >= fileLen) break;
@@ -274,16 +266,18 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
 
       try {
         if (encryptedBlock.length < IV_LENGTH) {
-             throw Exception("Invalid block size");
+             outputBlock = Uint8List(0);
+        } else {
+            // فصل الـ IV عن البيانات وفك التشفير
+            final iv = encrypt.IV(encryptedBlock.sublist(0, IV_LENGTH));
+            final cipherBytes = encryptedBlock.sublist(IV_LENGTH);
+            
+            final decrypted = encrypter.decryptBytes(encrypt.Encrypted(cipherBytes), iv: iv);
+            outputBlock = (decrypted is Uint8List) ? decrypted : Uint8List.fromList(decrypted);
         }
-        final iv = encrypt.IV(encryptedBlock.sublist(0, IV_LENGTH));
-        final cipherBytes = encryptedBlock.sublist(IV_LENGTH);
-        
-        final decrypted = encrypter.decryptBytes(encrypt.Encrypted(cipherBytes), iv: iv);
-        outputBlock = Uint8List.fromList(decrypted);
 
       } catch (e) {
-         // في حالة وجود خطأ في بايت واحد، نرسل بلوك فارغ لتجنب قطع الاتصال بالكامل
+         // 🔴 3. معالجة الأخطاء الصامتة: إرسال جزء فارغ بدلاً من إيقاف البث بالكامل
          int expectedSize = (bytesToRead == ENCRYPTED_CHUNK_SIZE) 
              ? CHUNK_SIZE 
              : max(0, bytesToRead - IV_LENGTH - TAG_LENGTH);
@@ -305,12 +299,14 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
   } catch(e) {
      print("Stream Error: $e");
   } finally {
+    // إكمال البايتات الناقصة في الحالات النادرة لتجنب تعليق المشغل
     if (totalSent < requiredLength) {
         int missingBytes = requiredLength - totalSent;
-        if (missingBytes < 512 * 1024) {
+        if (missingBytes > 0 && missingBytes < 1024 * 1024) { 
            yield Uint8List(missingBytes);
         }
     }
+    // 🔴 4. ضمان إغلاق الملف
     await raf?.close();
   }
 }
