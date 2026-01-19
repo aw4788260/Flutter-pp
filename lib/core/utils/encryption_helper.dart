@@ -7,24 +7,29 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 class EncryptionHelper {
-  // ✅ تم التعديل: 512KB (نصف ميجابايت)
-  // هذا الحجم مثالي جداً للفيديوهات ويقلل الحمل على المعالج بشكل كبير
-  static const int CHUNK_SIZE = 128 * 1024; 
+  // Default fallback size (can be overridden dynamically)
+  static const int DEFAULT_CHUNK_SIZE = 64 * 1024; 
   
   static const int IV_LENGTH = 12;
   static const int TAG_LENGTH = 16;
   
-  // الحجم الكلي للكتلة المشفرة (يتم حسابه تلقائياً)
+  // Helper to calculate encrypted size for any given plain chunk size
+  static int getEncryptedSize(int plainChunkSize) {
+    return IV_LENGTH + plainChunkSize + TAG_LENGTH;
+  }
+
+  // Backwards compatibility for old code referencing this
+  static const int CHUNK_SIZE = DEFAULT_CHUNK_SIZE; 
   static const int ENCRYPTED_CHUNK_SIZE = IV_LENGTH + CHUNK_SIZE + TAG_LENGTH;
 
   static encrypt.Key? _key;
   
-  // الاحتفاظ بمحرك التشفير لتجنب إعادة تهيئته (سرعة x10)
+  // Keep the encrypter instance alive for performance (10x speedup)
   static encrypt.Encrypter? _encrypter;
   
   static final _storage = const FlutterSecureStorage();
 
-  /// تهيئة المفتاح ومحرك التشفير
+  /// Initialize Key and Encrypter
   static Future<void> init() async {
     try {
       String? storedKey = await _storage.read(key: 'app_master_key');
@@ -40,7 +45,7 @@ class EncryptionHelper {
       
       _key = encrypt.Key.fromBase64(storedKey);
 
-      // ✅ إنشاء المحرك مرة واحدة فقط
+      // ✅ Create Encrypter instance once
       _encrypter = encrypt.Encrypter(encrypt.AES(_key!, mode: encrypt.AESMode.gcm));
 
     } catch (e, stack) {
@@ -63,14 +68,14 @@ class EncryptionHelper {
     return _key!;
   }
 
-  /// تشفير كتلة من البيانات
+  /// Encrypt a single block of data
   static Uint8List encryptBlock(Uint8List data) {
     if (_encrypter == null) throw Exception("Encryption not initialized! Call init() first.");
 
     try {
       final iv = encrypt.IV.fromSecureRandom(IV_LENGTH);
       
-      // ✅ استخدام المحرك الجاهز
+      // ✅ Use pre-initialized encrypter
       final encrypted = _encrypter!.encryptBytes(data, iv: iv);
 
       final result = BytesBuilder();
@@ -90,7 +95,7 @@ class EncryptionHelper {
     }
   }
 
-  /// فك تشفير كتلة
+  /// Decrypt a single block
   static Uint8List decryptBlock(Uint8List encryptedBlock) {
     if (_encrypter == null) throw Exception("Encryption not initialized! Call init() first.");
 
@@ -102,7 +107,7 @@ class EncryptionHelper {
       final iv = encrypt.IV(encryptedBlock.sublist(0, IV_LENGTH));
       final cipherBytes = encryptedBlock.sublist(IV_LENGTH);
 
-      // ✅ استخدام المحرك الجاهز (أسرع عملية في الكود)
+      // ✅ Fast decryption using cached instance
       final decrypted = _encrypter!.decryptBytes(
         encrypt.Encrypted(cipherBytes), 
         iv: iv
@@ -124,8 +129,9 @@ class EncryptionHelper {
     }
   }
 
-  /// دالة مساعدة لفك تشفير ملف كامل
-  static Future<File> decryptFileFull(File encryptedFile, String outputPath) async {
+  /// Helper to fully decrypt a file (e.g. for PDF viewing)
+  /// Now accepts [chunkSize] to handle different device settings
+  static Future<File> decryptFileFull(File encryptedFile, String outputPath, {int chunkSize = DEFAULT_CHUNK_SIZE}) async {
     if (_key == null) await init();
 
     if (!await encryptedFile.exists()) {
@@ -139,13 +145,13 @@ class EncryptionHelper {
       final int fileLength = await encryptedFile.length();
       int currentPos = 0;
       
-      // سيأخذ القيمة الجديدة تلقائياً (512KB + Overhead)
-      const int blockSize = ENCRYPTED_CHUNK_SIZE;
+      // Calculate block size dynamically based on the passed chunk size
+      final int encryptedBlockSize = getEncryptedSize(chunkSize);
 
-      FirebaseCrashlytics.instance.log("Starting full decryption: ${encryptedFile.path}");
+      FirebaseCrashlytics.instance.log("Starting full decryption: ${encryptedFile.path} with chunk: $chunkSize");
 
       while (currentPos < fileLength) {
-        int bytesToRead = blockSize;
+        int bytesToRead = encryptedBlockSize;
         if (currentPos + bytesToRead > fileLength) {
           bytesToRead = fileLength - currentPos;
         }
