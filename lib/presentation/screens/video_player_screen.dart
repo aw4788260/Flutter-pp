@@ -9,7 +9,6 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-// ✅ 1. استيراد مكتبة معلومات الجهاز للفحص
 import 'package:device_info_plus/device_info_plus.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
@@ -82,7 +81,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await WakelockPlus.enable();
       await _startProxyServer();
 
-      // ✅ 2. فحص نوع الجهاز وإصدار الأندرويد
+      // 1. فحص نوع الجهاز وإصدار الأندرويد
       bool isWeakDevice = false;
 
       if (Platform.isAndroid) {
@@ -91,37 +90,36 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           // إذا كان أندرويد 9 (API 28) أو أقل، نعتبره جهازاً قديماً
           if (androidInfo.version.sdkInt < 29) {
             isWeakDevice = true;
-            FirebaseCrashlytics.instance.log("📱 Weak/Old Device Detected (API ${androidInfo.version.sdkInt}). Disabling HW Acceleration.");
+            FirebaseCrashlytics.instance.log("📱 Weak Device Detected (API ${androidInfo.version.sdkInt}). Enforcing Strict SW Decoding.");
           } else {
-            FirebaseCrashlytics.instance.log("📱 Modern Device Detected (API ${androidInfo.version.sdkInt}). Enabling HW Acceleration.");
+            FirebaseCrashlytics.instance.log("📱 Modern Device Detected (API ${androidInfo.version.sdkInt}). Using Auto HW Decoding.");
           }
         } catch (e) {
-          // في حال فشل الفحص، نفترض أنه جهاز ضعيف للأمان
           isWeakDevice = true; 
         }
       }
 
       _player = Player(
-        configuration: const PlayerConfiguration(
-          bufferSize: 16 * 1024 * 1024,
+        configuration: PlayerConfiguration(
+          // تقليل البفر للأجهزة الضعيفة لتوفير الرام (8MB)، وزيادته للقوية (32MB)
+          bufferSize: isWeakDevice ? 8 * 1024 * 1024 : 32 * 1024 * 1024,
           vo: 'gpu', 
         ),
       );
       
-      // ✅ 3. تطبيق إعدادات فك التشفير (التصحيح هنا)
-      // استخدام (_player.platform as dynamic) للوصول للدالة setProperty بشكل صحيح
+      // 2. تطبيق إعدادات فك التشفير الصارمة
       if (isWeakDevice) {
-        // للأجهزة القديمة: تعطيل ديكودر الهاردوير
+        // للأجهزة القديمة: منع الهاردوير نهائياً + زيادة خيوط المعالج
         await (_player.platform as dynamic).setProperty('hwdec', 'no'); 
+        await (_player.platform as dynamic).setProperty('vd-lavc-threads', '4');
       } else {
-        // للأجهزة الحديثة: تركه تلقائي
+        // للأجهزة الحديثة: تلقائي
         await (_player.platform as dynamic).setProperty('hwdec', 'auto');
       }
 
       _controller = VideoController(
         _player,
         configuration: VideoControllerConfiguration(
-          // ✅ 4. إعدادات التحكم:
           enableHardwareAcceleration: !isWeakDevice, 
           androidAttachSurfaceAfterVideoParameters: !isWeakDevice, 
         ),
@@ -132,7 +130,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         FirebaseCrashlytics.instance.recordError(error, null, reason: 'MediaKit Stream Error (Non-Fatal)');
       });
 
-      // مراقب البفر للتشغيل بعد التحميل
       _player.stream.buffering.listen((buffering) {
         if (!buffering && _isVideoLoading) {
           if (mounted) {
