@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:isolate'; // ✅ ضروري للتعامل مع الخيوط المنفصلة
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
@@ -29,7 +29,6 @@ class DownloadManager with WidgetsBindingObserver {
     }
   }
 
-  // ✅ Dio يستخدم هنا فقط لجلب الروابط الأولية (خفيف جداً)
   static final Dio _mainThreadDio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 60),
     receiveTimeout: const Duration(seconds: 60),
@@ -39,7 +38,6 @@ class DownloadManager with WidgetsBindingObserver {
   static final Set<String> _activeDownloads = {};
   final Map<String, String> activeTitles = {};
   
-  // ✅ خريطة لتخزين الـ Isolates بدلاً من التوكن فقط
   static final Map<String, Isolate> _activeIsolates = {}; 
   static final ValueNotifier<Map<String, double>> downloadingProgress = ValueNotifier({});
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
@@ -86,10 +84,9 @@ class DownloadManager with WidgetsBindingObserver {
     _stopBackgroundService();
   }
 
-  // ✅ تعديل الإلغاء ليقتل الـ Isolate
   Future<void> cancelDownload(String lessonId) async {
     if (_activeIsolates.containsKey(lessonId)) {
-      _activeIsolates[lessonId]?.kill(priority: Isolate.immediate); // قتل الخيط فوراً
+      _activeIsolates[lessonId]?.kill(priority: Isolate.immediate);
       _activeIsolates.remove(lessonId);
     }
     
@@ -161,7 +158,11 @@ class DownloadManager with WidgetsBindingObserver {
     String quality = "SD",
     String duration = "",
   }) async {
-    // 1. Setup UI States
+    // ✅ تصحيح: تعريف المسارات هنا لتكون مرئية في try و catch
+    final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
+    final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
+    final safeChapter = chapterName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
+
     activeTitles[lessonId] = videoTitle;
     FirebaseCrashlytics.instance.log("⬇️ Download Started: $videoTitle (PDF: $isPdf)");
     _activeDownloads.add(lessonId);
@@ -181,10 +182,10 @@ class DownloadManager with WidgetsBindingObserver {
       progress: 0, maxProgress: 100,
     );
 
-    ReceivePort receivePort = ReceivePort(); // ✅ منفذ لاستلام الرسائل من الـ Isolate
+    ReceivePort receivePort = ReceivePort();
 
     try {
-      await EncryptionHelper.init(); // Init on Main Thread too if needed
+      await EncryptionHelper.init();
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
       final deviceId = box.get('device_id');
@@ -192,7 +193,6 @@ class DownloadManager with WidgetsBindingObserver {
 
       if (userId == null) throw Exception("User auth missing");
 
-      // 2. Prepare Links (Lightweight HTTP calls on Main Thread)
       String? finalVideoUrl = downloadUrl;
       String? finalAudioUrl = audioUrl;
 
@@ -218,11 +218,7 @@ class DownloadManager with WidgetsBindingObserver {
         if (ext.isNotEmpty) duration = ext;
       }
 
-      // 3. Prepare Paths
       final appDir = await getApplicationDocumentsDirectory();
-      final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
-      final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
-      final safeChapter = chapterName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       
       final dir = Directory('${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter');
       if (!await dir.exists()) await dir.create(recursive: true);
@@ -235,8 +231,6 @@ class DownloadManager with WidgetsBindingObserver {
         audioSavePath = '${dir.path}/aud_${lessonId}_hq.enc';
       }
 
-      // ✅ 4. Spawn Isolate (عزل العمليات الثقيلة)
-      // نرسل كل البيانات اللازمة كـ Map
       final isolateArgs = {
         'sendPort': receivePort.sendPort,
         'url': finalVideoUrl,
@@ -248,21 +242,17 @@ class DownloadManager with WidgetsBindingObserver {
         'lessonId': lessonId
       };
 
-      // تشغيل الـ Isolate وتخزينه
       Isolate isolate = await Isolate.spawn(_isolateDownloadWorker, isolateArgs);
       _activeIsolates[lessonId] = isolate;
 
-      // ✅ 5. الاستماع للنتائج القادمة من الخيط المنفصل
       await for (final message in receivePort) {
         if (message is double) {
-          // تحديث التقدم
           var prog = Map<String, double>.from(downloadingProgress.value);
           prog[lessonId] = message;
           downloadingProgress.value = prog;
           onProgress(message);
 
           int percent = (message * 100).toInt();
-          // تقليل تحديثات الإشعارات لتجنب الضغط
           if (percent % 2 == 0) { 
             notifService.showProgressNotification(
               id: notificationId,
@@ -273,15 +263,12 @@ class DownloadManager with WidgetsBindingObserver {
           }
 
         } else if (message == 'DONE') {
-           // اكتمل التحميل
            break; 
         } else if (message is Map && message['error'] != null) {
-           // حدث خطأ
            throw Exception(message['error']);
         }
       }
 
-      // ✅ 6. Finalization (Main Thread) - Saving to Hive
       int totalSizeBytes = await File(videoSavePath).length();
       if (audioSavePath != null && await File(audioSavePath).exists()) {
         totalSizeBytes += await File(audioSavePath).length();
@@ -315,10 +302,8 @@ class DownloadManager with WidgetsBindingObserver {
       onComplete();
 
     } catch (e, stack) {
-      // Error Handling
       await notifService.cancelNotification(notificationId);
       
-      // في حالة الإلغاء، لا نعتبره خطأ
       bool isCancelled = !_activeDownloads.contains(lessonId); 
       
       if (!isCancelled) {
@@ -331,19 +316,24 @@ class DownloadManager with WidgetsBindingObserver {
         onError("Download failed. Please check internet.");
       }
       
-      // Cleanup files
+      // Cleanup partial files
       try {
-        final dirPath = '${await getApplicationDocumentsDirectory()}/offline_content/$safeCourse/$safeSubject/$safeChapter'; // Re-path logic needed or simple approach
-        // Note: Re-constructing path here or use previously stored vars if scope allows. 
-        // For simplicity, we assume generic cleanup or rely on user to retry.
-        // But specifically cleaning the file targets:
-         
-        // As paths are local to scope, we rely on standard cleanup:
-        // (Better implementation would move path generation to a helper, but abiding by "no changes" constraint, we skip complex refactor)
+        final appDir = await getApplicationDocumentsDirectory();
+        // ✅ الآن المتغيرات مرئية هنا
+        final dirPath = '${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter';
+        
+        final videoFileName = isPdf ? "$lessonId.pdf.enc" : "vid_${lessonId}_$quality.enc";
+        final audioFileName = 'aud_${lessonId}_hq.enc';
+        
+        final videoFile = File('$dirPath/$videoFileName');
+        if (await videoFile.exists()) await videoFile.delete();
+        
+        final audioFile = File('$dirPath/$audioFileName');
+        if (await audioFile.exists()) await audioFile.delete();
+
       } catch (cleanupError) {}
 
     } finally {
-      // Cleanup
       _activeIsolates[lessonId]?.kill(priority: Isolate.immediate);
       _activeIsolates.remove(lessonId);
       _activeDownloads.remove(lessonId);
@@ -373,17 +363,13 @@ class DownloadManager with WidgetsBindingObserver {
     final Map<String, dynamic> headers = args['headers'];
     final bool isPdf = args['isPdf'];
 
-    // ✅ إنشاء Dio جديد داخل الـ Isolate (لأن الـ Dio الأساسي لا يمكن مشاركته)
     final Dio dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 60),
       receiveTimeout: const Duration(seconds: 60),
       sendTimeout: const Duration(seconds: 60),
     ));
 
-    // تهيئة التشفير داخل الـ Isolate
     await EncryptionHelper.init();
-    
-    // استخدام CancelToken محلي داخل الـ Isolate فقط للتحكم في التدفق
     final CancelToken localToken = CancelToken();
 
     try {
@@ -400,7 +386,6 @@ class DownloadManager with WidgetsBindingObserver {
         double vidProg = 0.0;
         double audProg = 0.0;
 
-        // دالة مساعدة لحساب النسبة الكلية وإرسالها
         void updateAggregatedProgress() {
           double total = (audioUrl != null) 
               ? (vidProg * 0.80) + (audProg * 0.20)
@@ -476,7 +461,6 @@ class DownloadManager with WidgetsBindingObserver {
         int end = min(offset + EncryptionHelper.CHUNK_SIZE, bytes.length);
         final block = bytes.sublist(offset, end);
         
-        // التشفير يحدث هنا في الخلفية دون تجميد الواجهة
         final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
         await sink.writeFrom(encrypted);
         
