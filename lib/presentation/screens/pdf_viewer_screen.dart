@@ -2,17 +2,18 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // ✅ المكتبة الجديدة
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:percent_indicator/percent_indicator.dart'; // ✅ لاستخدام شريط التقدم الدائري
+import 'package:percent_indicator/percent_indicator.dart';
+import 'package:device_info_plus/device_info_plus.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../core/services/local_proxy.dart'; // ✅ استيراد خدمة البروكسي
-import '../../core/utils/encryption_helper.dart'; // ✅ ضروري لفك التشفير
+import '../../core/services/local_proxy.dart';
+import '../../core/utils/encryption_helper.dart';
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfId;
@@ -29,18 +30,19 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
-  // ✅ استخدام خدمة البروكسي للبث المباشر للملفات المشفرة الكبيرة
   final LocalProxyService _proxyService = LocalProxyService();
   
-  // متغيرات الحالة
-  String? _proxyUrl;      // رابط التشغيل للأوفلاين (عبر البروكسي - للملفات الكبيرة)
-  String? _localFilePath; // مسار الملف للأونلاين (بعد التحميل)
-  Uint8List? _pdfBytes;   // ✅ بيانات الملف للأوفلاين (للملفات الصغيرة في الذاكرة)
+  String? _proxyUrl;
+  String? _localFilePath;
+  Uint8List? _pdfBytes;
   
   bool _loading = true;
-  double _downloadProgress = 0.0; // ✅ نسبة التحميل للأونلاين
-  bool _isOnlineDownload = false; // لتحديد نوع التحميل
+  double _downloadProgress = 0.0;
+  bool _isOnlineDownload = false;
   
+  // متغير لتحديد ما إذا كان الجهاز ضعيفاً جداً (لتقليل استهلاك الذاكرة فقط عند الضرورة القصوى)
+  bool _isWeakDevice = false;
+
   String? _error;
   int _totalPages = 0;
   int _currentPage = 0;
@@ -51,26 +53,37 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   @override
   void initState() {
     super.initState();
-    FirebaseCrashlytics.instance.log("📄 PDF Screen Opened: ${widget.title} (ID: ${widget.pdfId})");
+    FirebaseCrashlytics.instance.log("📄 PDF Screen Opened: ${widget.title}");
+    _checkDevicePerformance();
     _initWatermarkText();
     _loadPdf();
   }
 
+  Future<void> _checkDevicePerformance() async {
+    if (Platform.isAndroid) {
+      try {
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        // الأجهزة القديمة (Android 9 وأقل)
+        if (androidInfo.version.sdkInt <= 28) {
+          if (mounted) setState(() => _isWeakDevice = true);
+        }
+      } catch (e) {
+        // تجاهل الخطأ
+      }
+    }
+  }
+
   @override
   void dispose() {
-    // ✅ إيقاف البروكسي عند الخروج
     _proxyService.stop();
     
-    // ✅ حذف الملف المؤقت (فقط في حالة الأونلاين لأنه تم تحميله)
+    // حذف الملف المؤقت عند الخروج لتوفير المساحة
     if (_localFilePath != null) {
       final file = File(_localFilePath!);
       if (file.existsSync()) {
         try {
           file.deleteSync();
-          FirebaseCrashlytics.instance.log("🔒 Temp online PDF deleted.");
-        } catch (e) {
-          FirebaseCrashlytics.instance.log("⚠️ Failed to delete temp PDF: $e");
-        }
+        } catch (e) { /* ignore */ }
       }
     }
     super.dispose();
@@ -78,25 +91,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   void _initWatermarkText() {
     String displayText = '';
-    // 1. المحاولة الأولى: من الذاكرة الحية
     if (AppState().userData != null) {
       displayText = AppState().userData!['phone'] ?? '';
     }
-    // 2. المحاولة الثانية: من التخزين المحلي
     if (displayText.isEmpty) {
        try {
          if(Hive.isBoxOpen('auth_box')) {
            var box = Hive.box('auth_box');
            displayText = box.get('phone') ?? box.get('username') ?? '';
          }
-       } catch(e) {
-         FirebaseCrashlytics.instance.log("⚠️ Watermark load error: $e");
-       }
+       } catch(e) { /* ignore */ }
     }
     setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
   }
 
-  /// دالة مساعدة لفك تشفير الملف بالكامل في الذاكرة (للملفات الصغيرة)
+  // دالة فك التشفير في الذاكرة (سريعة للملفات الصغيرة)
   Future<Uint8List> _decryptFileToMemory(File file) async {
     final builder = BytesBuilder();
     final raf = await file.open(mode: FileMode.read);
@@ -104,8 +113,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     try {
       final int fileLength = await file.length();
       int currentPos = 0;
-      
-      // استخدام الثوابت من EncryptionHelper
       const int blockSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
 
       while (currentPos < fileLength) {
@@ -117,7 +124,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         Uint8List chunk = await raf.read(bytesToRead);
         if (chunk.isEmpty) break;
 
-        // فك التشفير باستخدام الدالة السريعة
         Uint8List decryptedChunk = EncryptionHelper.decryptBlock(chunk);
         builder.add(decryptedChunk);
 
@@ -132,12 +138,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   Future<void> _loadPdf() async {
     setState(() => _loading = true);
     try {
-      // التأكد من تهيئة التشفير
       await EncryptionHelper.init();
 
-      // ============================================================
-      // 1. الأوفلاين: محاولة القراءة من التخزين المحلي
-      // ============================================================
+      // ==========================================
+      // 1. التعامل مع الملفات الأوفلاين (المحملة مسبقاً)
+      // ==========================================
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
 
@@ -146,36 +151,29 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         final File encryptedFile = File(encryptedPath);
         
         if (await encryptedFile.exists()) {
-          // ✅ التحسين الجديد: فحص حجم الملف
           int fileSize = await encryptedFile.length();
           
-          // إذا كان الملف أصغر من 50 ميجابايت، نفك تشفيره في الرام (أسرع بكثير)
-          if (fileSize < 50 * 1024 * 1024) { 
+          // إذا الملف صغير (أقل من 30 ميجا)، نفك تشفيره في الرام لأنه أسرع وأسلس في التمرير
+          // قللنا الحد لـ 30 مراعاة للأجهزة القديمة
+          if (fileSize < 30 * 1024 * 1024) { 
              try {
-               FirebaseCrashlytics.instance.log("🚀 Loading small PDF to memory: $encryptedPath");
                final bytes = await _decryptFileToMemory(encryptedFile);
-               
                if (mounted) {
                  setState(() {
                    _pdfBytes = bytes;
                    _loading = false;
                  });
                }
-               return; // ✅ انتهينا، العرض من الذاكرة
+               return;
              } catch (e) {
-                // إذا فشلت الذاكرة، نكمل للكود التالي ونستخدم البروكسي كخطة بديلة
-                FirebaseCrashlytics.instance.log("⚠️ Memory decrypt failed, falling back to proxy: $e");
+                FirebaseCrashlytics.instance.log("⚠️ Memory decrypt failed, switching to proxy: $e");
              }
           }
 
-          // --- الخطة ب: الملفات الكبيرة عبر البروكسي ---
-          FirebaseCrashlytics.instance.log("📂 Opening Large/Offline PDF via Proxy: $encryptedPath");
-          
-          // تشغيل البروكسي
+          // الملفات الكبيرة نستخدم معها البروكسي لتجنب امتلاء الذاكرة
           await _proxyService.start();
-          
-          // تكوين رابط البروكسي
-          final url = "http://127.0.0.1:8080/video?path=${Uri.encodeComponent(encryptedPath)}";
+          // نستخدم منفذ الفيديو (8080) أو الصوت (8081) كلاهما يعمل، نستخدم 8080 هنا
+          final url = "http://127.0.0.1:8080/video?path=${Uri.encodeComponent(encryptedPath)}&type=.pdf";
           
           if (mounted) {
             setState(() {
@@ -187,12 +185,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         }
       }
 
-      // ============================================================
-      // 2. الأونلاين: تحميل مع شريط تقدم
-      // ============================================================
-      FirebaseCrashlytics.instance.log("☁️ Downloading Online PDF...");
-      
-      if (mounted) setState(() => _isOnlineDownload = true); // تفعيل وضع شريط التقدم
+      // ==========================================
+      // 2. التحميل من الإنترنت (Online)
+      // ==========================================
+      if (mounted) setState(() => _isOnlineDownload = true);
 
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
@@ -200,8 +196,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
       final dio = Dio();
       final dir = await getTemporaryDirectory();
-      // استخدام timestamp لضمان اسم فريد
       final savePath = '${dir.path}/online_${widget.pdfId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+      // ✅ متغير للتحكم في معدل تحديث الشاشة (Throttling)
+      // هذا هو الإصلاح الرئيسي لمشكلة "ثقل" الجهاز وتوقفه
+      int lastUpdateTimestamp = 0;
 
       await dio.download(
         'https://courses.aw478260.dpdns.org/api/secure/get-pdf',
@@ -214,13 +213,18 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
         ),
-        // ✅ تحديث شريط التقدم
         onReceiveProgress: (received, total) {
           if (total != -1) {
-            if (mounted) {
-              setState(() {
-                _downloadProgress = received / total;
-              });
+            final currentTimestamp = DateTime.now().millisecondsSinceEpoch;
+            // ✅ التحديث فقط إذا مر 250 ميلي ثانية (ربع ثانية) منذ آخر تحديث
+            // هذا يمنع استدعاء setState آلاف المرات في الثانية
+            if (currentTimestamp - lastUpdateTimestamp > 250) {
+              lastUpdateTimestamp = currentTimestamp;
+              if (mounted) {
+                setState(() {
+                  _downloadProgress = received / total;
+                });
+              }
             }
           }
         },
@@ -228,6 +232,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
       if (mounted) {
         setState(() {
+          _downloadProgress = 1.0;
           _localFilePath = savePath;
           _loading = false;
         });
@@ -246,7 +251,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. حالة التحميل
     if (_loading) {
       return Scaffold(
         backgroundColor: AppColors.backgroundPrimary,
@@ -254,7 +258,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // إذا كان تحميل أونلاين نعرض شريط التقدم والنسبة
               if (_isOnlineDownload) ...[
                 CircularPercentIndicator(
                   radius: 40.0,
@@ -270,7 +273,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 const SizedBox(height: 16),
                 const Text("Downloading PDF...", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               ] else ...[
-                // تحميل أوفلاين (سريع)
                 const CircularProgressIndicator(color: AppColors.accentYellow),
               ]
             ],
@@ -279,7 +281,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       );
     }
 
-    // 2. حالة الخطأ
     if (_error != null) {
       return Scaffold(
         backgroundColor: AppColors.backgroundPrimary, 
@@ -288,7 +289,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       );
     }
 
-    // 3. العرض (النجاح)
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       appBar: AppBar(
@@ -310,10 +310,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // ✅ العارض الجديد (SfPdfViewer)
           _buildPdfViewer(),
 
-          // 2. العلامة المائية (طبقة متكررة) - ✅ تم الحفاظ عليها كما هي
+          // العلامة المائية
           IgnorePointer(
             child: Container(
               width: double.infinity,
@@ -331,7 +330,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // 3. عداد الصفحات
+          // رقم الصفحة
           Positioned(
             bottom: 20, right: 20,
             child: Container(
@@ -351,16 +350,20 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // دالة اختيار نوع العارض المناسب (ذاكرة / شبكة / ملف)
   Widget _buildPdfViewer() {
-    // ✅ الحالة 1: ملف أوفلاين صغير (تم فكه للذاكرة) - الأسرع
+    // ✅ تم إرجاع الوضع المستمر (Continuous) ليعرض الصفحات أسفل بعضها كما طلبت
+    // ولكن قمنا بتحسين الأداء عبر إدارة الذاكرة في _loadPdf وعبر تقييد التحديثات
+    const layoutMode = PdfPageLayoutMode.continuous;
+    const scrollDirection = PdfScrollDirection.vertical;
+
     if (_pdfBytes != null) {
        return SfPdfViewer.memory(
         _pdfBytes!,
         key: _pdfViewerKey,
         enableDoubleTapZooming: true,
         enableTextSelection: false,
-        pageLayoutMode: PdfPageLayoutMode.continuous,
+        pageLayoutMode: layoutMode, 
+        scrollDirection: scrollDirection,
         onDocumentLoaded: (details) {
           setState(() => _totalPages = details.document.pages.count);
         },
@@ -369,14 +372,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         },
       );
     }
-    // ✅ الحالة 2: ملف أوفلاين كبير (عبر البروكسي)
     else if (_proxyUrl != null) {
       return SfPdfViewer.network(
         _proxyUrl!,
         key: _pdfViewerKey,
         enableDoubleTapZooming: true,
-        enableTextSelection: false, // منع النسخ
-        pageLayoutMode: PdfPageLayoutMode.continuous,
+        enableTextSelection: false,
+        pageLayoutMode: layoutMode,
+        scrollDirection: scrollDirection,
         onDocumentLoaded: (details) {
           setState(() => _totalPages = details.document.pages.count);
         },
@@ -388,13 +391,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         },
       );
     } 
-    // ✅ الحالة 3: ملف أونلاين (تم تحميله مؤقتاً)
     else if (_localFilePath != null) {
       return SfPdfViewer.file(
         File(_localFilePath!),
         key: _pdfViewerKey,
         enableDoubleTapZooming: true,
         enableTextSelection: false,
+        pageLayoutMode: layoutMode,
+        scrollDirection: scrollDirection,
         onDocumentLoaded: (details) {
           setState(() => _totalPages = details.document.pages.count);
         },
@@ -416,19 +420,18 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ✅ تصميم العلامة المائية (كما هو - بدون تغييرات)
   Widget _buildWatermarkItem() {
     return Transform.rotate(
       angle: -0.5, 
       child: Opacity(
-        opacity: 0.15, // شفافية خفيفة
+        opacity: 0.15,
         child: Text(
           _watermarkText,
           textAlign: TextAlign.center,
           style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w900,
-            color: Colors.grey, // لون رمادي كما طلبت
+            color: Colors.grey,
             decoration: TextDecoration.none,
           ),
         ),
