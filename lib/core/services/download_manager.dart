@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:isolate'; // ✅ مكتبة العزل الضرورية
+import 'dart:isolate'; // ✅ Necessary isolate library
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart'; 
@@ -9,7 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:encrypt/encrypt.dart' as encrypt; // ✅ استيراد التشفير لاستخدامه في الخلفية
+import 'package:encrypt/encrypt.dart' as encrypt; // ✅ Import encrypt for background use
+import 'package:device_info_plus/device_info_plus.dart'; // ✅ Import device info
 
 import '../utils/encryption_helper.dart';
 import 'notification_service.dart';
@@ -36,7 +37,7 @@ class DownloadManager with WidgetsBindingObserver {
     sendTimeout: const Duration(seconds: 60),
   ));
 
-  // ✅ تخزين الـ Isolates النشطة للتحكم فيها (إلغاء/قتل)
+  // ✅ Store active Isolates for control (cancel/kill)
   static final Map<String, Isolate> _activeIsolates = {};
   
   static final Set<String> _activeDownloads = {};
@@ -78,6 +79,24 @@ class DownloadManager with WidgetsBindingObserver {
         : "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
   }
 
+  // ✅ Determine optimal chunk size based on device specs
+  Future<int> _getOptimalChunkSize() async {
+    if (Platform.isAndroid) {
+      try {
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        // Android 9 (API 28) and below are considered "weak" -> 32KB
+        if (androidInfo.version.sdkInt <= 28) {
+          return 32 * 1024; 
+        }
+      } catch (e) {
+        // Fallback to 32KB on error for safety
+        return 32 * 1024;
+      }
+    }
+    // Default for newer devices -> 128KB
+    return 128 * 1024;
+  }
+
   Future<void> cancelAllDownloads() async {
     final List<String> allIds = List.from(_activeIsolates.keys);
     for (var id in allIds) {
@@ -88,7 +107,7 @@ class DownloadManager with WidgetsBindingObserver {
   }
 
   Future<void> cancelDownload(String lessonId) async {
-    // ✅ الإلغاء يتم الآن عن طريق قتل الـ Isolate فوراً
+    // ✅ Cancel by killing the Isolate immediately
     if (_activeIsolates.containsKey(lessonId)) {
       _activeIsolates[lessonId]?.kill(priority: Isolate.immediate);
       _activeIsolates.remove(lessonId);
@@ -103,7 +122,7 @@ class DownloadManager with WidgetsBindingObserver {
 
     await NotificationService().cancelNotification(lessonId.hashCode);
     
-    // تنظيف الملفات غير المكتملة (اختياري، يمكن إضافته هنا إذا لزم الأمر)
+    // Cleanup incomplete files (optional, can be added here)
 
     if (_activeDownloads.isEmpty) {
       _stopBackgroundService();
@@ -176,20 +195,21 @@ class DownloadManager with WidgetsBindingObserver {
     );
 
     try {
-      // التأكد من تهيئة التشفير للحصول على المفتاح
       await EncryptionHelper.init();
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
       final deviceId = box.get('device_id');
       const String appSecret = String.fromEnvironment('APP_SECRET');
       
-      // ✅ نأخذ نسخة من مفتاح التشفير (Base64) لإرساله للخيط الخلفي
-      // لأن الخيط الخلفي لا يستطيع الوصول للـ SecureStorage مباشرة
       final String keyBase64 = EncryptionHelper.key.base64;
 
       if (userId == null) throw Exception("User auth missing");
 
-      // 1. تجهيز الروابط (يتم بسرعة على الخيط الرئيسي)
+      // 1. Determine Optimal Chunk Size based on Device
+      final int chunkSize = await _getOptimalChunkSize();
+      final String chunkTag = (chunkSize == 32 * 1024) ? ".c32" : (chunkSize == 64 * 1024) ? ".c64" : ".c128";
+
+      // 2. Prepare URLs
       String? finalVideoUrl = downloadUrl;
       String? finalAudioUrl = audioUrl;
 
@@ -215,7 +235,7 @@ class DownloadManager with WidgetsBindingObserver {
         if (ext.isNotEmpty) duration = ext;
       }
 
-      // 2. تجهيز المسارات
+      // 3. Prepare Paths with Chunk Tag
       final appDir = await getApplicationDocumentsDirectory();
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -224,15 +244,21 @@ class DownloadManager with WidgetsBindingObserver {
       final dir = Directory('${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter');
       if (!await dir.exists()) await dir.create(recursive: true);
 
-      final String videoFileName = isPdf ? "$lessonId.pdf.enc" : "vid_${lessonId}_$quality.enc";
+      // 🔥 Inject chunk tag into filename: vid_123_SD.c32.enc
+      final String videoFileName = isPdf 
+          ? "$lessonId$chunkTag.pdf.enc" 
+          : "vid_${lessonId}_$quality$chunkTag.enc";
+          
       final String videoSavePath = '${dir.path}/$videoFileName';
       
       String? audioSavePath;
       if (finalAudioUrl != null) {
-        audioSavePath = '${dir.path}/aud_${lessonId}_hq.enc';
+        // Audio can also benefit from smaller chunks or keep default, 
+        // usually audio is small enough but consistency is good.
+        audioSavePath = '${dir.path}/aud_${lessonId}_hq$chunkTag.enc';
       }
 
-      // 3. ✅ تشغيل الـ Isolate للقيام بالمهمة الثقيلة
+      // 4. ✅ Start Isolate
       final receivePort = ReceivePort();
       
       final isolate = await Isolate.spawn(
@@ -246,22 +272,21 @@ class DownloadManager with WidgetsBindingObserver {
           audioSavePath: audioSavePath,
           headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
           isPdf: isPdf,
+          chunkSize: chunkSize, // Pass the decided chunk size
         ),
       );
 
       _activeIsolates[lessonId] = isolate;
 
-      // 4. الاستماع لرسائل التقدم أو الخطأ من الخلفية
+      // 5. Listen to Isolate messages
       await for (final message in receivePort) {
         if (message is double) {
-          // تحديث واجهة المستخدم والإشعارات
           var prog = Map<String, double>.from(downloadingProgress.value);
           prog[lessonId] = message;
           downloadingProgress.value = prog; 
           onProgress(message);
 
           int percent = (message * 100).toInt();
-          // تحديث الإشعار كل 2% لتقليل الضغط
           if (percent % 2 == 0) { 
             notifService.showProgressNotification(
               id: notificationId, 
@@ -271,19 +296,17 @@ class DownloadManager with WidgetsBindingObserver {
             );
           }
         } else if (message == "DONE") {
-          // تم التحميل بنجاح
           receivePort.close();
           _activeIsolates.remove(lessonId);
           break;
         } else if (message.toString().startsWith("ERROR")) {
-          // حدث خطأ في الخلفية
           receivePort.close();
           _activeIsolates.remove(lessonId);
           throw Exception(message.toString().replaceFirst("ERROR: ", ""));
         }
       }
 
-      // 5. الحفظ في قاعدة البيانات بعد النجاح
+      // 6. Save metadata to Database
       int totalSizeBytes = await File(videoSavePath).length();
       if (audioSavePath != null && await File(audioSavePath).exists()) {
         totalSizeBytes += await File(audioSavePath).length();
@@ -303,6 +326,7 @@ class DownloadManager with WidgetsBindingObserver {
         'duration': duration,
         'date': DateTime.now().toIso8601String(),
         'size': totalSizeBytes,
+        'chunkSize': chunkSize, // Optional: save for reference
       });
 
       await notifService.cancelNotification(notificationId);
@@ -325,13 +349,12 @@ class DownloadManager with WidgetsBindingObserver {
       );
       onError("Download failed. Please try again.");
       
-      // تنظيف في حالة الخطأ
       _activeIsolates[lessonId]?.kill(priority: Isolate.immediate);
       _activeIsolates.remove(lessonId);
       
-      // حذف الملفات المعطوبة
+      // Cleanup files on error
       try {
-        // (يمكن إعادة بناء المسار للحذف هنا إذا لزم الأمر)
+         // Logic to delete partial files can be added here
       } catch (_) {}
 
     } finally {
@@ -349,8 +372,7 @@ class DownloadManager with WidgetsBindingObserver {
 }
 
 // -----------------------------------------------------------------------------
-// ⚠️ منطقة الكود المعزول (Background Isolate Logic)
-// هذا الكود يعمل في عملية منفصلة ولا يؤثر على واجهة المستخدم
+// ⚠️ Background Isolate Logic
 // -----------------------------------------------------------------------------
 
 class _DownloadTask {
@@ -362,6 +384,7 @@ class _DownloadTask {
   final String? audioSavePath;
   final Map<String, dynamic> headers;
   final bool isPdf;
+  final int chunkSize; // ✅ Received chunk size
 
   _DownloadTask({
     required this.sendPort,
@@ -372,19 +395,17 @@ class _DownloadTask {
     this.audioSavePath,
     required this.headers,
     required this.isPdf,
+    required this.chunkSize,
   });
 }
 
-// نقطة البداية للخيط الجديد
 void _downloadIsolateEntryPoint(_DownloadTask task) async {
   try {
-    // 1. إعادة بناء التشفير في الخلفية
     final key = encrypt.Key.fromBase64(task.keyBase64);
     final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.gcm));
     
     final dio = Dio();
 
-    // دالة مساعدة للتحميل والتقسيم والتشفير (Chunked Stream Download)
     Future<void> downloadAndEncrypt(String url, String path, {Function(double)? onProg}) async {
       final saveFile = File(path);
       final sink = await saveFile.open(mode: FileMode.write);
@@ -393,7 +414,7 @@ void _downloadIsolateEntryPoint(_DownloadTask task) async {
         final response = await dio.get(
           url,
           options: Options(
-            responseType: ResponseType.stream, // استلام كـ Stream لتوفير الرام
+            responseType: ResponseType.stream, 
             headers: task.headers,
             followRedirects: true,
           ),
@@ -402,31 +423,25 @@ void _downloadIsolateEntryPoint(_DownloadTask task) async {
         int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
         int received = 0;
         
-        // مخزن مؤقت لتجميع البيانات (Buffer)
         List<int> buffer = [];
-        // حجم الكتلة: 128KB (يجب أن يطابق ما يستخدمه البروكسي في فك التشفير)
-        const int CHUNK_SIZE = 128 * 1024; 
+        // ✅ Use the dynamic chunk size passed from main thread
+        final int CHUNK_SIZE = task.chunkSize; 
 
         Stream<Uint8List> stream = response.data.stream;
         
         await for (final chunk in stream) {
           buffer.addAll(chunk);
           
-          // كلما جمعنا 128KB، نقوم بتشفيرها وكتابتها فوراً
           while (buffer.length >= CHUNK_SIZE) {
             final block = buffer.sublist(0, CHUNK_SIZE);
             buffer.removeRange(0, CHUNK_SIZE);
             
-            // التشفير (Heavy Operation)
             final iv = encrypt.IV.fromSecureRandom(12);
             final encrypted = encrypter.encryptBytes(block, iv: iv);
             
-            // الكتابة: IV + Data + Tag
-            // ملاحظة: Encrypter في GCM يدمج الـ Tag تلقائياً في encrypted.bytes عادةً
-            // لكن هنا سنكتب IV ثم البيانات المشفرة
             final result = BytesBuilder();
             result.add(iv.bytes);
-            result.add(encrypted.bytes); // يشمل الـ Auth Tag
+            result.add(encrypted.bytes); // Includes Auth Tag
             
             await sink.writeFrom(result.toBytes());
           }
@@ -437,7 +452,7 @@ void _downloadIsolateEntryPoint(_DownloadTask task) async {
           }
         }
         
-        // تشفير ما تبقى في البفر (الكتلة الأخيرة)
+        // Encrypt remaining buffer
         if (buffer.isNotEmpty) {
             final iv = encrypt.IV.fromSecureRandom(12);
             final encrypted = encrypter.encryptBytes(buffer, iv: iv);
@@ -452,20 +467,17 @@ void _downloadIsolateEntryPoint(_DownloadTask task) async {
       }
     }
 
-    // 2. بدء العمليات
     if (task.isPdf) {
       await downloadAndEncrypt(task.videoUrl, task.videoSavePath, onProg: (p) {
         task.sendPort.send(p);
       });
     } else {
-      // تحميل الفيديو والصوت (إن وجد)
       double vidProg = 0.0;
       double audProg = 0.0;
 
-      // دالة لتجميع التقدم وإرساله للخيط الرئيسي
       void updateProgress() {
         double total = (task.audioUrl != null) 
-            ? (vidProg * 0.80) + (audProg * 0.20) // الفيديو يمثل 80% من التقدم
+            ? (vidProg * 0.80) + (audProg * 0.20)
             : vidProg;
         task.sendPort.send(total);
       }
@@ -487,7 +499,6 @@ void _downloadIsolateEntryPoint(_DownloadTask task) async {
       await Future.wait(downloads);
     }
 
-    // 3. إبلاغ النجاح
     task.sendPort.send("DONE");
 
   } catch (e) {
