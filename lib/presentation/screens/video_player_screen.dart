@@ -9,7 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-// ✅ 1. استيراد مكتبة معلومات الجهاز للفحص
+// ✅ استيراد مكتبة فحص الجهاز
 import 'package:device_info_plus/device_info_plus.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
@@ -48,7 +48,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isVideoLoading = true; 
   bool _isOfflineMode = false;
   
-  // ✅ متغير لتحديد هل الجهاز ضعيف أم لا
+  // ✅ متغير لتحديد الأجهزة الضعيفة (مثل Exynos 7870)
   bool _isWeakDevice = false; 
 
   int _stabilizingCountdown = 0;
@@ -61,7 +61,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String _watermarkText = "";
 
   final Map<String, String> _serverHeaders = {
-    'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12) ExoPlayerLib/2.18.1',
+    'User-Agent': 'ExoPlayerLib/2.18.1 (Linux; Android 12)',
   };
   final Map<String, String> _youtubeHeaders = {}; 
 
@@ -72,7 +72,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _initializePlayerScreen() async {
-    FirebaseCrashlytics.instance.log("🎬 MediaKit: Init Started for '${widget.title}'");
+    FirebaseCrashlytics.instance.log("🎬 MediaKit: Optimized Init for '${widget.title}'");
     await FirebaseCrashlytics.instance.setCustomKey('video_title', widget.title);
 
     try {
@@ -85,54 +85,49 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await WakelockPlus.enable();
       await _startProxyServer();
 
-      // ✅ 2. فحص نوع الجهاز وإصدار الأندرويد
+      // ✅ 1. فحص مواصفات الجهاز لتحديد الإعدادات المناسبة
       if (Platform.isAndroid) {
         try {
           final androidInfo = await DeviceInfoPlugin().androidInfo;
-          // إذا كان أندرويد 9 (API 28) أو أقل، نعتبره جهازاً قديماً
+          // اعتبار الأجهزة بنظام أندرويد 9 (API 28) أو أقل أجهزة ضعيفة
           if (androidInfo.version.sdkInt <= 28) {
             _isWeakDevice = true;
-            FirebaseCrashlytics.instance.log("📱 Weak/Old Device Detected (API ${androidInfo.version.sdkInt}). Mode: Legacy.");
-          } else {
-            FirebaseCrashlytics.instance.log("📱 Modern Device Detected (API ${androidInfo.version.sdkInt}). Mode: Standard.");
+            FirebaseCrashlytics.instance.log("📱 Weak Device Mode Enabled (API ${androidInfo.version.sdkInt})");
           }
         } catch (e) {
-          // في حال فشل الفحص، نفترض أنه جهاز ضعيف للأمان
+          // في حال فشل الفحص، نفترض الأسوأ للأمان
           _isWeakDevice = true; 
         }
       }
 
       _player = Player(
         configuration: PlayerConfiguration(
-          // ✅ زيادة البفر للأجهزة الضعيفة (16MB) لتقليل الضغط على المعالج أثناء فك التشفير
-          bufferSize: _isWeakDevice ? 16 * 1024 * 1024 : 32 * 1024 * 1024,
+          // ✅ 2. تقليل البفر لـ 8MB للأجهزة الضعيفة لتخفيف الحمل على الرام والبروكسي
+          bufferSize: _isWeakDevice ? 8 * 1024 * 1024 : 32 * 1024 * 1024,
           vo: 'gpu', 
         ),
       );
       
-      // ✅ 3. تطبيق إعدادات فك التشفير
+      // ✅ 3. تحسين إعدادات فك التشفير
       if (_isWeakDevice) {
-        // للأجهزة القديمة: تعطيل ديكودر الهاردوير لمنع التعارض مع التشفير
-        await (_player.platform as dynamic).setProperty('hwdec', 'no'); 
-        // تقليل عدد خيوط المعالجة لمنع الاختناق (CPU throttling)
+        // استخدام auto-safe لمحاولة استخدام الهاردوير بأمان
+        await (_player.platform as dynamic).setProperty('hwdec', 'auto-safe'); 
+        // تحديد عدد خيوط المعالجة لتجنب استهلاك 100% من المعالج
         await (_player.platform as dynamic).setProperty('vd-lavc-threads', '2');
       } else {
-        // للأجهزة الحديثة: تركه تلقائي
         await (_player.platform as dynamic).setProperty('hwdec', 'auto');
       }
 
       _controller = VideoController(
         _player,
         configuration: VideoControllerConfiguration(
-          // ✅ 4. إعدادات التحكم بناءً على قوة الجهاز
-          enableHardwareAcceleration: !_isWeakDevice, 
+          enableHardwareAcceleration: true, 
           androidAttachSurfaceAfterVideoParameters: !_isWeakDevice, 
         ),
       );
 
       _player.stream.error.listen((error) {
         debugPrint("🚨 MediaKit Stream Error: $error");
-        // تجاهل أخطاء فتح الملف إذا كانت مؤقتة
         if (!error.toString().contains("Failed to open")) {
            FirebaseCrashlytics.instance.recordError(error, null, reason: 'MediaKit Stream Error');
         }
@@ -142,7 +137,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (!buffering && _isVideoLoading) {
           if (mounted) {
             setState(() => _isVideoLoading = false);
-            
             if (_isOfflineMode) {
                _startCountdown();
             } else {
@@ -156,9 +150,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _startWatermarkAnimation();
 
       if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
+        setState(() => _isInitialized = true);
         _parseQualities();
       }
 
@@ -182,120 +174,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Future<void> _resetSystemChrome() async {
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
-    await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-  }
-
-  Future<void> _safeExit() async {
-    if (_isDisposing) return;
-    
-    if (mounted) {
-      setState(() {
-        _isDisposing = true;
-      });
-    }
-
-    try {
-      _watermarkTimer?.cancel();
-      _countdownTimer?.cancel();
-      await _player.stop(); 
-      await _player.dispose(); 
-      _proxyService.stop(); 
-      await _resetSystemChrome();
-      await WakelockPlus.disable();
-    } catch (e) {
-      debugPrint("⚠️ SafeExit Error: $e");
-    } finally {
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    }
-  }
-
-  void _loadUserData() {
-    String displayText = '';
-    if (AppState().userData != null) {
-      displayText = AppState().userData!['phone'] ?? '';
-    }
-    if (displayText.isEmpty) {
-      try {
-        if (Hive.isBoxOpen('auth_box')) {
-          var box = Hive.box('auth_box');
-          displayText = box.get('phone') ?? box.get('username') ?? '';
-        }
-      } catch (e) { /* ignore */ }
-    }
-    if (mounted) {
-      setState(() {
-        _watermarkText = displayText.isNotEmpty ? displayText : 'User';
-      });
-    }
-  }
-
-  void _startWatermarkAnimation() {
-    _watermarkTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (_isDisposing) { timer.cancel(); return; }
-      if (mounted) {
-        setState(() {
-          final random = Random();
-          double x = (random.nextDouble() * 1.6) - 0.8;
-          double y = (random.nextDouble() * 1.6) - 0.8;
-          _watermarkAlignment = Alignment(x, y);
-        });
-      }
-    });
-  }
-
-  void _startCountdown() {
-    // وقت أقل للأجهزة الضعيفة لأننا ننتظرها في التحميل أصلاً
-    setState(() => _stabilizingCountdown = _isWeakDevice ? 5 : 10); 
-    _countdownTimer?.cancel();
-    
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_isDisposing) {
-        timer.cancel();
-        return;
-      }
-      
-      if (_stabilizingCountdown <= 1) {
-        timer.cancel();
-        if (mounted) {
-          setState(() => _stabilizingCountdown = 0);
-          _player.play(); 
-        }
-      } else {
-        if (mounted) setState(() => _stabilizingCountdown--);
-      }
-    });
-  }
-
-  void _parseQualities() {
-    if (widget.streams.isEmpty) {
-      setState(() {
-        _isError = true;
-        _errorMessage = "No video sources available";
-        _isVideoLoading = false;
-      });
-      return;
-    }
-
-    _sortedQualities = widget.streams.keys.toList();
-    _sortedQualities.sort((a, b) {
-      int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-      int valB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-      return valA.compareTo(valB);
-    });
-
-    _currentQuality = _sortedQualities.contains("480p") 
-        ? "480p" 
-        : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
-
-    if (_currentQuality.isNotEmpty) {
-      _playVideo(widget.streams[_currentQuality]!);
-    }
-  }
-
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
     
@@ -311,29 +189,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       _isOfflineMode = false;
 
-      // 1. استخراج الروابط (أوفلاين أو أونلاين)
-      if (widget.preReadyAudioUrl != null && !url.startsWith('http')) {
-         audioUrl = widget.preReadyAudioUrl;
-         _isOfflineMode = true;
-      } else if (url.contains('127.0.0.1')) {
-         _isOfflineMode = true;
-      }
-
-      if (url.contains('|')) {
-        final parts = url.split('|');
-        playUrl = parts[0];
-        if (parts.length > 1) audioUrl = parts[1];
-      } else if (!url.startsWith('http')) {
+      // ✅ 4. منطق توزيع المنافذ (8080 للفيديو و 8081 للصوت)
+      if (!url.startsWith('http')) {
+        _isOfflineMode = true;
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
         
-        playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
+        // الفيديو يذهب للمنفذ الأساسي 8080
+        playUrl = 'http://127.0.0.1:8080/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
 
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
            try {
              final absoluteVideoPath = file.absolute.path;
-             // البحث عن العنصر في قاعدة البيانات
              final downloadItem = box.values.firstWhere(
                (item) => item['path'] != null && File(item['path']).absolute.path == absoluteVideoPath, 
                orElse: () => null
@@ -341,7 +209,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
              if (downloadItem != null && downloadItem['audioPath'] != null) {
                 final audioPath = downloadItem['audioPath'];
                 if (await File(audioPath).exists()) {
-                   audioUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
+                   // ✅ الصوت يذهب للمنفذ الثانوي 8081 (المعزول)
+                   audioUrl = 'http://127.0.0.1:8081/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
                 }
              }
            } catch (_) {}
@@ -358,16 +227,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
-      // 2. تشغيل الفيديو أولاً
+      // تشغيل الفيديو أولاً
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false 
       );
 
-      // 3. ✅ المنطق الجديد: إضافة الصوت بتأخير وإعادة محاولة
+      // ✅ 5. تحميل الصوت بتأخير ذكي
       if (audioUrl != null) {
-        // للأجهزة الضعيفة: ننتظر وقتاً أطول (3 ثوان) ليتمكن المعالج من التعامل مع الفيديو أولاً
-        int delayMs = _isWeakDevice ? 3000 : 500;
+        // تأخير أطول للأجهزة الضعيفة (3.5 ثانية) للسماح للفيديو بالاستقرار
+        int delayMs = _isWeakDevice ? 3500 : 500;
         await Future.delayed(Duration(milliseconds: delayMs));
 
         try {
@@ -377,14 +246,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             language: "en"
           ));
         } catch (e) {
-          FirebaseCrashlytics.instance.log("⚠️ Audio load failed initially, retrying...");
-          // إعادة المحاولة مرة واحدة بعد ثانية في حال فشل الطلب الأول
-          await Future.delayed(const Duration(seconds: 1));
+          FirebaseCrashlytics.instance.log("⚠️ Audio load retry...");
+          await Future.delayed(const Duration(seconds: 2));
           try {
              await _player.setAudioTrack(AudioTrack.uri(audioUrl, title: "HQ Audio", language: "en"));
-          } catch (_) {
-             FirebaseCrashlytics.instance.log("❌ Audio load failed on retry.");
-          }
+          } catch (_) {}
         }
       }
       
@@ -431,7 +297,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               child: Text("Settings", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))
             ),
             const Divider(color: Colors.white24),
-            
             ListTile(
               leading: const Icon(LucideIcons.monitor, color: Colors.white),
               title: Text("Quality: $_currentQuality", style: const TextStyle(color: Colors.white)),
@@ -440,7 +305,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 _showQualitySelection();
               },
             ),
-
             ListTile(
               leading: const Icon(LucideIcons.gauge, color: Colors.white),
               title: Text("Speed: ${_currentSpeed}x", style: const TextStyle(color: Colors.white)),
@@ -503,16 +367,124 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
+  void _startCountdown() {
+    // تقليل الوقت للأجهزة الضعيفة لأنها تأخذ وقتاً أطول في التحميل المسبق أصلاً
+    setState(() => _stabilizingCountdown = _isWeakDevice ? 6 : 10); 
+    _countdownTimer?.cancel();
+    
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_isDisposing) {
+        timer.cancel();
+        return;
+      }
+      
+      if (_stabilizingCountdown <= 1) {
+        timer.cancel();
+        if (mounted) {
+          setState(() => _stabilizingCountdown = 0);
+          _player.play(); 
+        }
+      } else {
+        if (mounted) setState(() => _stabilizingCountdown--);
+      }
+    });
+  }
+
+  void _parseQualities() {
+    if (widget.streams.isEmpty) {
+      setState(() {
+        _isError = true;
+        _errorMessage = "No video sources available";
+        _isVideoLoading = false;
+      });
+      return;
+    }
+
+    _sortedQualities = widget.streams.keys.toList();
+    _sortedQualities.sort((a, b) {
+      int valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+      int valB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+      return valA.compareTo(valB);
+    });
+
+    _currentQuality = _sortedQualities.contains("480p") 
+        ? "480p" 
+        : (_sortedQualities.isNotEmpty ? _sortedQualities.first : "");
+
+    if (_currentQuality.isNotEmpty) {
+      _playVideo(widget.streams[_currentQuality]!);
+    }
+  }
+
+  void _loadUserData() {
+    String displayText = '';
+    if (AppState().userData != null) {
+      displayText = AppState().userData!['phone'] ?? '';
+    }
+    if (displayText.isEmpty) {
+      try {
+        if (Hive.isBoxOpen('auth_box')) {
+          var box = Hive.box('auth_box');
+          displayText = box.get('phone') ?? box.get('username') ?? '';
+        }
+      } catch (e) { /* ignore */ }
+    }
+    if (mounted) {
+      setState(() {
+        _watermarkText = displayText.isNotEmpty ? displayText : 'User';
+      });
+    }
+  }
+
+  void _startWatermarkAnimation() {
+    _watermarkTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (_isDisposing) { timer.cancel(); return; }
+      if (mounted) {
+        setState(() {
+          final random = Random();
+          double x = (random.nextDouble() * 1.6) - 0.8;
+          double y = (random.nextDouble() * 1.6) - 0.8;
+          _watermarkAlignment = Alignment(x, y);
+        });
+      }
+    });
+  }
+
+  Future<void> _resetSystemChrome() async {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
+    await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+  }
+
+  Future<void> _safeExit() async {
+    if (_isDisposing) return;
+    
+    if (mounted) {
+      setState(() {
+        _isDisposing = true;
+      });
+    }
+
+    try {
+      _watermarkTimer?.cancel();
+      _countdownTimer?.cancel();
+      await _player.stop(); 
+      await _player.dispose(); 
+      _proxyService.stop(); 
+      await _resetSystemChrome();
+      await WakelockPlus.disable();
+    } catch (e) {
+      debugPrint("⚠️ SafeExit Error: $e");
+    } finally {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
   @override
   void dispose() {
     if (!_isDisposing) {
-       _isDisposing = true;
-       _watermarkTimer?.cancel();
-       _countdownTimer?.cancel();
-       _player.dispose(); 
-       _proxyService.stop();
-       _resetSystemChrome();
-       WakelockPlus.disable();
+       _safeExit();
     }
     super.dispose();
   }
@@ -521,6 +493,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).viewPadding;
     
+    // تعريف عناصر التحكم
     final controlsTheme = MaterialVideoControlsThemeData(
       displaySeekBar: false,
       padding: EdgeInsets.only(
