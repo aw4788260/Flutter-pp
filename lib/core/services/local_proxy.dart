@@ -18,13 +18,17 @@ class LocalProxyService {
   
   LocalProxyService._internal();
 
-  // ✅ تعريف خيطين منفصلين: واحد للفيديو وواحد للصوت
+  // خيوط المعالجة المنفصلة
   Isolate? _videoServerIsolate;
   Isolate? _audioServerIsolate;
   
-  // ✅ منافذ منفصلة (استخدم هذه المتغيرات بدلاً من port)
-  final int videoPort = 8080;
-  final int audioPort = 8081;
+  // ✅ المنافذ أصبحت متغيرات (ليست ثابتة) لأن النظام سيحددها
+  int _videoPort = 0;
+  int _audioPort = 0;
+
+  // Getters للوصول للمنافذ من خارج الكلاس
+  int get videoPort => _videoPort;
+  int get audioPort => _audioPort;
   
   ReceivePort? _videoReceivePort;
   ReceivePort? _audioReceivePort;
@@ -32,8 +36,8 @@ class LocalProxyService {
   Completer<void>? _readyCompleter;
 
   Future<void> start() async {
-    // إذا كان كلاهما يعمل، لا داعي لإعادة التشغيل
-    if (_videoServerIsolate != null && _audioServerIsolate != null) {
+    // ✅ Keep-Alive: إذا كان السيرفر يعمل بالفعل، لا تفعل شيئاً وعد فوراً
+    if (_videoServerIsolate != null && _audioServerIsolate != null && _videoPort != 0 && _audioPort != 0) {
       if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
         await _readyCompleter!.future;
       }
@@ -47,17 +51,20 @@ class LocalProxyService {
       String keyBase64 = EncryptionHelper.key.base64;
       
       // ---------------------------------------------------------
-      // 1. تشغيل سيرفر الفيديو (Port 8080)
+      // 1. تشغيل سيرفر الفيديو (منفذ 0 = عشوائي)
       // ---------------------------------------------------------
       _videoReceivePort = ReceivePort();
       _videoServerIsolate = await Isolate.spawn(
         _proxyServerEntryPoint, 
-        _ProxyInitData(_videoReceivePort!.sendPort, keyBase64, videoPort, "VideoIsolate")
+        _ProxyInitData(_videoReceivePort!.sendPort, keyBase64, "VideoIsolate")
       );
       
+      // انتظار رسالة الجاهزية مع رقم المنفذ
       await for (final message in _videoReceivePort!) {
-        if (message == "READY") {
-          print('✅ Video Proxy (8080) is READY');
+        if (message is String && message.startsWith("READY:")) {
+          // استخراج رقم المنفذ الذي خصصه النظام
+          _videoPort = int.parse(message.split(':')[1]);
+          print('✅ Video Proxy Started on dynamic port: $_videoPort');
           break; 
         } else if (message.toString().startsWith("ERROR")) {
           throw Exception("Video Proxy Failed: $message");
@@ -65,17 +72,20 @@ class LocalProxyService {
       }
 
       // ---------------------------------------------------------
-      // 2. تشغيل سيرفر الصوت (Port 8081)
+      // 2. تشغيل سيرفر الصوت (منفذ 0 = عشوائي)
       // ---------------------------------------------------------
       _audioReceivePort = ReceivePort();
       _audioServerIsolate = await Isolate.spawn(
         _proxyServerEntryPoint, 
-        _ProxyInitData(_audioReceivePort!.sendPort, keyBase64, audioPort, "AudioIsolate")
+        _ProxyInitData(_audioReceivePort!.sendPort, keyBase64, "AudioIsolate")
       );
 
+      // انتظار رسالة الجاهزية مع رقم المنفذ
       await for (final message in _audioReceivePort!) {
-        if (message == "READY") {
-          print('✅ Audio Proxy (8081) is READY');
+        if (message is String && message.startsWith("READY:")) {
+          // استخراج رقم المنفذ الذي خصصه النظام
+          _audioPort = int.parse(message.split(':')[1]);
+          print('✅ Audio Proxy Started on dynamic port: $_audioPort');
           break; 
         } else if (message.toString().startsWith("ERROR")) {
           throw Exception("Audio Proxy Failed: $message");
@@ -93,6 +103,8 @@ class LocalProxyService {
 
   void stop() {
     _readyCompleter = null;
+    _videoPort = 0;
+    _audioPort = 0;
     
     if (_videoServerIsolate != null) {
         print('🛑 Stopping Video Proxy');
@@ -110,15 +122,16 @@ class LocalProxyService {
   }
 }
 
+// كلاس البيانات (تم حذف port منه لأننا نستخدم 0 دائماً)
 class _ProxyInitData {
   final SendPort sendPort;
   final String keyBase64;
-  final int port;
   final String name;
 
-  _ProxyInitData(this.sendPort, this.keyBase64, this.port, this.name);
+  _ProxyInitData(this.sendPort, this.keyBase64, this.name);
 }
 
+// نقطة البداية (مشتركة للخيطين)
 void _proxyServerEntryPoint(_ProxyInitData initData) async {
    try {
      final key = encrypt.Key.fromBase64(initData.keyBase64);
@@ -128,17 +141,19 @@ void _proxyServerEntryPoint(_ProxyInitData initData) async {
      router.get('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
      router.head('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
      
+     // ✅ التعديل هنا: استخدام المنفذ 0 ليختار النظام منفذاً متاحاً
      final server = await shelf_io.serve(
        router, 
        InternetAddress.anyIPv4, 
-       initData.port, 
+       0, // Dynamic Port
        shared: false
      );
      
      server.autoCompress = false;
      server.idleTimeout = const Duration(seconds: 60);
      
-     initData.sendPort.send("READY");
+     // ✅ إرسال رقم المنفذ الفعلي للخيط الرئيسي
+     initData.sendPort.send("READY:${server.port}");
      
    } catch (e) {
      initData.sendPort.send("ERROR: $e");
@@ -153,6 +168,8 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     final decodedPath = Uri.decodeComponent(pathParam);
     final file = File(decodedPath);
     
+    // print("🔗 [$isolateName] Request: ${request.method} -> $decodedPath");
+
     if (!await file.exists()) {
       return Response.notFound('File not found');
     }
@@ -216,7 +233,7 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     );
 
   } catch (e) {
-    print("Proxy Request Error: $e");
+    print("[$isolateName] Request Error: $e");
     return Response.internalServerError(body: 'Proxy Error');
   }
 }
@@ -256,13 +273,20 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
       Uint8List outputBlock;
 
       try {
-        if (encryptedBlock.length < IV_LENGTH) throw Exception("Invalid block size");
+        if (encryptedBlock.length < IV_LENGTH) {
+             throw Exception("Invalid block size");
+        }
         final iv = encrypt.IV(encryptedBlock.sublist(0, IV_LENGTH));
         final cipherBytes = encryptedBlock.sublist(IV_LENGTH);
+        
         final decrypted = encrypter.decryptBytes(encrypt.Encrypted(cipherBytes), iv: iv);
         outputBlock = Uint8List.fromList(decrypted);
+
       } catch (e) {
-         int expectedSize = (bytesToRead == ENCRYPTED_CHUNK_SIZE) ? CHUNK_SIZE : max(0, bytesToRead - IV_LENGTH - TAG_LENGTH);
+         // في حالة وجود خطأ في بايت واحد، نرسل بلوك فارغ لتجنب قطع الاتصال بالكامل
+         int expectedSize = (bytesToRead == ENCRYPTED_CHUNK_SIZE) 
+             ? CHUNK_SIZE 
+             : max(0, bytesToRead - IV_LENGTH - TAG_LENGTH);
          outputBlock = Uint8List(expectedSize);
       }
 
@@ -283,7 +307,9 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
   } finally {
     if (totalSent < requiredLength) {
         int missingBytes = requiredLength - totalSent;
-        if (missingBytes < 512 * 1024) yield Uint8List(missingBytes);
+        if (missingBytes < 512 * 1024) {
+           yield Uint8List(missingBytes);
+        }
     }
     await raf?.close();
   }
