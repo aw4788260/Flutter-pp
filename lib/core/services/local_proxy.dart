@@ -18,14 +18,22 @@ class LocalProxyService {
   
   LocalProxyService._internal();
 
-  Isolate? _serverIsolate;
-  final int port = 8080;
+  // ✅ تعريف خيطين منفصلين: واحد للفيديو وواحد للصوت
+  Isolate? _videoServerIsolate;
+  Isolate? _audioServerIsolate;
   
-  ReceivePort? _receivePort;
+  // ✅ منافذ منفصلة
+  final int videoPort = 8080;
+  final int audioPort = 8081;
+  
+  ReceivePort? _videoReceivePort;
+  ReceivePort? _audioReceivePort;
+  
   Completer<void>? _readyCompleter;
 
   Future<void> start() async {
-    if (_serverIsolate != null) {
+    // إذا كان كلاهما يعمل، لا داعي لإعادة التشغيل
+    if (_videoServerIsolate != null && _audioServerIsolate != null) {
       if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
         await _readyCompleter!.future;
       }
@@ -38,59 +46,92 @@ class LocalProxyService {
       await EncryptionHelper.init();
       String keyBase64 = EncryptionHelper.key.base64;
       
-      _receivePort = ReceivePort();
-
-      _serverIsolate = await Isolate.spawn(
+      // ---------------------------------------------------------
+      // 1. تشغيل سيرفر الفيديو (Port 8080)
+      // ---------------------------------------------------------
+      _videoReceivePort = ReceivePort();
+      _videoServerIsolate = await Isolate.spawn(
         _proxyServerEntryPoint, 
-        _ProxyInitData(_receivePort!.sendPort, keyBase64, port)
+        _ProxyInitData(_videoReceivePort!.sendPort, keyBase64, videoPort, "VideoIsolate")
       );
       
-      await for (final message in _receivePort!) {
+      // ننتظر جاهزية سيرفر الفيديو
+      await for (final message in _videoReceivePort!) {
         if (message == "READY") {
-          print('✅ Proxy Isolate is READY and Listening on port $port');
-          _readyCompleter?.complete();
+          print('✅ Video Proxy (8080) is READY');
           break; 
         } else if (message.toString().startsWith("ERROR")) {
-          print('❌ Proxy Start Error: $message');
-          _readyCompleter?.completeError(message);
-          stop(); 
-          break;
+          throw Exception("Video Proxy Failed: $message");
         }
       }
+
+      // ---------------------------------------------------------
+      // 2. تشغيل سيرفر الصوت (Port 8081)
+      // ---------------------------------------------------------
+      _audioReceivePort = ReceivePort();
+      _audioServerIsolate = await Isolate.spawn(
+        _proxyServerEntryPoint, 
+        _ProxyInitData(_audioReceivePort!.sendPort, keyBase64, audioPort, "AudioIsolate")
+      );
+
+      // ننتظر جاهزية سيرفر الصوت
+      await for (final message in _audioReceivePort!) {
+        if (message == "READY") {
+          print('✅ Audio Proxy (8081) is READY');
+          break; 
+        } else if (message.toString().startsWith("ERROR")) {
+          throw Exception("Audio Proxy Failed: $message");
+        }
+      }
+
+      // اكتمل التشغيل بنجاح
+      _readyCompleter?.complete();
       
     } catch (e) {
-      print("Proxy Launch Error: $e");
+      print("❌ Proxy Launch Error: $e");
+      _readyCompleter?.completeError(e);
       stop();
     }
   }
 
   void stop() {
     _readyCompleter = null;
-    if (_serverIsolate != null) {
-        print('🛑 Stopping Proxy Isolate');
-        _receivePort?.close();
-        _serverIsolate?.kill(priority: Isolate.immediate);
-        _serverIsolate = null;
+    
+    if (_videoServerIsolate != null) {
+        print('🛑 Stopping Video Proxy');
+        _videoReceivePort?.close();
+        _videoServerIsolate?.kill(priority: Isolate.immediate);
+        _videoServerIsolate = null;
+    }
+
+    if (_audioServerIsolate != null) {
+        print('🛑 Stopping Audio Proxy');
+        _audioReceivePort?.close();
+        _audioServerIsolate?.kill(priority: Isolate.immediate);
+        _audioServerIsolate = null;
     }
   }
 }
 
+// كلاس البيانات (تم إضافة الاسم للتمييز في اللوجات)
 class _ProxyInitData {
   final SendPort sendPort;
   final String keyBase64;
   final int port;
+  final String name;
 
-  _ProxyInitData(this.sendPort, this.keyBase64, this.port);
+  _ProxyInitData(this.sendPort, this.keyBase64, this.port, this.name);
 }
 
+// نقطة البداية (مشتركة للخيطين لكن ببيانات مختلفة)
 void _proxyServerEntryPoint(_ProxyInitData initData) async {
    try {
      final key = encrypt.Key.fromBase64(initData.keyBase64);
      final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.gcm));
      
      final router = Router();
-     router.get('/video', (Request req) => _handleRequest(req, encrypter));
-     router.head('/video', (Request req) => _handleRequest(req, encrypter));
+     router.get('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
+     router.head('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
      
      final server = await shelf_io.serve(
        router, 
@@ -102,6 +143,7 @@ void _proxyServerEntryPoint(_ProxyInitData initData) async {
      server.autoCompress = false;
      server.idleTimeout = const Duration(seconds: 60);
      
+     print("🚀 ${initData.name} listening on port ${initData.port}");
      initData.sendPort.send("READY");
      
    } catch (e) {
@@ -109,7 +151,7 @@ void _proxyServerEntryPoint(_ProxyInitData initData) async {
    }
 }
 
-Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter) async {
+Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, String isolateName) async {
   try {
     final pathParam = request.url.queryParameters['path'];
     if (pathParam == null) return Response.notFound('Path missing');
@@ -117,15 +159,13 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter) as
     final decodedPath = Uri.decodeComponent(pathParam);
     final file = File(decodedPath);
     
-    // ✅ تسجيل وصول الطلب لتسهيل التتبع
-    print("🔗 Proxy Request: ${request.method} | Type: ${decodedPath.contains('aud_') ? 'AUDIO' : 'VIDEO'}");
+    // طباعة اسم الخيط لمعرفة من يعالج الطلب
+    print("🔗 [$isolateName] Request: ${request.method} -> $decodedPath");
 
     if (!await file.exists()) {
-      print("❌ File not found: $decodedPath");
       return Response.notFound('File not found');
     }
 
-    // ✅ تحسين تحديد نوع المحتوى لضمان استجابة المشغل بشكل صحيح
     String contentType = 'video/mp4'; 
     if (decodedPath.contains('aud_')) {
       contentType = 'audio/mp4';
@@ -185,7 +225,7 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter) as
     );
 
   } catch (e) {
-    print("Proxy Request Error: $e");
+    print("[$isolateName] Request Error: $e");
     return Response.internalServerError(body: 'Proxy Error');
   }
 }
@@ -210,8 +250,8 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
     for (int i = startChunkIndex; i <= endChunkIndex; i++) {
       if (totalSent >= requiredLength) break;
 
-      // ✅ التعديل الأهم: إعطاء فرصة للمعالج (Isolate) لاستقبال طلبات الصوت أثناء فك تشفير الفيديو
-      // هذا يمنع "تجمد" البروكسي عند فك التشفير البرمجي الثقيل على ARMv7
+      // ✅ تأخير بسيط جداً لمنع استحواذ الخيط على النواة بالكامل
+      // حتى مع وجود خيطين، هذا مفيد للأجهزة الضعيفة جداً
       await Future.delayed(Duration.zero);
 
       int seekPos = i * ENCRYPTED_CHUNK_SIZE;
@@ -236,7 +276,7 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
         outputBlock = Uint8List.fromList(decrypted);
 
       } catch (e) {
-         print("Decryption Error at chunk $i: $e");
+         // في حالة الخطأ نرسل بلوك فارغ لتجنب قطع الاتصال
          int expectedSize = (bytesToRead == ENCRYPTED_CHUNK_SIZE) 
              ? CHUNK_SIZE 
              : max(0, bytesToRead - IV_LENGTH - TAG_LENGTH);
