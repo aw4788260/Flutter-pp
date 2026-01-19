@@ -60,8 +60,8 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
       await proxy.start(); 
 
       // 3. تجهيز الروابط (Video & Audio)
-      // نستخدم 127.0.0.1 لأننا تأكدنا أن السيرفر يعمل ويستمع
-      String playUrl = 'http://127.0.0.1:${proxy.port}/video?path=${Uri.encodeComponent(filePath)}&ext=.mp4';
+      // ✅ تعديل: استخدام videoPort بدلاً من port لتوجيه الفيديو للخيط المخصص (8080)
+      String playUrl = 'http://127.0.0.1:${proxy.videoPort}/video?path=${Uri.encodeComponent(filePath)}&ext=.mp4';
       String? audioUrl;
 
       // محاولة العثور على ملف الصوت المرتبط
@@ -69,13 +69,13 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
         final String audioPath = item['audioPath'];
         final File audioFile = File(audioPath);
         if (await audioFile.exists()) {
-           audioUrl = 'http://127.0.0.1:${proxy.port}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
-           FirebaseCrashlytics.instance.log("✅ Audio found and prepared.");
+           // ✅ تعديل: استخدام audioPort بدلاً من port لتوجيه الصوت للخيط المعزول (8081)
+           audioUrl = 'http://127.0.0.1:${proxy.audioPort}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
+           FirebaseCrashlytics.instance.log("✅ Audio found and prepared on dedicated port.");
         }
       }
 
       // 4. (خطوة أمان) إجراء "Ping" سريع جداً للتأكد أن البروكسي يرد
-      // هذا يضمن أن السيرفر مستقر قبل فتح المشغل
       try {
         final dio = Dio();
         // Timeout قصير جداً (500ms) لأننا نتصل محلياً
@@ -83,7 +83,6 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
         FirebaseCrashlytics.instance.log("✅ Proxy Ping Success");
       } catch (e) {
         FirebaseCrashlytics.instance.log("⚠️ Proxy Ping Warning: $e (Proceeding anyway)");
-        // لا نوقف العملية هنا، ربما الخطأ في Dio ولكن المشغل قد ينجح
       }
 
       // 5. إغلاق ديالوج التحميل
@@ -100,7 +99,6 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
               title: item['title'] ?? "Offline Video",
               
               // ✅✅ هام جداً: نمرر رابط الصوت الجاهز هنا
-              // هذا يضمن أن المشغل يعرف بوجود صوت ويطلبه فوراً
               preReadyAudioUrl: audioUrl, 
             ),
           ),
