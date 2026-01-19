@@ -56,11 +56,12 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
       FirebaseCrashlytics.instance.log("🚀 Pre-warming offline video: ${item['title']}");
 
       // 2. تشغيل السيرفر المحلي (البروكسي) وانتظار استعداده
+      // لن يعيد التشغيل إذا كان يعمل بالفعل (بفضل تعديلات Keep-Alive)
       final proxy = LocalProxyService();
       await proxy.start(); 
 
-      // 3. تجهيز الروابط (Video & Audio)
-      // ✅ تعديل: استخدام videoPort بدلاً من port لتوجيه الفيديو للخيط المخصص (8080)
+      // 3. تجهيز الروابط (Video & Audio) باستخدام المنافذ الديناميكية
+      // ✅ تعديل: استخدام videoPort بدلاً من port لتوجيه الفيديو للخيط المخصص
       String playUrl = 'http://127.0.0.1:${proxy.videoPort}/video?path=${Uri.encodeComponent(filePath)}&ext=.mp4';
       String? audioUrl;
 
@@ -69,9 +70,9 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
         final String audioPath = item['audioPath'];
         final File audioFile = File(audioPath);
         if (await audioFile.exists()) {
-           // ✅ تعديل: استخدام audioPort بدلاً من port لتوجيه الصوت للخيط المعزول (8081)
+           // ✅ تعديل: استخدام audioPort بدلاً من port لتوجيه الصوت للخيط المعزول
            audioUrl = 'http://127.0.0.1:${proxy.audioPort}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
-           FirebaseCrashlytics.instance.log("✅ Audio found and prepared on dedicated port.");
+           FirebaseCrashlytics.instance.log("✅ Audio found and prepared on dedicated port: ${proxy.audioPort}");
         }
       }
 
