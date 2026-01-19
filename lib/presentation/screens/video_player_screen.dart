@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+// ✅ 1. استيراد مكتبة معلومات الجهاز للفحص
 import 'package:device_info_plus/device_info_plus.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
@@ -46,6 +47,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   
   bool _isVideoLoading = true; 
   bool _isOfflineMode = false;
+  
+  // ✅ متغير لتحديد هل الجهاز ضعيف أم لا
+  bool _isWeakDevice = false; 
 
   int _stabilizingCountdown = 0;
   Timer? _countdownTimer;
@@ -81,53 +85,57 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await WakelockPlus.enable();
       await _startProxyServer();
 
-      // 1. فحص نوع الجهاز وإصدار الأندرويد
-      bool isWeakDevice = false;
-
+      // ✅ 2. فحص نوع الجهاز وإصدار الأندرويد
       if (Platform.isAndroid) {
         try {
           final androidInfo = await DeviceInfoPlugin().androidInfo;
           // إذا كان أندرويد 9 (API 28) أو أقل، نعتبره جهازاً قديماً
-          if (androidInfo.version.sdkInt < 29) {
-            isWeakDevice = true;
-            FirebaseCrashlytics.instance.log("📱 Weak Device Detected (API ${androidInfo.version.sdkInt}). Enforcing Strict SW Decoding.");
+          if (androidInfo.version.sdkInt <= 28) {
+            _isWeakDevice = true;
+            FirebaseCrashlytics.instance.log("📱 Weak/Old Device Detected (API ${androidInfo.version.sdkInt}). Mode: Legacy.");
           } else {
-            FirebaseCrashlytics.instance.log("📱 Modern Device Detected (API ${androidInfo.version.sdkInt}). Using Auto HW Decoding.");
+            FirebaseCrashlytics.instance.log("📱 Modern Device Detected (API ${androidInfo.version.sdkInt}). Mode: Standard.");
           }
         } catch (e) {
-          isWeakDevice = true; 
+          // في حال فشل الفحص، نفترض أنه جهاز ضعيف للأمان
+          _isWeakDevice = true; 
         }
       }
 
       _player = Player(
         configuration: PlayerConfiguration(
-          // تقليل البفر للأجهزة الضعيفة لتوفير الرام (8MB)، وزيادته للقوية (32MB)
-          bufferSize: isWeakDevice ? 8 * 1024 * 1024 : 32 * 1024 * 1024,
+          // ✅ زيادة البفر للأجهزة الضعيفة (16MB) لتقليل الضغط على المعالج أثناء فك التشفير
+          bufferSize: _isWeakDevice ? 16 * 1024 * 1024 : 32 * 1024 * 1024,
           vo: 'gpu', 
         ),
       );
       
-      // 2. تطبيق إعدادات فك التشفير الصارمة
-      if (isWeakDevice) {
-        // للأجهزة القديمة: منع الهاردوير نهائياً + زيادة خيوط المعالج
+      // ✅ 3. تطبيق إعدادات فك التشفير
+      if (_isWeakDevice) {
+        // للأجهزة القديمة: تعطيل ديكودر الهاردوير لمنع التعارض مع التشفير
         await (_player.platform as dynamic).setProperty('hwdec', 'no'); 
-        await (_player.platform as dynamic).setProperty('vd-lavc-threads', '4');
+        // تقليل عدد خيوط المعالجة لمنع الاختناق (CPU throttling)
+        await (_player.platform as dynamic).setProperty('vd-lavc-threads', '2');
       } else {
-        // للأجهزة الحديثة: تلقائي
+        // للأجهزة الحديثة: تركه تلقائي
         await (_player.platform as dynamic).setProperty('hwdec', 'auto');
       }
 
       _controller = VideoController(
         _player,
         configuration: VideoControllerConfiguration(
-          enableHardwareAcceleration: !isWeakDevice, 
-          androidAttachSurfaceAfterVideoParameters: !isWeakDevice, 
+          // ✅ 4. إعدادات التحكم بناءً على قوة الجهاز
+          enableHardwareAcceleration: !_isWeakDevice, 
+          androidAttachSurfaceAfterVideoParameters: !_isWeakDevice, 
         ),
       );
 
       _player.stream.error.listen((error) {
         debugPrint("🚨 MediaKit Stream Error: $error");
-        FirebaseCrashlytics.instance.recordError(error, null, reason: 'MediaKit Stream Error (Non-Fatal)');
+        // تجاهل أخطاء فتح الملف إذا كانت مؤقتة
+        if (!error.toString().contains("Failed to open")) {
+           FirebaseCrashlytics.instance.recordError(error, null, reason: 'MediaKit Stream Error');
+        }
       });
 
       _player.stream.buffering.listen((buffering) {
@@ -240,7 +248,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _startCountdown() {
-    setState(() => _stabilizingCountdown = 10);
+    // وقت أقل للأجهزة الضعيفة لأننا ننتظرها في التحميل أصلاً
+    setState(() => _stabilizingCountdown = _isWeakDevice ? 5 : 10); 
     _countdownTimer?.cancel();
     
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -302,6 +311,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       _isOfflineMode = false;
 
+      // 1. استخراج الروابط (أوفلاين أو أونلاين)
       if (widget.preReadyAudioUrl != null && !url.startsWith('http')) {
          audioUrl = widget.preReadyAudioUrl;
          _isOfflineMode = true;
@@ -321,21 +331,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
-           final String absoluteVideoPath = file.absolute.path;
-           final downloadItem = box.values.firstWhere(
-             (item) {
-                if (item['path'] == null) return false;
-                return File(item['path']).absolute.path == absoluteVideoPath;
-             }, 
-             orElse: () => null
-           );
-           if (downloadItem != null && downloadItem['audioPath'] != null) {
-              final String audioPath = downloadItem['audioPath'];
-              final File audioFile = File(audioPath);
-              if (await audioFile.exists()) {
-                 audioUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(audioFile.path)}&ext=.mp4';
-              }
-           }
+           try {
+             final absoluteVideoPath = file.absolute.path;
+             // البحث عن العنصر في قاعدة البيانات
+             final downloadItem = box.values.firstWhere(
+               (item) => item['path'] != null && File(item['path']).absolute.path == absoluteVideoPath, 
+               orElse: () => null
+             );
+             if (downloadItem != null && downloadItem['audioPath'] != null) {
+                final audioPath = downloadItem['audioPath'];
+                if (await File(audioPath).exists()) {
+                   audioUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
+                }
+             }
+           } catch (_) {}
         }
       } else if (url.contains('127.0.0.1')) {
          playUrl = url;
@@ -349,18 +358,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
+      // 2. تشغيل الفيديو أولاً
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false 
       );
 
+      // 3. ✅ المنطق الجديد: إضافة الصوت بتأخير وإعادة محاولة
       if (audioUrl != null) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _player.setAudioTrack(AudioTrack.uri(
-          audioUrl,
-          title: "HQ Audio",
-          language: "en"
-        ));
+        // للأجهزة الضعيفة: ننتظر وقتاً أطول (3 ثوان) ليتمكن المعالج من التعامل مع الفيديو أولاً
+        int delayMs = _isWeakDevice ? 3000 : 500;
+        await Future.delayed(Duration(milliseconds: delayMs));
+
+        try {
+          await _player.setAudioTrack(AudioTrack.uri(
+            audioUrl,
+            title: "HQ Audio",
+            language: "en"
+          ));
+        } catch (e) {
+          FirebaseCrashlytics.instance.log("⚠️ Audio load failed initially, retrying...");
+          // إعادة المحاولة مرة واحدة بعد ثانية في حال فشل الطلب الأول
+          await Future.delayed(const Duration(seconds: 1));
+          try {
+             await _player.setAudioTrack(AudioTrack.uri(audioUrl, title: "HQ Audio", language: "en"));
+          } catch (_) {
+             FirebaseCrashlytics.instance.log("❌ Audio load failed on retry.");
+          }
+        }
       }
       
       if (startAt != null && startAt != Duration.zero) {
