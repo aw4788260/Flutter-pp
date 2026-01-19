@@ -47,7 +47,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isVideoLoading = true; 
   bool _isOfflineMode = false;
   
-  // متغير لتحديد الأجهزة الضعيفة (أندرويد 9 وما قبل)
   bool _isWeakDevice = false; 
 
   int _stabilizingCountdown = 0;
@@ -59,7 +58,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
 
-  // ✅ متغيرات جديدة لتحسين التقديم والتأخير (Debounce)
+  // مؤقت لتجميع نقرات التقديم والتاخير (Debounce)
   Timer? _seekDebounceTimer;
   Duration _accumulatedSeekAmount = Duration.zero;
 
@@ -87,54 +86,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       await WakelockPlus.enable();
       
-      // ✅ تشغيل البروكسي (سيعمل فقط إذا لم يكن يعمل بالفعل)
       await _startProxyServer();
 
-      // 1. فحص مواصفات الجهاز لتحديد استراتيجية التشغيل
+      // 1. الكشف عن الأجهزة القديمة
       bool forceSoftwareDecoding = false;
 
       if (Platform.isAndroid) {
         try {
           final androidInfo = await DeviceInfoPlugin().androidInfo;
-          // Android 9 (API 28) وما قبل يواجهون مشاكل في الهاردوير مع الفيديوهات الحديثة
+          // Android 9 (API 28) وما قبل
           if (androidInfo.version.sdkInt <= 28) {
             _isWeakDevice = true;
-            forceSoftwareDecoding = true; // ✅ إجبار فك التشفير البرمجي
-            FirebaseCrashlytics.instance.log("📱 Weak Device Detected (API ${androidInfo.version.sdkInt}) - Forcing SW Decoding");
+            forceSoftwareDecoding = true;
+            FirebaseCrashlytics.instance.log("📱 Weak Device (API ${androidInfo.version.sdkInt}) - Forced SW Decoding & Small Buffer");
           }
         } catch (e) {
           _isWeakDevice = true; 
-          forceSoftwareDecoding = true; // احتياطياً
+          forceSoftwareDecoding = true; 
         }
       }
 
       _player = Player(
         configuration: PlayerConfiguration(
-          // 2. زيادة البفر للأجهزة الضعيفة لتعويض بطء المعالجة
-          bufferSize: _isWeakDevice ? 16 * 1024 * 1024 : 32 * 1024 * 1024,
+          // تقليل البفر لـ 3MB للأجهزة الضعيفة لتسريع بداية التشغيل بعد التقديم
+          bufferSize: _isWeakDevice ? 3 * 1024 * 1024 : 32 * 1024 * 1024,
           vo: 'gpu', 
         ),
       );
       
-      // 3. إعدادات فك التشفير الحاسمة (الحل الجذري)
+      // 2. إعدادات فك التشفير
       if (forceSoftwareDecoding) {
-        // ⛔ إيقاف الهاردوير تماماً لتجنب خطأ Unsupported Profile وتوقف الفيديو
         await (_player.platform as dynamic).setProperty('hwdec', 'no'); 
-        
-        // ✅ استخدام المعالج الرئيسي (CPU) بـ 4 خيوط لضمان السرعة
         await (_player.platform as dynamic).setProperty('vd-lavc-threads', '4');
-        
-        // تقليل جودة التحجيم لتسريع الرسم على الشاشة
         await (_player.platform as dynamic).setProperty('sws-scaler', 'fast-bilinear');
       } else {
-        // الأجهزة الحديثة تستخدم الوضع التلقائي
         await (_player.platform as dynamic).setProperty('hwdec', 'auto');
       }
 
       _controller = VideoController(
         _player,
         configuration: VideoControllerConfiguration(
-          // إلغاء تسريع الهاردوير في العرض إذا كنا نستخدم Software Decoding
           enableHardwareAcceleration: !forceSoftwareDecoding, 
           androidAttachSurfaceAfterVideoParameters: !_isWeakDevice, 
         ),
@@ -203,17 +194,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       _isOfflineMode = false;
 
-      // ✅ 4. منطق التوجيه الذكي (أوفلاين / أونلاين / بروكسي)
+      // ✅ منطق التوجيه (Offline vs Online)
       if (!url.startsWith('http')) {
-        // 📂 [Offline Mode] التعامل مع الملفات المحلية
+        // --- 📂 OFFLINE MODE ---
         _isOfflineMode = true;
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
         
-        // استخدام البروكسي للفيديو
         playUrl = 'http://127.0.0.1:${_proxyService.videoPort}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
 
-        // البحث عن الصوت المحمل محلياً
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
            try {
@@ -225,17 +214,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
              if (downloadItem != null && downloadItem['audioPath'] != null) {
                 final audioPath = downloadItem['audioPath'];
                 if (await File(audioPath).exists()) {
-                   // استخدام البروكسي للصوت
                    audioUrl = 'http://127.0.0.1:${_proxyService.audioPort}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
                 }
              }
            } catch (_) {}
         }
       } else {
-         // 🌐 [Online Mode] التعامل مع الروابط المباشرة (تم الإصلاح)
+         // --- 🌐 ONLINE MODE ---
          playUrl = url;
-         
-         // إذا كان هناك رابط صوت جاهز (كما في YoutubeExtractor)، استخدمه
+         // استخدام رابط الصوت الجاهز (الممرر من الصفحة السابقة)
          if (audioUrl == null && widget.preReadyAudioUrl != null) {
             audioUrl = widget.preReadyAudioUrl;
          }
@@ -251,9 +238,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         play: false 
       );
 
-      // 5. تحميل مسار الصوت (مع تأخير للأجهزة الضعيفة لمنع الاختناق)
+      // تحميل الصوت
       if (audioUrl != null) {
-        int delayMs = _isWeakDevice ? 3500 : 500;
+        int delayMs = _isWeakDevice ? 2500 : 500; 
         await Future.delayed(Duration(milliseconds: delayMs));
 
         try {
@@ -291,15 +278,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ دالة التقديم والتاخير المحسنة (تعالج مشكلة التعليق عند السحب)
+  // ✅ دالة التقديم/التأخير (تم تصحيح الخطأ بإزالة smooth)
   Future<void> _seekRelative(Duration amount) async {
-    // 1. تجميع القيمة بدلاً من تنفيذها فوراً
     _accumulatedSeekAmount += amount;
 
-    // 2. إلغاء المؤقت السابق
     if (_seekDebounceTimer?.isActive ?? false) _seekDebounceTimer!.cancel();
 
-    // 3. انتظار لحظي قبل التنفيذ (Debounce) لتقليل الضغط على المعالج
     _seekDebounceTimer = Timer(const Duration(milliseconds: 600), () async {
       try {
         if (_player.state.duration == Duration.zero) return;
@@ -307,13 +291,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final currentPos = _player.state.position;
         final targetPos = currentPos + _accumulatedSeekAmount;
 
-        // 4. التنفيذ الذكي:
-        // للأجهزة الضعيفة: smooth = false (قفز سريع للإطارات الرئيسية فقط Keyframes)
-        // للأجهزة القوية: smooth = true (انتقال ناعم)
-        await _player.seek(
-           targetPos, 
-           smooth: !_isWeakDevice 
-        );
+        // ✅ تم التصحيح: إزالة المعامل smooth لأنه غير مدعوم في هذه النسخة
+        // التقديم السريع سيتم الاعتماد فيه على سرعة المعالجة وتقليل البفر
+        await _player.seek(targetPos);
 
       } catch (e) {
         FirebaseCrashlytics.instance.recordError(e, null, reason: 'Seek Error');
@@ -409,7 +389,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _startCountdown() {
-    // زيادة وقت الانتظار قليلاً للأجهزة الضعيفة لمنح المعالج فرصة
     setState(() => _stabilizingCountdown = _isWeakDevice ? 6 : 10); 
     _countdownTimer?.cancel();
     
@@ -506,7 +485,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     try {
-      _seekDebounceTimer?.cancel();
+      _seekDebounceTimer?.cancel(); 
       _watermarkTimer?.cancel();
       _countdownTimer?.cancel();
       await _player.stop(); 
