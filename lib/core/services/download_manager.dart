@@ -93,7 +93,7 @@ class DownloadManager with WidgetsBindingObserver {
       }
     }
     // للأجهزة الحديثة -> 64KB (توازن ممتاز بين السرعة والأداء)
-    return 64 * 1024;
+    return 128 * 1024;
   }
 
   Future<void> cancelAllDownloads() async {
@@ -205,7 +205,7 @@ class DownloadManager with WidgetsBindingObserver {
       // 1. ⚡ تحديد حجم الشنك المناسب
       final int chunkSize = await _getOptimalChunkSize();
       // إضافة العلامة لاسم الملف ليتعرف عليها البروكسي لاحقاً
-      final String chunkTag = (chunkSize == 32 * 1024) ? ".c32" : ".c64";
+      final String chunkTag = (chunkSize == 32 * 1024) ? ".c32" : ".c128";
 
       // 2. تجهيز الروابط
       String? finalVideoUrl = downloadUrl;
