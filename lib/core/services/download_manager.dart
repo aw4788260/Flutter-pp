@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:isolate'; // ✅ Necessary isolate library
+import 'dart:isolate'; 
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart'; 
@@ -9,8 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:encrypt/encrypt.dart' as encrypt; // ✅ Import encrypt for background use
-import 'package:device_info_plus/device_info_plus.dart'; // ✅ Import device info
+import 'package:encrypt/encrypt.dart' as encrypt; 
+import 'package:device_info_plus/device_info_plus.dart'; 
 
 import '../utils/encryption_helper.dart';
 import 'notification_service.dart';
@@ -37,7 +37,7 @@ class DownloadManager with WidgetsBindingObserver {
     sendTimeout: const Duration(seconds: 60),
   ));
 
-  // ✅ Store active Isolates for control (cancel/kill)
+  // ✅ تخزين الـ Isolates للتحكم فيها (إلغاء/قتل)
   static final Map<String, Isolate> _activeIsolates = {};
   
   static final Set<String> _activeDownloads = {};
@@ -79,22 +79,21 @@ class DownloadManager with WidgetsBindingObserver {
         : "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
   }
 
-  // ✅ Determine optimal chunk size based on device specs
+  // ✅ دالة الذكاء: تحديد الحجم المناسب للجهاز
   Future<int> _getOptimalChunkSize() async {
     if (Platform.isAndroid) {
       try {
         final androidInfo = await DeviceInfoPlugin().androidInfo;
-        // Android 9 (API 28) and below are considered "weak" -> 32KB
+        // أندرويد 9 (API 28) وما قبل يعتبر قديماً -> 32KB
         if (androidInfo.version.sdkInt <= 28) {
           return 32 * 1024; 
         }
       } catch (e) {
-        // Fallback to 32KB on error for safety
-        return 32 * 1024;
+        return 32 * 1024; // احتياطي للأمان
       }
     }
-    // Default for newer devices -> 128KB
-    return 128 * 1024;
+    // للأجهزة الحديثة -> 64KB (توازن ممتاز بين السرعة والأداء)
+    return 64 * 1024;
   }
 
   Future<void> cancelAllDownloads() async {
@@ -107,7 +106,7 @@ class DownloadManager with WidgetsBindingObserver {
   }
 
   Future<void> cancelDownload(String lessonId) async {
-    // ✅ Cancel by killing the Isolate immediately
+    // قتل الـ Isolate يوقف التحميل والتشفير فوراً دون انتظار
     if (_activeIsolates.containsKey(lessonId)) {
       _activeIsolates[lessonId]?.kill(priority: Isolate.immediate);
       _activeIsolates.remove(lessonId);
@@ -122,8 +121,6 @@ class DownloadManager with WidgetsBindingObserver {
 
     await NotificationService().cancelNotification(lessonId.hashCode);
     
-    // Cleanup incomplete files (optional, can be added here)
-
     if (_activeDownloads.isEmpty) {
       _stopBackgroundService();
     }
@@ -156,7 +153,7 @@ class DownloadManager with WidgetsBindingObserver {
   }
 
   // ---------------------------------------------------------------------------
-  // 🚀 Start Download Logic (Main Thread)
+  // 🚀 Start Download Logic (Main Thread Handler)
   // ---------------------------------------------------------------------------
 
   Future<void> startDownload({
@@ -205,11 +202,12 @@ class DownloadManager with WidgetsBindingObserver {
 
       if (userId == null) throw Exception("User auth missing");
 
-      // 1. Determine Optimal Chunk Size based on Device
+      // 1. ⚡ تحديد حجم الشنك المناسب
       final int chunkSize = await _getOptimalChunkSize();
-      final String chunkTag = (chunkSize == 32 * 1024) ? ".c32" : (chunkSize == 64 * 1024) ? ".c64" : ".c128";
+      // إضافة العلامة لاسم الملف ليتعرف عليها البروكسي لاحقاً
+      final String chunkTag = (chunkSize == 32 * 1024) ? ".c32" : ".c64";
 
-      // 2. Prepare URLs
+      // 2. تجهيز الروابط
       String? finalVideoUrl = downloadUrl;
       String? finalAudioUrl = audioUrl;
 
@@ -235,7 +233,7 @@ class DownloadManager with WidgetsBindingObserver {
         if (ext.isNotEmpty) duration = ext;
       }
 
-      // 3. Prepare Paths with Chunk Tag
+      // 3. تجهيز المسارات (مع إضافة العلامة لاسم الملف)
       final appDir = await getApplicationDocumentsDirectory();
       final safeCourse = courseName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
       final safeSubject = subjectName.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF]+'), '');
@@ -244,7 +242,7 @@ class DownloadManager with WidgetsBindingObserver {
       final dir = Directory('${appDir.path}/offline_content/$safeCourse/$safeSubject/$safeChapter');
       if (!await dir.exists()) await dir.create(recursive: true);
 
-      // 🔥 Inject chunk tag into filename: vid_123_SD.c32.enc
+      // اسم الملف يحتوي على العلامة: vid_123.c32.enc
       final String videoFileName = isPdf 
           ? "$lessonId$chunkTag.pdf.enc" 
           : "vid_${lessonId}_$quality$chunkTag.enc";
@@ -253,12 +251,10 @@ class DownloadManager with WidgetsBindingObserver {
       
       String? audioSavePath;
       if (finalAudioUrl != null) {
-        // Audio can also benefit from smaller chunks or keep default, 
-        // usually audio is small enough but consistency is good.
         audioSavePath = '${dir.path}/aud_${lessonId}_hq$chunkTag.enc';
       }
 
-      // 4. ✅ Start Isolate
+      // 4. 🔥 بدء الـ Isolate (العزل)
       final receivePort = ReceivePort();
       
       final isolate = await Isolate.spawn(
@@ -272,13 +268,13 @@ class DownloadManager with WidgetsBindingObserver {
           audioSavePath: audioSavePath,
           headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
           isPdf: isPdf,
-          chunkSize: chunkSize, // Pass the decided chunk size
+          chunkSize: chunkSize, // ✅ تمرير الحجم المختار للخلفية
         ),
       );
 
       _activeIsolates[lessonId] = isolate;
 
-      // 5. Listen to Isolate messages
+      // 5. الاستماع للنتائج من الخلفية
       await for (final message in receivePort) {
         if (message is double) {
           var prog = Map<String, double>.from(downloadingProgress.value);
@@ -287,6 +283,7 @@ class DownloadManager with WidgetsBindingObserver {
           onProgress(message);
 
           int percent = (message * 100).toInt();
+          // تحديث الإشعار كل 2% فقط لتخفيف الضغط
           if (percent % 2 == 0) { 
             notifService.showProgressNotification(
               id: notificationId, 
@@ -306,7 +303,7 @@ class DownloadManager with WidgetsBindingObserver {
         }
       }
 
-      // 6. Save metadata to Database
+      // 6. الحفظ في قاعدة البيانات (Hive) بعد النجاح
       int totalSizeBytes = await File(videoSavePath).length();
       if (audioSavePath != null && await File(audioSavePath).exists()) {
         totalSizeBytes += await File(audioSavePath).length();
@@ -326,7 +323,7 @@ class DownloadManager with WidgetsBindingObserver {
         'duration': duration,
         'date': DateTime.now().toIso8601String(),
         'size': totalSizeBytes,
-        'chunkSize': chunkSize, // Optional: save for reference
+        'chunkSize': chunkSize, // تخزين الحجم كمرجع (اختياري)
       });
 
       await notifService.cancelNotification(notificationId);
@@ -352,9 +349,10 @@ class DownloadManager with WidgetsBindingObserver {
       _activeIsolates[lessonId]?.kill(priority: Isolate.immediate);
       _activeIsolates.remove(lessonId);
       
-      // Cleanup files on error
       try {
-         // Logic to delete partial files can be added here
+         // حذف الملفات المعطوبة
+         final file = File('$dir/${isPdf ? "$lessonId.pdf.enc" : "vid_${lessonId}_$quality.enc"}');
+         if (await file.exists()) await file.delete();
       } catch (_) {}
 
     } finally {
@@ -372,7 +370,7 @@ class DownloadManager with WidgetsBindingObserver {
 }
 
 // -----------------------------------------------------------------------------
-// ⚠️ Background Isolate Logic
+// ⚠️ كود الخلفية (The Heavy Lifter)
 // -----------------------------------------------------------------------------
 
 class _DownloadTask {
@@ -384,7 +382,7 @@ class _DownloadTask {
   final String? audioSavePath;
   final Map<String, dynamic> headers;
   final bool isPdf;
-  final int chunkSize; // ✅ Received chunk size
+  final int chunkSize; 
 
   _DownloadTask({
     required this.sendPort,
@@ -403,9 +401,9 @@ void _downloadIsolateEntryPoint(_DownloadTask task) async {
   try {
     final key = encrypt.Key.fromBase64(task.keyBase64);
     final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.gcm));
-    
     final dio = Dio();
 
+    // دالة التحميل المباشر المتزامنة (Fast Logic)
     Future<void> downloadAndEncrypt(String url, String path, {Function(double)? onProg}) async {
       final saveFile = File(path);
       final sink = await saveFile.open(mode: FileMode.write);
@@ -424,14 +422,16 @@ void _downloadIsolateEntryPoint(_DownloadTask task) async {
         int received = 0;
         
         List<int> buffer = [];
-        // ✅ Use the dynamic chunk size passed from main thread
         final int CHUNK_SIZE = task.chunkSize; 
 
         Stream<Uint8List> stream = response.data.stream;
-        
+        int lastPercent = 0;
+
         await for (final chunk in stream) {
           buffer.addAll(chunk);
           
+          // 🔥 التشفير المتزامن السريع داخل الـ Stream
+          // هذا اللوب يضمن أننا لا نراكم البيانات في الرام بل نعالجها فوراً
           while (buffer.length >= CHUNK_SIZE) {
             final block = buffer.sublist(0, CHUNK_SIZE);
             buffer.removeRange(0, CHUNK_SIZE);
@@ -441,18 +441,25 @@ void _downloadIsolateEntryPoint(_DownloadTask task) async {
             
             final result = BytesBuilder();
             result.add(iv.bytes);
-            result.add(encrypted.bytes); // Includes Auth Tag
+            result.add(encrypted.bytes); // GCM includes Tag inside bytes usually
             
             await sink.writeFrom(result.toBytes());
           }
           
           received += chunk.length;
+          
+          // تحديث التقدم (Throttled) لعدم إبطاء الـ Isolate بكثرة الرسائل
           if (total != -1 && onProg != null) {
-             onProg(received / total);
+             int currentPercent = (received * 100) ~/ total;
+             // إرسال التحديث فقط إذا زادت النسبة 1%
+             if (currentPercent > lastPercent) {
+                lastPercent = currentPercent;
+                onProg(received / total);
+             }
           }
         }
         
-        // Encrypt remaining buffer
+        // تشفير ما تبقى في البفر
         if (buffer.isNotEmpty) {
             final iv = encrypt.IV.fromSecureRandom(12);
             final encrypted = encrypter.encryptBytes(buffer, iv: iv);
