@@ -8,6 +8,7 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 import 'package:encrypt/encrypt.dart' as encrypt; 
 import '../utils/encryption_helper.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
 
 class LocalProxyService {
   static final LocalProxyService _instance = LocalProxyService._internal();
@@ -18,7 +19,6 @@ class LocalProxyService {
   
   LocalProxyService._internal();
 
-  // Separate processing threads
   Isolate? _videoServerIsolate;
   Isolate? _audioServerIsolate;
   
@@ -34,7 +34,6 @@ class LocalProxyService {
   Completer<void>? _readyCompleter;
 
   Future<void> start() async {
-    // Keep-Alive: If server is already running, do nothing and return immediately
     if (_videoServerIsolate != null && _audioServerIsolate != null && _videoPort != 0 && _audioPort != 0) {
       if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
         await _readyCompleter!.future;
@@ -48,45 +47,46 @@ class LocalProxyService {
       await EncryptionHelper.init();
       String keyBase64 = EncryptionHelper.key.base64;
       
-      // 1. Start Video Server (Port 0 = Random)
+      // 1. Start Video Server
       _videoReceivePort = ReceivePort();
       _videoServerIsolate = await Isolate.spawn(
         _proxyServerEntryPoint, 
         _ProxyInitData(_videoReceivePort!.sendPort, keyBase64, "VideoIsolate")
       );
       
-      // Wait for ready message with port number
       await for (final message in _videoReceivePort!) {
         if (message is String && message.startsWith("READY:")) {
           _videoPort = int.parse(message.split(':')[1]);
-          print('🔍 [DIAGNOSIS] Video Proxy Started on dynamic port: $_videoPort');
+          FirebaseCrashlytics.instance.log('✅ Video Proxy Started on dynamic port: $_videoPort');
           break; 
         } else if (message.toString().startsWith("ERROR")) {
+          FirebaseCrashlytics.instance.recordError(Exception(message), null, reason: "Video Proxy Startup Failed");
           throw Exception("Video Proxy Failed: $message");
         }
       }
 
-      // 2. Start Audio Server (Port 0 = Random)
+      // 2. Start Audio Server
       _audioReceivePort = ReceivePort();
       _audioServerIsolate = await Isolate.spawn(
         _proxyServerEntryPoint, 
         _ProxyInitData(_audioReceivePort!.sendPort, keyBase64, "AudioIsolate")
       );
 
-      // Wait for ready message with port number
       await for (final message in _audioReceivePort!) {
         if (message is String && message.startsWith("READY:")) {
           _audioPort = int.parse(message.split(':')[1]);
-          print('🔍 [DIAGNOSIS] Audio Proxy Started on dynamic port: $_audioPort');
+          FirebaseCrashlytics.instance.log('✅ Audio Proxy Started on dynamic port: $_audioPort');
           break; 
         } else if (message.toString().startsWith("ERROR")) {
+          FirebaseCrashlytics.instance.recordError(Exception(message), null, reason: "Audio Proxy Startup Failed");
           throw Exception("Audio Proxy Failed: $message");
         }
       }
 
       _readyCompleter?.complete();
       
-    } catch (e) {
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: "Proxy Launch Error");
       print("❌ Proxy Launch Error: $e");
       _readyCompleter?.completeError(e);
       stop();
@@ -131,18 +131,16 @@ void _proxyServerEntryPoint(_ProxyInitData initData) async {
      router.get('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
      router.head('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
      
-     // Use port 0 to let the system choose an available port
      final server = await shelf_io.serve(
        router, 
        InternetAddress.anyIPv4, 
-       0, // Dynamic Port
+       0, 
        shared: false
      );
      
      server.autoCompress = false;
      server.idleTimeout = const Duration(seconds: 60);
      
-     // Send the actual port number to the main thread
      initData.sendPort.send("READY:${server.port}");
      
    } catch (e) {
@@ -151,7 +149,7 @@ void _proxyServerEntryPoint(_ProxyInitData initData) async {
 }
 
 Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, String isolateName) async {
-  final requestStopwatch = Stopwatch()..start(); // ⏱️ Measure request response time
+  final stopwatch = Stopwatch()..start();
   
   try {
     final pathParam = request.url.queryParameters['path'];
@@ -161,7 +159,23 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     final file = File(decodedPath);
     
     if (!await file.exists()) {
+      print("[$isolateName] ❌ File not found: $decodedPath");
       return Response.notFound('File not found');
+    }
+
+    // 🔥 Auto-detect Chunk Size from filename
+    int chunkSize = 128 * 1024; // Default to 128KB
+    if (decodedPath.contains('.c32.')) {
+      chunkSize = 32 * 1024;
+      print("[$isolateName] ⚡ Detected 32KB Chunk Size from filename");
+    } else if (decodedPath.contains('.c64.')) {
+      chunkSize = 64 * 1024;
+      print("[$isolateName] ⚡ Detected 64KB Chunk Size from filename");
+    } else if (decodedPath.contains('.c128.')) {
+      chunkSize = 128 * 1024;
+      print("[$isolateName] ⚡ Detected 128KB Chunk Size from filename");
+    } else {
+      print("[$isolateName] ⚠️ No Chunk tag found, defaulting to 128KB");
     }
 
     String contentType = 'video/mp4'; 
@@ -173,15 +187,14 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
 
     final encryptedLength = await file.length();
     
-    const int CHUNK_SIZE = 128 * 1024; 
-    const int IV_LENGTH = 12;
-    const int TAG_LENGTH = 16;
-    const int ENCRYPTED_CHUNK_SIZE = IV_LENGTH + CHUNK_SIZE + TAG_LENGTH;
+    final int IV_LENGTH = 12;
+    final int TAG_LENGTH = 16;
+    final int ENCRYPTED_CHUNK_SIZE = IV_LENGTH + chunkSize + TAG_LENGTH;
 
     final int totalChunks = (encryptedLength / ENCRYPTED_CHUNK_SIZE).ceil();
     if (totalChunks == 0) return Response.ok('');
 
-    final int plainChunkSize = CHUNK_SIZE;
+    final int plainChunkSize = chunkSize;
     final int overhead = ENCRYPTED_CHUNK_SIZE - plainChunkSize; 
     final int originalFileSize = ((totalChunks - 1) * plainChunkSize) + max(0, (encryptedLength - ((totalChunks - 1) * ENCRYPTED_CHUNK_SIZE)) - overhead);
 
@@ -201,7 +214,7 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     
     final contentLength = end - start + 1;
 
-    print("🔍 [PROXY_REQ] $isolateName | Requested Range: $start-$end | Header processing time: ${requestStopwatch.elapsedMilliseconds}ms");
+    print("🔍 [$isolateName] Request Range: $start-$end | Header processing: ${stopwatch.elapsedMilliseconds}ms");
 
     final Map<String, Object> headers = {
         'Content-Type': contentType, 
@@ -220,37 +233,37 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
 
     return Response(
       206, 
-      body: _createDecryptedStream(file, start, end, encrypter, isolateName),
+      body: _createDecryptedStream(file, start, end, encrypter, isolateName, chunkSize),
       headers: headers,
     );
 
   } catch (e) {
-    print("[$isolateName] Request Error: $e");
+    print("[$isolateName] ❌ Request Handling Error: $e");
     return Response.internalServerError(body: 'Proxy Error');
   }
 }
 
-Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, encrypt.Encrypter encrypter, String isolateName) async* {
-  final streamStopwatch = Stopwatch()..start(); // ⏱️ Measure the entire process
+Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, encrypt.Encrypter encrypter, String isolateName, int chunkSize) async* {
   RandomAccessFile? raf;
   int totalSent = 0; 
   final int requiredLength = reqEnd - reqStart + 1;
+  final streamStopwatch = Stopwatch()..start();
 
   try {
     raf = await file.open(mode: FileMode.read);
     
-    const int CHUNK_SIZE = 128 * 1024;
-    const int IV_LENGTH = 12;
-    const int TAG_LENGTH = 16;
-    const int ENCRYPTED_CHUNK_SIZE = IV_LENGTH + CHUNK_SIZE + TAG_LENGTH;
+    final int IV_LENGTH = 12;
+    final int TAG_LENGTH = 16;
+    final int ENCRYPTED_CHUNK_SIZE = IV_LENGTH + chunkSize + TAG_LENGTH;
 
-    int startChunkIndex = reqStart ~/ CHUNK_SIZE;
-    int endChunkIndex = reqEnd ~/ CHUNK_SIZE;
+    int startChunkIndex = reqStart ~/ chunkSize;
+    int endChunkIndex = reqEnd ~/ chunkSize;
     final fileLen = await file.length();
     
+    // Performance Optimization: Context Switching Control
     int loopCount = 0;
     
-    // ⏱️ Performance measurement variables
+    // Diagnostic variables
     int totalReadTime = 0;
     int totalDecryptTime = 0;
     int chunksProcessed = 0;
@@ -258,8 +271,7 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
     for (int i = startChunkIndex; i <= endChunkIndex; i++) {
       if (totalSent >= requiredLength) break;
 
-      // Stop every 32 loops instead of every loop
-      // This reduces "context switching" by 97%, doubling speed on older devices
+      // Yield every 32 chunks to prevent UI freeze on old devices without killing throughput
       if (++loopCount % 32 == 0) {
          await Future.delayed(Duration.zero);
       }
@@ -274,7 +286,7 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
       int bytesToRead = min(ENCRYPTED_CHUNK_SIZE, fileLen - seekPos);
       if (bytesToRead <= IV_LENGTH) break;
 
-      // 1. Measure disk read time
+      // 1. Measure Read Time
       final readStart = chunkTimer.elapsedMicroseconds;
       Uint8List encryptedBlock = await raf.read(bytesToRead);
       final readEnd = chunkTimer.elapsedMicroseconds;
@@ -286,7 +298,7 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
         if (encryptedBlock.length < IV_LENGTH) {
              outputBlock = Uint8List(0);
         } else {
-            // 2. Measure decryption time
+            // 2. Measure Decryption Time
             final decryptStart = chunkTimer.elapsedMicroseconds;
             final iv = encrypt.IV(encryptedBlock.sublist(0, IV_LENGTH));
             final cipherBytes = encryptedBlock.sublist(IV_LENGTH);
@@ -299,15 +311,16 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
         }
 
       } catch (e) {
-         // In case of error, send an empty block to avoid connection collapse
+         // Silent error handling: send empty block to keep stream alive
+         print("[$isolateName] ⚠️ Decryption Error at chunk $i: $e");
          int expectedSize = (bytesToRead == ENCRYPTED_CHUNK_SIZE) 
-             ? CHUNK_SIZE 
+             ? chunkSize 
              : max(0, bytesToRead - IV_LENGTH - TAG_LENGTH);
          outputBlock = Uint8List(expectedSize);
       }
 
       if (outputBlock.isNotEmpty) {
-        int blockStartInPlain = i * CHUNK_SIZE;
+        int blockStartInPlain = i * chunkSize;
         int sliceStart = max(0, reqStart - blockStartInPlain);
         int sliceEnd = min(outputBlock.length, reqEnd - blockStartInPlain + 1);
 
@@ -319,18 +332,17 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
         }
       }
       
-      // 📝 Print report every 50 chunks (or always the first chunk)
+      // Periodic logging for diagnosis (Every 50 chunks or first one)
       if (chunksProcessed == 1 || chunksProcessed % 50 == 0) {
-         print("📊 [PROXY_STATS] $isolateName | Chunk #$chunksProcessed | Read: ${(readEnd - readStart)/1000}ms | Decrypt: ${(totalDecryptTime/chunksProcessed)/1000}ms avg");
+         print("📊 [$isolateName] Chunk #$chunksProcessed | Read: ${(readEnd - readStart)/1000}ms | Decrypt: ${(totalDecryptTime/chunksProcessed)/1000}ms avg");
       }
     }
     
-    print("✅ [PROXY_DONE] $isolateName | Total sent: $totalSent bytes | Total Time: ${streamStopwatch.elapsedMilliseconds}ms");
+    print("✅ [$isolateName] Stream Complete | Sent: $totalSent bytes | Time: ${streamStopwatch.elapsedMilliseconds}ms");
 
   } catch(e) {
-     print("Stream Error: $e");
+     print("[$isolateName] ❌ Stream Error: $e");
   } finally {
-    // Fill in missing bytes to prevent player hang
     if (totalSent < requiredLength) {
         int missingBytes = requiredLength - totalSent;
         if (missingBytes > 0 && missingBytes < 1024 * 1024) { 
