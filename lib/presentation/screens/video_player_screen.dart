@@ -89,7 +89,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         try {
           final androidInfo = await DeviceInfoPlugin().androidInfo;
           // إذا كان أندرويد 9 (API 28) أو أقل، نعتبره جهازاً قديماً
-          // الأجهزة الحديثة تبدأ عادة من API 29 (أندرويد 10)
           if (androidInfo.version.sdkInt < 29) {
             isWeakDevice = true;
             FirebaseCrashlytics.instance.log("📱 Weak/Old Device Detected (API ${androidInfo.version.sdkInt}). Disabling HW Acceleration.");
@@ -104,31 +103,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       _player = Player(
         configuration: const PlayerConfiguration(
-          // تقليل البفر لـ 16 ميجا للأمان
           bufferSize: 16 * 1024 * 1024,
-          // استخدام GPU للرسم (Rendering) دائماً لأداء أفضل
           vo: 'gpu', 
         ),
       );
       
-      // ✅ 3. تطبيق إعدادات فك التشفير (Decoding) بناءً على الفحص
+      // ✅ 3. تطبيق إعدادات فك التشفير (التصحيح هنا)
+      // استخدام (_player.platform as dynamic) للوصول للدالة setProperty بشكل صحيح
       if (isWeakDevice) {
-        // للأجهزة القديمة: نغلق ديكودر الهاردوير تماماً لمنع الكراش (OMX.Exynos Error)
-        await _player.stream.setProperty('hwdec', 'no'); 
+        // للأجهزة القديمة: تعطيل ديكودر الهاردوير
+        await (_player.platform as dynamic).setProperty('hwdec', 'no'); 
       } else {
-        // للأجهزة الحديثة: نتركه تلقائي ليستفيد من قوة المعالج الرسومي
-        await _player.stream.setProperty('hwdec', 'auto');
+        // للأجهزة الحديثة: تركه تلقائي
+        await (_player.platform as dynamic).setProperty('hwdec', 'auto');
       }
 
       _controller = VideoController(
         _player,
         configuration: VideoControllerConfiguration(
           // ✅ 4. إعدادات التحكم:
-          // للأجهزة الضعيفة: false (رسم برمجي آمن)
-          // للأجهزة القوية: true (رسم هاردوير سريع)
           enableHardwareAcceleration: !isWeakDevice, 
-          
-          // حل مشكلة الشاشة السوداء في الأجهزة القديمة
           androidAttachSurfaceAfterVideoParameters: !isWeakDevice, 
         ),
       );
