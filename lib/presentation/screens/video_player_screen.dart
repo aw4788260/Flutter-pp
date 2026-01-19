@@ -9,6 +9,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+// ✅ 1. استيراد مكتبة معلومات الجهاز للفحص
+import 'package:device_info_plus/device_info_plus.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/local_proxy.dart';
@@ -44,11 +46,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isInitialized = false;
   
   bool _isVideoLoading = true; 
-  
-  // ✅ متغير لتحديد وضع الأوفلاين
   bool _isOfflineMode = false;
 
-  // متغيرات العداد
   int _stabilizingCountdown = 0;
   Timer? _countdownTimer;
   
@@ -83,17 +82,54 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await WakelockPlus.enable();
       await _startProxyServer();
 
+      // ✅ 2. فحص نوع الجهاز وإصدار الأندرويد
+      bool isWeakDevice = false;
+
+      if (Platform.isAndroid) {
+        try {
+          final androidInfo = await DeviceInfoPlugin().androidInfo;
+          // إذا كان أندرويد 9 (API 28) أو أقل، نعتبره جهازاً قديماً
+          // الأجهزة الحديثة تبدأ عادة من API 29 (أندرويد 10)
+          if (androidInfo.version.sdkInt < 29) {
+            isWeakDevice = true;
+            FirebaseCrashlytics.instance.log("📱 Weak/Old Device Detected (API ${androidInfo.version.sdkInt}). Disabling HW Acceleration.");
+          } else {
+            FirebaseCrashlytics.instance.log("📱 Modern Device Detected (API ${androidInfo.version.sdkInt}). Enabling HW Acceleration.");
+          }
+        } catch (e) {
+          // في حال فشل الفحص، نفترض أنه جهاز ضعيف للأمان
+          isWeakDevice = true; 
+        }
+      }
+
       _player = Player(
         configuration: const PlayerConfiguration(
-          bufferSize: 32 * 1024 * 1024, 
+          // تقليل البفر لـ 16 ميجا للأمان
+          bufferSize: 16 * 1024 * 1024,
+          // استخدام GPU للرسم (Rendering) دائماً لأداء أفضل
+          vo: 'gpu', 
         ),
       );
       
+      // ✅ 3. تطبيق إعدادات فك التشفير (Decoding) بناءً على الفحص
+      if (isWeakDevice) {
+        // للأجهزة القديمة: نغلق ديكودر الهاردوير تماماً لمنع الكراش (OMX.Exynos Error)
+        await _player.stream.setProperty('hwdec', 'no'); 
+      } else {
+        // للأجهزة الحديثة: نتركه تلقائي ليستفيد من قوة المعالج الرسومي
+        await _player.stream.setProperty('hwdec', 'auto');
+      }
+
       _controller = VideoController(
         _player,
-        configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: true,
-          androidAttachSurfaceAfterVideoParameters: true,
+        configuration: VideoControllerConfiguration(
+          // ✅ 4. إعدادات التحكم:
+          // للأجهزة الضعيفة: false (رسم برمجي آمن)
+          // للأجهزة القوية: true (رسم هاردوير سريع)
+          enableHardwareAcceleration: !isWeakDevice, 
+          
+          // حل مشكلة الشاشة السوداء في الأجهزة القديمة
+          androidAttachSurfaceAfterVideoParameters: !isWeakDevice, 
         ),
       );
 
@@ -102,19 +138,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         FirebaseCrashlytics.instance.recordError(error, null, reason: 'MediaKit Stream Error (Non-Fatal)');
       });
 
-      // ✅ المستمع الذكي: ينفذ الإجراءات فقط عند انتهاء التخزين المؤقت (Buffering)
+      // مراقب البفر للتشغيل بعد التحميل
       _player.stream.buffering.listen((buffering) {
-        // إذا انتهى البفر (buffering == false) وكنا ننتظر التحميل (_isVideoLoading == true)
         if (!buffering && _isVideoLoading) {
           if (mounted) {
             setState(() => _isVideoLoading = false);
             
-            // الآن الفيديو جاهز تماماً (الإطار الأول محمل)
             if (_isOfflineMode) {
-               // إذا أوفلاين: نبدأ العداد (والفيديو ثابت في الخلفية)
                _startCountdown();
             } else {
-               // إذا أونلاين: نشغل فوراً
                _player.play();
             }
           }
@@ -159,9 +191,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _safeExit() async {
     if (_isDisposing) return;
     
-    // ✅ التعديل الأول (هام جداً):
-    // تحديث الحالة فوراً لإزالة الفيديو من الشاشة قبل بدء عملية التنظيف
-    // هذا يمنع المستخدم من لمس الشريط أثناء التدمير ويمنع الـ Null Check Error
     if (mounted) {
       setState(() {
         _isDisposing = true;
@@ -219,7 +248,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  // ✅ دالة العداد: تشغل الفيديو بعد انتهاء الـ 10 ثواني
   void _startCountdown() {
     setState(() => _stabilizingCountdown = 10);
     _countdownTimer?.cancel();
@@ -234,7 +262,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         timer.cancel();
         if (mounted) {
           setState(() => _stabilizingCountdown = 0);
-          // 🚀 تشغيل الفيديو الآن بعد انتهاء المهلة
           _player.play(); 
         }
       } else {
@@ -272,7 +299,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
     
-    // إعادة تعيين الحالة للتحميل
     setState(() {
       _isVideoLoading = true;
       _stabilizingCountdown = 0;
@@ -283,7 +309,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       String playUrl = url;
       String? audioUrl; 
       
-      // ✅ تحديد وضع الأوفلاين
       _isOfflineMode = false;
 
       if (widget.preReadyAudioUrl != null && !url.startsWith('http')) {
@@ -300,6 +325,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       } else if (!url.startsWith('http')) {
         final file = File(url);
         if (!await file.exists()) throw Exception("Offline file missing");
+        
         playUrl = 'http://127.0.0.1:${_proxyService.port}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
 
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
@@ -332,8 +358,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
-      // ✅ فتح الميديا مع عدم التشغيل (play: false)
-      // سيتم الانتظار حتى يكتمل البفر، وعندها يقوم المستمع (Listener) بتشغيل العداد أو الفيديو
       await _player.open(
         Media(playUrl, httpHeaders: headers), 
         play: false 
@@ -355,9 +379,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_currentSpeed != 1.0) {
         await _player.setRate(_currentSpeed);
       }
-
-      // ⚠️ ملاحظة: لا نستدعي _player.play() هنا يدوياً.
-      // نترك المستمع _player.stream.buffering هو الذي يقرر متى يبدأ (بعد اكتمال التحميل).
 
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PlayVideo Function Failed');
@@ -555,8 +576,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // ✅ التعديل الثاني (هام):
-            // التحقق من حالة التدمير أولاً. إذا كانت true، لا نعرض المشغل بتاتاً.
             if (_isDisposing)
               const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
             
@@ -585,7 +604,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               )
             else
-              // ✅ عرض المشغل (فقط إذا لم نكن نغلق الصفحة)
               Center(
                 child: MaterialVideoControlsTheme(
                   normal: controlsTheme,
@@ -597,20 +615,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-            // ✅ شاشة التحميل + العداد (مع شفافية لرؤية الفيديو)
             if (!_isDisposing && !_isError && (_isVideoLoading || !_isInitialized || _stabilizingCountdown > 0))
               Container(
-                // شفافية 60% لإظهار الإطار الأول بوضوح
                 color: Colors.black.withOpacity(0.6), 
                 child: Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // إظهار اللودر فقط إذا كان الفيديو يجهز
                       if (_isVideoLoading || !_isInitialized)
                         const CircularProgressIndicator(color: AppColors.accentYellow),
                         
-                      // إظهار العداد إذا كان فعالاً (فوق الفيديو الجاهز)
                       if (_stabilizingCountdown > 0) ...[
                         const SizedBox(height: 24),
                         Text(
@@ -618,14 +632,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           style: const TextStyle(
                             color: AppColors.accentYellow, 
                             fontWeight: FontWeight.bold,
-                            fontSize: 28, // تكبير الخط ليظهر بوضوح
+                            fontSize: 28, 
                             letterSpacing: 2.0,
                             shadows: [
                               Shadow(blurRadius: 10, color: Colors.black, offset: Offset(2, 2))
                             ]
                           ),
                         ),
-                        if (!_isVideoLoading) // نص تأكيد الجاهزية
+                        if (!_isVideoLoading)
                           const Padding(
                             padding: EdgeInsets.only(top: 12.0),
                             child: Text(
@@ -639,7 +653,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-            // العلامة المائية
             if (!_isDisposing && !_isError && _isInitialized)
               AnimatedAlign(
                 duration: const Duration(seconds: 2), 
