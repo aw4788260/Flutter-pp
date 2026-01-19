@@ -47,7 +47,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isVideoLoading = true; 
   bool _isOfflineMode = false;
   
-  // تحديد الأجهزة الضعيفة (Android 9 وما قبل)
   bool _isWeakDevice = false; 
 
   int _stabilizingCountdown = 0;
@@ -59,7 +58,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
 
-  // مؤقت لتجميع نقرات التقديم والتاخير (Debounce)
+  // Debounce timer for seeking
   Timer? _seekDebounceTimer;
   Duration _accumulatedSeekAmount = Duration.zero;
 
@@ -87,16 +86,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       await WakelockPlus.enable();
       
-      // تشغيل البروكسي (لن يعيد التشغيل إذا كان يعمل بالفعل)
+      // Start proxy
       await _startProxyServer();
 
-      // 1. فحص مواصفات الجهاز
+      // 1. Check device specs
       bool forceSoftwareDecoding = false;
 
       if (Platform.isAndroid) {
         try {
           final androidInfo = await DeviceInfoPlugin().androidInfo;
-          // Android 9 (API 28) وما قبل
+          // Android 9 (API 28) and below
           if (androidInfo.version.sdkInt <= 28) {
             _isWeakDevice = true;
             forceSoftwareDecoding = true;
@@ -110,13 +109,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       _player = Player(
         configuration: PlayerConfiguration(
-          // ⚠️ تقليل البفر لـ 3MB للأجهزة الضعيفة لتسريع بداية التشغيل بعد التقديم
+          // Reduce buffer to 3MB for weak devices to speed up start after seek
           bufferSize: _isWeakDevice ? 3 * 1024 * 1024 : 32 * 1024 * 1024,
           vo: 'gpu', 
         ),
       );
       
-      // 2. إعدادات فك التشفير
+      // 2. Decoding settings
       if (forceSoftwareDecoding) {
         await (_player.platform as dynamic).setProperty('hwdec', 'no'); 
         await (_player.platform as dynamic).setProperty('vd-lavc-threads', '4');
@@ -197,10 +196,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _isOfflineMode = false;
 
       // ============================================================
-      // 🔄 منطق التوجيه المدمج (أونلاين + أوفلاين + روابط مركبة)
+      // 🔄 Routing Logic (Online + Offline + Combined Links)
       // ============================================================
 
-      // 1. التعامل مع الروابط المركبة (فيديو | صوت)
+      // 1. Handle combined links (video | audio)
       if (url.contains('|')) {
         final parts = url.split('|');
         playUrl = parts[0];
@@ -209,7 +208,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       }
 
-      // 2. التعامل مع الملفات المحلية (Offline)
+      // 2. Handle Local Files (Offline)
       if (!playUrl.startsWith('http')) {
         _isOfflineMode = true;
         final file = File(playUrl);
@@ -217,7 +216,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         
         playUrl = 'http://127.0.0.1:${_proxyService.videoPort}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
 
-        // البحث عن الصوت المحلي
+        // Find local audio
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
            try {
@@ -235,9 +234,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
            } catch (_) {}
         }
       } 
-      // 3. التعامل مع الأونلاين (Online HTTP/HTTPS)
+      // 3. Handle Online (Online HTTP/HTTPS)
       else {
-         // إذا كان الرابط أونلاين، نستخدم preReadyAudioUrl إذا لم يتم تحديده مسبقاً
+         // If online, use preReadyAudioUrl if not already set
          if (audioUrl == null && widget.preReadyAudioUrl != null) {
             audioUrl = widget.preReadyAudioUrl;
          }
@@ -253,7 +252,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         play: false 
       );
 
-      // تحميل الصوت
+      // Load Audio
       if (audioUrl != null) {
         int delayMs = _isWeakDevice ? 2500 : 500; 
         await Future.delayed(Duration(milliseconds: delayMs));
@@ -293,7 +292,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ دالة التقديم/التأخير (Debounce فقط بدون smooth)
+  // ✅ Seek Function (Debounce only without smooth)
   Future<void> _seekRelative(Duration amount) async {
     _accumulatedSeekAmount += amount;
 
@@ -306,7 +305,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final currentPos = _player.state.position;
         final targetPos = currentPos + _accumulatedSeekAmount;
 
+        final stopwatch = Stopwatch()..start();
+        FirebaseCrashlytics.instance.log("🚀 Seeking to: $targetPos");
         await _player.seek(targetPos);
+        FirebaseCrashlytics.instance.log("✅ Seek executed in ${stopwatch.elapsedMilliseconds}ms");
 
       } catch (e) {
         FirebaseCrashlytics.instance.recordError(e, null, reason: 'Seek Error');
