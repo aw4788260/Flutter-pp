@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:isolate'; // ✅ استيراد مكتبة العزل
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -27,7 +29,7 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
-  // المتغيرات الموحدة للعارض (سواء أونلاين أو أوفلاين)
+  // المتغيرات الموحدة للعارض
   String? _viewerUrl;
   Map<String, String>? _viewerHeaders;
   
@@ -52,7 +54,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   void dispose() {
-    // ✅ إيقاف السيرفر المحلي عند الخروج وتنظيف الموارد
+    // ✅ إيقاف السيرفر المحلي عند الخروج
     _localServer?.stop();
     super.dispose();
   }
@@ -79,7 +81,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     });
 
     try {
-      await EncryptionHelper.init(); // التأكد من جاهزية مفاتيح التشفير
+      await EncryptionHelper.init(); 
 
       // 1. فحص الملفات الأوفلاين
       final downloadsBox = await Hive.openBox('downloads_box');
@@ -90,25 +92,22 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         final File encryptedFile = File(encryptedPath);
         
         if (await encryptedFile.exists()) {
-          // ✅ المنطق الموحد للأوفلاين: تشغيل السيرفر المحلي
-          // يتم فك تشفير 32KB عند الطلب فقط
+          // ✅ المنطق الموحد: تشغيل السيرفر المحلي المعزول
           _localServer = LocalPdfServer(encryptedPath, EncryptionHelper.key.base64);
           int port = await _localServer!.start();
           
           if (mounted) {
             setState(() {
-              // رابط محلي يشير للسيرفر الخاص بنا
               _viewerUrl = 'http://127.0.0.1:$port/stream.pdf';
-              _viewerHeaders = null; // لا نحتاج هيدرز محلياً
+              _viewerHeaders = null; 
               _loading = false;
             });
           }
-          return; // تم الانتهاء
+          return; 
         }
       }
 
       // 2. التحميل من الإنترنت (Online)
-      // نستخدم العرض المباشر (Streaming) بدون تحميل مسبق
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
       final deviceId = box.get('device_id');
@@ -141,14 +140,15 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     if (_loading) {
       return Scaffold(
         backgroundColor: AppColors.backgroundPrimary,
-        body: const Center(
+        // ✅ تم تصحيح الخطأ هنا: حذف const
+        body: Center(
           child: CircularPercentIndicator(
             radius: 30.0,
             lineWidth: 4.0,
-            percent: 0.3, // مؤشر وهمي أثناء التجهيز
+            percent: 0.3,
             animation: true,
             animateFromLastPercent: true,
-            center: Icon(LucideIcons.loader2, color: Colors.white),
+            center: const Icon(LucideIcons.loader2, color: Colors.white),
             progressColor: AppColors.accentYellow,
             backgroundColor: Colors.white10,
           ),
@@ -185,15 +185,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // ✅ العارض الموحد (يستخدم Network دائماً)
-          // في حالة الأوفلاين الرابط يكون Localhost
-          // في حالة الأونلاين الرابط يكون API URL
           if (_viewerUrl != null)
             SfPdfViewer.network(
               _viewerUrl!,
               headers: _viewerHeaders,
               key: _pdfViewerKey,
-              enableDoubleTapZooming: true, // تفعيل الزوم لجميع الأجهزة لأننا نستخدم الـ Streaming الخفيف
+              enableDoubleTapZooming: true,
               pageLayoutMode: PdfPageLayoutMode.continuous,
               scrollDirection: PdfScrollDirection.vertical,
               canShowScrollHead: true,
@@ -208,7 +205,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               },
             ),
 
-          // العلامة المائية
           IgnorePointer(
             child: Container(
               width: double.infinity,
@@ -226,7 +222,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // عداد الصفحات
           Positioned(
             bottom: 20, right: 20,
             child: Container(
