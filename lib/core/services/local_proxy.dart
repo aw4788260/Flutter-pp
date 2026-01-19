@@ -22,7 +22,7 @@ class LocalProxyService {
   Isolate? _videoServerIsolate;
   Isolate? _audioServerIsolate;
   
-  // ✅ منافذ منفصلة
+  // ✅ منافذ منفصلة (استخدم هذه المتغيرات بدلاً من port)
   final int videoPort = 8080;
   final int audioPort = 8081;
   
@@ -55,7 +55,6 @@ class LocalProxyService {
         _ProxyInitData(_videoReceivePort!.sendPort, keyBase64, videoPort, "VideoIsolate")
       );
       
-      // ننتظر جاهزية سيرفر الفيديو
       await for (final message in _videoReceivePort!) {
         if (message == "READY") {
           print('✅ Video Proxy (8080) is READY');
@@ -74,7 +73,6 @@ class LocalProxyService {
         _ProxyInitData(_audioReceivePort!.sendPort, keyBase64, audioPort, "AudioIsolate")
       );
 
-      // ننتظر جاهزية سيرفر الصوت
       await for (final message in _audioReceivePort!) {
         if (message == "READY") {
           print('✅ Audio Proxy (8081) is READY');
@@ -84,7 +82,6 @@ class LocalProxyService {
         }
       }
 
-      // اكتمل التشغيل بنجاح
       _readyCompleter?.complete();
       
     } catch (e) {
@@ -113,7 +110,6 @@ class LocalProxyService {
   }
 }
 
-// كلاس البيانات (تم إضافة الاسم للتمييز في اللوجات)
 class _ProxyInitData {
   final SendPort sendPort;
   final String keyBase64;
@@ -123,7 +119,6 @@ class _ProxyInitData {
   _ProxyInitData(this.sendPort, this.keyBase64, this.port, this.name);
 }
 
-// نقطة البداية (مشتركة للخيطين لكن ببيانات مختلفة)
 void _proxyServerEntryPoint(_ProxyInitData initData) async {
    try {
      final key = encrypt.Key.fromBase64(initData.keyBase64);
@@ -143,7 +138,6 @@ void _proxyServerEntryPoint(_ProxyInitData initData) async {
      server.autoCompress = false;
      server.idleTimeout = const Duration(seconds: 60);
      
-     print("🚀 ${initData.name} listening on port ${initData.port}");
      initData.sendPort.send("READY");
      
    } catch (e) {
@@ -159,9 +153,6 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     final decodedPath = Uri.decodeComponent(pathParam);
     final file = File(decodedPath);
     
-    // طباعة اسم الخيط لمعرفة من يعالج الطلب
-    print("🔗 [$isolateName] Request: ${request.method} -> $decodedPath");
-
     if (!await file.exists()) {
       return Response.notFound('File not found');
     }
@@ -225,7 +216,7 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     );
 
   } catch (e) {
-    print("[$isolateName] Request Error: $e");
+    print("Proxy Request Error: $e");
     return Response.internalServerError(body: 'Proxy Error');
   }
 }
@@ -251,7 +242,6 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
       if (totalSent >= requiredLength) break;
 
       // ✅ تأخير بسيط جداً لمنع استحواذ الخيط على النواة بالكامل
-      // حتى مع وجود خيطين، هذا مفيد للأجهزة الضعيفة جداً
       await Future.delayed(Duration.zero);
 
       int seekPos = i * ENCRYPTED_CHUNK_SIZE;
@@ -266,20 +256,13 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
       Uint8List outputBlock;
 
       try {
-        if (encryptedBlock.length < IV_LENGTH) {
-             throw Exception("Invalid block size");
-        }
+        if (encryptedBlock.length < IV_LENGTH) throw Exception("Invalid block size");
         final iv = encrypt.IV(encryptedBlock.sublist(0, IV_LENGTH));
         final cipherBytes = encryptedBlock.sublist(IV_LENGTH);
-        
         final decrypted = encrypter.decryptBytes(encrypt.Encrypted(cipherBytes), iv: iv);
         outputBlock = Uint8List.fromList(decrypted);
-
       } catch (e) {
-         // في حالة الخطأ نرسل بلوك فارغ لتجنب قطع الاتصال
-         int expectedSize = (bytesToRead == ENCRYPTED_CHUNK_SIZE) 
-             ? CHUNK_SIZE 
-             : max(0, bytesToRead - IV_LENGTH - TAG_LENGTH);
+         int expectedSize = (bytesToRead == ENCRYPTED_CHUNK_SIZE) ? CHUNK_SIZE : max(0, bytesToRead - IV_LENGTH - TAG_LENGTH);
          outputBlock = Uint8List(expectedSize);
       }
 
@@ -300,9 +283,7 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
   } finally {
     if (totalSent < requiredLength) {
         int missingBytes = requiredLength - totalSent;
-        if (missingBytes < 512 * 1024) {
-           yield Uint8List(missingBytes);
-        }
+        if (missingBytes < 512 * 1024) yield Uint8List(missingBytes);
     }
     await raf?.close();
   }
