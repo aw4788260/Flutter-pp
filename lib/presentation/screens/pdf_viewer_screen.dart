@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:isolate'; // ✅ استيراد مكتبة العزل
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
@@ -10,9 +11,9 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:device_info_plus/device_info_plus.dart'; 
+import 'package:encrypt/encrypt.dart' as encrypt; // ✅ نحتاج المكتبة داخل العزل
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../core/services/local_proxy.dart';
 import '../../core/utils/encryption_helper.dart';
 
 class PdfViewerScreen extends StatefulWidget {
@@ -30,25 +31,22 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
-  final LocalProxyService _proxyService = LocalProxyService();
-  
-  String? _proxyUrl;
-  String? _localFilePath;
-  Uint8List? _pdfBytes;
-  
+  String? _localFilePath; 
   bool _loading = true;
-  double _downloadProgress = 0.0;
-  bool _isOnlineDownload = false;
+  double _progressValue = 0.0;
+  String _loadingMessage = "Preparing...";
   
-  // متغير لتحديد ما إذا كان الجهاز ضعيفاً جداً (لتقليل استهلاك الذاكرة فقط عند الضرورة القصوى)
   bool _isWeakDevice = false;
-
   String? _error;
   int _totalPages = 0;
   int _currentPage = 0;
   
   String _watermarkText = '';
   final GlobalKey<SfPdfViewerState> _pdfViewerKey = GlobalKey();
+  
+  // للتحكم في العزل وإيقافه عند الخروج
+  Isolate? _decryptIsolate;
+  ReceivePort? _receivePort;
 
   @override
   void initState() {
@@ -63,26 +61,26 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     if (Platform.isAndroid) {
       try {
         final androidInfo = await DeviceInfoPlugin().androidInfo;
-        // الأجهزة القديمة (Android 9 وأقل)
+        // الأجهزة القديمة (Android 9 / API 28 وما قبل)
         if (androidInfo.version.sdkInt <= 28) {
           if (mounted) setState(() => _isWeakDevice = true);
         }
-      } catch (e) {
-        // تجاهل الخطأ
-      }
+      } catch (e) { /* ignore */ }
     }
   }
 
   @override
   void dispose() {
-    _proxyService.stop();
-    
-    // حذف الملف المؤقت عند الخروج لتوفير المساحة
+    // ✅ إيقاف العزل عند الخروج لتنظيف الموارد
+    _decryptIsolate?.kill(priority: Isolate.immediate);
+    _receivePort?.close();
+
+    // تنظيف الملف المؤقت
     if (_localFilePath != null) {
       final file = File(_localFilePath!);
       if (file.existsSync()) {
         try {
-          file.deleteSync();
+          file.deleteSync(); 
         } catch (e) { /* ignore */ }
       }
     }
@@ -105,18 +103,71 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
   }
 
-  // دالة فك التشفير في الذاكرة (سريعة للملفات الصغيرة)
-  Future<Uint8List> _decryptFileToMemory(File file) async {
-    final builder = BytesBuilder();
-    final raf = await file.open(mode: FileMode.read);
+  // ===========================================================================
+  // ✅ منطقة العزل (Isolate Logic)
+  // ===========================================================================
+
+  // دالة لتجهيز وتشغيل العزل
+  Future<void> _spawnDecryptIsolate(String sourcePath, String destPath, String keyBase64) async {
+    _receivePort = ReceivePort();
     
+    _decryptIsolate = await Isolate.spawn(
+      _decryptInIsolate,
+      _DecryptInitData(_receivePort!.sendPort, sourcePath, destPath, keyBase64),
+    );
+
+    // الاستماع لرسائل العزل (نسبة التقدم أو الانتهاء)
+    await for (final message in _receivePort!) {
+      if (message is double) {
+        // تحديث نسبة التقدم
+        if (mounted) {
+          setState(() {
+            _progressValue = message;
+            _loadingMessage = "Decrypting... ${(message * 100).toInt()}%";
+          });
+        }
+      } else if (message == "DONE") {
+        // انتهت العملية بنجاح
+        if (mounted) {
+          setState(() {
+            _localFilePath = destPath;
+            _loading = false;
+          });
+        }
+        break; // الخروج من حلقة الاستماع
+      } else if (message is String && message.startsWith("ERROR")) {
+        throw Exception(message);
+      }
+    }
+  }
+
+  // ⚠️ هذه الدالة تعمل في ذاكرة منفصلة (Background Thread)
+  static void _decryptInIsolate(_DecryptInitData initData) async {
     try {
-      final int fileLength = await file.length();
+      final sourceFile = File(initData.sourcePath);
+      final destFile = File(initData.destPath);
+      
+      // إعداد التشفير يدوياً داخل العزل
+      final key = encrypt.Key.fromBase64(initData.keyBase64);
+      final ivLength = 12; 
+      final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.gcm));
+
+      final raf = await sourceFile.open(mode: FileMode.read);
+      final sink = destFile.openWrite();
+      
+      final fileLength = await sourceFile.length();
       int currentPos = 0;
-      const int blockSize = EncryptionHelper.ENCRYPTED_CHUNK_SIZE;
+      
+      // حجم البلوك (نفس المستخدم في EncryptionHelper)
+      // IV(12) + Data(128KB) + Tag(16)
+      const int plainBlockSize = 128 * 1024; 
+      const int encryptedBlockSize = 12 + plainBlockSize + 16; 
+
+      // للتحكم في معدل إرسال الرسائل للخيط الرئيسي (Throttle)
+      int lastReportTime = 0;
 
       while (currentPos < fileLength) {
-        int bytesToRead = blockSize;
+        int bytesToRead = encryptedBlockSize;
         if (currentPos + bytesToRead > fileLength) {
           bytesToRead = fileLength - currentPos;
         }
@@ -124,25 +175,50 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         Uint8List chunk = await raf.read(bytesToRead);
         if (chunk.isEmpty) break;
 
-        Uint8List decryptedChunk = EncryptionHelper.decryptBlock(chunk);
-        builder.add(decryptedChunk);
+        // منطق فك التشفير
+        try {
+          final iv = encrypt.IV(chunk.sublist(0, ivLength));
+          final cipherText = chunk.sublist(ivLength);
+          final decrypted = encrypter.decryptBytes(encrypt.Encrypted(cipherText), iv: iv);
+          sink.add(decrypted);
+        } catch (e) {
+          // في حال فشل جزء، نتجاوزه لتجنب توقف الملف بالكامل
+          print("Decrypt Error in chunk: $e");
+        }
 
         currentPos += chunk.length;
+
+        // إرسال التحديث كل 100 ميلي ثانية تقريباً
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (now - lastReportTime > 100) {
+          initData.sendPort.send(currentPos / fileLength);
+          lastReportTime = now;
+        }
       }
-    } finally {
+
       await raf.close();
+      await sink.flush();
+      await sink.close();
+
+      initData.sendPort.send("DONE");
+
+    } catch (e) {
+      initData.sendPort.send("ERROR: $e");
     }
-    return builder.toBytes();
   }
 
-  Future<void> _loadPdf() async {
-    setState(() => _loading = true);
-    try {
-      await EncryptionHelper.init();
+  // ===========================================================================
 
-      // ==========================================
-      // 1. التعامل مع الملفات الأوفلاين (المحملة مسبقاً)
-      // ==========================================
+  Future<void> _loadPdf() async {
+    setState(() {
+      _loading = true;
+      _loadingMessage = "Checking file...";
+    });
+
+    try {
+      await EncryptionHelper.init(); // التأكد من جلب المفتاح
+
+      // 1. التعامل مع الملفات الأوفلاين
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
 
@@ -151,44 +227,25 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         final File encryptedFile = File(encryptedPath);
         
         if (await encryptedFile.exists()) {
-          int fileSize = await encryptedFile.length();
+          // إنشاء مسار للملف المؤقت المفكوك
+          final dir = await getTemporaryDirectory();
+          final tempPath = '${dir.path}/temp_pdf_${DateTime.now().millisecondsSinceEpoch}.pdf';
           
-          // إذا الملف صغير (أقل من 30 ميجا)، نفك تشفيره في الرام لأنه أسرع وأسلس في التمرير
-          // قللنا الحد لـ 30 مراعاة للأجهزة القديمة
-          if (fileSize < 30 * 1024 * 1024) { 
-             try {
-               final bytes = await _decryptFileToMemory(encryptedFile);
-               if (mounted) {
-                 setState(() {
-                   _pdfBytes = bytes;
-                   _loading = false;
-                 });
-               }
-               return;
-             } catch (e) {
-                FirebaseCrashlytics.instance.log("⚠️ Memory decrypt failed, switching to proxy: $e");
-             }
-          }
-
-          // الملفات الكبيرة نستخدم معها البروكسي لتجنب امتلاء الذاكرة
-          await _proxyService.start();
-          // نستخدم منفذ الفيديو (8080) أو الصوت (8081) كلاهما يعمل، نستخدم 8080 هنا
-          final url = "http://127.0.0.1:8080/video?path=${Uri.encodeComponent(encryptedPath)}&type=.pdf";
-          
-          if (mounted) {
-            setState(() {
-              _proxyUrl = url;
-              _loading = false;
-            });
-          }
+          // ✅ تشغيل العزل لفك التشفير
+          // نمرر المفتاح كنص لأن الكائنات المعقدة لا تنتقل عبر العزل
+          await _spawnDecryptIsolate(
+            encryptedPath, 
+            tempPath, 
+            EncryptionHelper.key.base64
+          );
           return; 
         }
       }
 
-      // ==========================================
       // 2. التحميل من الإنترنت (Online)
-      // ==========================================
-      if (mounted) setState(() => _isOnlineDownload = true);
+      if (mounted) setState(() {
+         _loadingMessage = "Downloading...";
+      });
 
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
@@ -198,8 +255,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       final dir = await getTemporaryDirectory();
       final savePath = '${dir.path}/online_${widget.pdfId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
 
-      // ✅ متغير للتحكم في معدل تحديث الشاشة (Throttling)
-      // هذا هو الإصلاح الرئيسي لمشكلة "ثقل" الجهاز وتوقفه
       int lastUpdateTimestamp = 0;
 
       await dio.download(
@@ -215,14 +270,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         ),
         onReceiveProgress: (received, total) {
           if (total != -1) {
-            final currentTimestamp = DateTime.now().millisecondsSinceEpoch;
-            // ✅ التحديث فقط إذا مر 250 ميلي ثانية (ربع ثانية) منذ آخر تحديث
-            // هذا يمنع استدعاء setState آلاف المرات في الثانية
-            if (currentTimestamp - lastUpdateTimestamp > 250) {
-              lastUpdateTimestamp = currentTimestamp;
+            final now = DateTime.now().millisecondsSinceEpoch;
+            // تحديث الواجهة بتروٍ (كل 250ms)
+            if (now - lastUpdateTimestamp > 250) {
+              lastUpdateTimestamp = now;
               if (mounted) {
                 setState(() {
-                  _downloadProgress = received / total;
+                  _progressValue = received / total;
+                  _loadingMessage = "Downloading... ${(_progressValue * 100).toInt()}%";
                 });
               }
             }
@@ -232,7 +287,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
       if (mounted) {
         setState(() {
-          _downloadProgress = 1.0;
           _localFilePath = savePath;
           _loading = false;
         });
@@ -242,7 +296,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF Load Failed');
       if (mounted) {
         setState(() { 
-          _error = "Failed to load PDF. Please check internet."; 
+          _error = "Failed to load PDF."; 
           _loading = false; 
         });
       }
@@ -258,23 +312,30 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (_isOnlineDownload) ...[
-                CircularPercentIndicator(
-                  radius: 40.0,
-                  lineWidth: 5.0,
-                  percent: _downloadProgress,
-                  center: Text(
-                    "${(_downloadProgress * 100).toInt()}%",
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
-                  ),
-                  progressColor: AppColors.accentYellow,
-                  backgroundColor: Colors.white10,
+              CircularPercentIndicator(
+                radius: 45.0,
+                lineWidth: 5.0,
+                percent: _progressValue,
+                center: Text(
+                  "${(_progressValue * 100).toInt()}%",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
                 ),
-                const SizedBox(height: 16),
-                const Text("Downloading PDF...", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-              ] else ...[
-                const CircularProgressIndicator(color: AppColors.accentYellow),
-              ]
+                progressColor: AppColors.accentYellow,
+                backgroundColor: Colors.white10,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                _loadingMessage, 
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)
+              ),
+              if (_isWeakDevice)
+                const Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: Text(
+                    "Optimizing for your device...",
+                    style: TextStyle(color: Colors.white38, fontSize: 10),
+                  ),
+                ),
             ],
           ),
         ),
@@ -312,7 +373,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         children: [
           _buildPdfViewer(),
 
-          // العلامة المائية
           IgnorePointer(
             child: Container(
               width: double.infinity,
@@ -330,7 +390,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // رقم الصفحة
           Positioned(
             bottom: 20, right: 20,
             child: Container(
@@ -351,54 +410,19 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   Widget _buildPdfViewer() {
-    // ✅ تم إرجاع الوضع المستمر (Continuous) ليعرض الصفحات أسفل بعضها كما طلبت
-    // ولكن قمنا بتحسين الأداء عبر إدارة الذاكرة في _loadPdf وعبر تقييد التحديثات
+    // للأجهزة الضعيفة، نستخدم التمرير العمودي المستمر لأنه آمن الآن مع الملفات المؤقتة
     const layoutMode = PdfPageLayoutMode.continuous;
     const scrollDirection = PdfScrollDirection.vertical;
 
-    if (_pdfBytes != null) {
-       return SfPdfViewer.memory(
-        _pdfBytes!,
-        key: _pdfViewerKey,
-        enableDoubleTapZooming: true,
-        enableTextSelection: false,
-        pageLayoutMode: layoutMode, 
-        scrollDirection: scrollDirection,
-        onDocumentLoaded: (details) {
-          setState(() => _totalPages = details.document.pages.count);
-        },
-        onPageChanged: (details) {
-          setState(() => _currentPage = details.newPageNumber - 1);
-        },
-      );
-    }
-    else if (_proxyUrl != null) {
-      return SfPdfViewer.network(
-        _proxyUrl!,
-        key: _pdfViewerKey,
-        enableDoubleTapZooming: true,
-        enableTextSelection: false,
-        pageLayoutMode: layoutMode,
-        scrollDirection: scrollDirection,
-        onDocumentLoaded: (details) {
-          setState(() => _totalPages = details.document.pages.count);
-        },
-        onPageChanged: (details) {
-          setState(() => _currentPage = details.newPageNumber - 1);
-        },
-        onDocumentLoadFailed: (details) {
-          setState(() => _error = "Failed to render PDF: ${details.error}");
-        },
-      );
-    } 
-    else if (_localFilePath != null) {
+    if (_localFilePath != null) {
       return SfPdfViewer.file(
         File(_localFilePath!),
         key: _pdfViewerKey,
-        enableDoubleTapZooming: true,
+        enableDoubleTapZooming: !_isWeakDevice, // تعطيل التكبير المزدوج للأجهزة الضعيفة جداً
         enableTextSelection: false,
         pageLayoutMode: layoutMode,
         scrollDirection: scrollDirection,
+        canShowScrollHead: true, 
         onDocumentLoaded: (details) {
           setState(() => _totalPages = details.document.pages.count);
         },
@@ -438,4 +462,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
     );
   }
+}
+
+// ✅ كلاس لنقل البيانات للعزل (يجب أن يكون خارج أي كلاس آخر)
+class _DecryptInitData {
+  final SendPort sendPort;
+  final String sourcePath;
+  final String destPath;
+  final String keyBase64;
+
+  _DecryptInitData(this.sendPort, this.sourcePath, this.destPath, this.keyBase64);
 }
