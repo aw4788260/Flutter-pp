@@ -154,10 +154,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     if (_error != null) return Scaffold(body: Center(child: Text(_error!)));
 
     return Scaffold(
-      key: _scaffoldKey, // للتحكم بالقائمة الجانبية
+      key: _scaffoldKey,
       backgroundColor: AppColors.backgroundPrimary,
       
-      // ✅ القائمة الجانبية (Sidebar)
       endDrawer: Drawer(
         backgroundColor: AppColors.backgroundSecondary,
         width: 250,
@@ -202,7 +201,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           }
         ),
         actions: [
-          // زر القائمة الجانبية
           IconButton(
             icon: const Icon(LucideIcons.list, color: AppColors.accentYellow),
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
@@ -219,15 +217,15 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // 1. عارض PDF
           PdfViewer.uri(
             Uri.parse(_filePath!),
             controller: _pdfController,
             params: PdfViewerParams(
               backgroundColor: AppColors.backgroundPrimary,
-              enableTextSelection: false, // 🚫 منع نسخ النص
               
-              // ✅ مؤشر تحميل الصفحات (Spinner)
+              // ✅ الإصلاح: الطريقة الصحيحة لتعطيل تحديد النص والنسخ
+              textSelectionParams: const PdfTextSelectionParams(enabled: false), 
+              
               loadingBannerBuilder: (context, bytesDownloaded, totalBytes) {
                 return Center(
                   child: Container(
@@ -240,7 +238,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               onDocumentChanged: (document) {
                 if (mounted) setState(() => _totalPages = document.pages.length);
               },
-              // الرسم والممحاة
               pageOverlaysBuilder: (context, pageRect, page) {
                 if (!_isOffline) return [];
                 return [
@@ -272,11 +269,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                                 bool isHighlighter = false;
                                 bool isEraser = false;
 
-                                if (_selectedTool == 1) { // Highlighter
+                                if (_selectedTool == 1) { 
                                   width = _highlightSize;
                                   color = _highlightColor.value;
                                   isHighlighter = true;
-                                } else if (_selectedTool == 2) { // Eraser
+                                } else if (_selectedTool == 2) { 
                                   width = _eraserSize;
                                   color = 0; 
                                   isEraser = true;
@@ -328,19 +325,18 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // 2. العلامة المائية المعدلة (3 مرات، مائلة، صغيرة)
           IgnorePointer(
             child: Center(
               child: Transform.rotate(
-                angle: -0.3, // ميلان خفيف
+                angle: -0.3, 
                 child: Opacity(
-                  opacity: 0.08, // شفافية
+                  opacity: 0.08, 
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       _buildWatermarkText(),
-                      const SizedBox(height: 200), // مسافة
+                      const SizedBox(height: 200),
                       _buildWatermarkText(),
                       const SizedBox(height: 200),
                       _buildWatermarkText(),
@@ -351,7 +347,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // 3. شريط الأدوات
           if (_isDrawingMode && _isOffline)
             Positioned(
               bottom: 40, left: 20, right: 20,
@@ -365,7 +360,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   Widget _buildWatermarkText() {
     return Text(
       _watermarkText, 
-      textScaler: const TextScaler.linear(1.8), // حجم متوسط
+      textScaler: const TextScaler.linear(1.8),
       style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, decoration: TextDecoration.none),
     );
   }
@@ -386,7 +381,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             children: [
               _buildToolButton(LucideIcons.penTool, 0),
               _buildToolButton(LucideIcons.highlighter, 1),
-              _buildToolButton(LucideIcons.eraser, 2), // زر الممحاة
+              _buildToolButton(LucideIcons.eraser, 2), 
               
               IconButton(
                 icon: const Icon(LucideIcons.undo, color: Colors.white),
@@ -477,7 +472,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 }
 
-// ✅ الرسام مع دعم الممحاة (saveLayer + BlendMode.clear)
 class RelativeSketchPainter extends CustomPainter {
   final List<DrawingLine> lines;
   final Size pageSize;
@@ -486,7 +480,6 @@ class RelativeSketchPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 🎨 حفظ الطبقة لضمان أن الممحاة تمسح كل شيء (قلم + هايلات) في هذه الطبقة فقط
     canvas.saveLayer(Rect.fromLTWH(0, 0, size.width, size.height), Paint());
 
     for (var line in lines) {
@@ -497,7 +490,7 @@ class RelativeSketchPainter extends CustomPainter {
         ..strokeWidth = line.strokeWidth * pageSize.width;
 
       if (line.isEraser) {
-        paint.blendMode = BlendMode.clear; // مسح
+        paint.blendMode = BlendMode.clear;
         paint.color = Colors.transparent; 
       } else {
         paint.color = Color(line.color).withOpacity(line.isHighlighter ? 0.35 : 1.0);
@@ -520,7 +513,6 @@ class RelativeSketchPainter extends CustomPainter {
       }
     }
     
-    // استعادة الطبقة ودمجها (لتظهر الشفافية)
     canvas.restore();
   }
 
