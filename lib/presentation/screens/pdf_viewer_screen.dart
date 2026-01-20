@@ -4,6 +4,9 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart'; 
+// 🔥🔥🔥 إضافة الاستيراد الضروري لكلاس التخطيط 🔥🔥🔥
+import 'package:pdfrx/src/widgets/pdf_page_layout.dart'; 
+
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -39,7 +42,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   bool _isOffline = false;
   String _watermarkText = '';
 
-  // --- الرسم ---
+  // --- أدوات الرسم ---
   bool _isDrawingMode = false;
   int _selectedTool = 0; 
   Color _penColor = Colors.red;
@@ -47,6 +50,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   double _penSize = 0.003; 
   double _highlightSize = 0.035; 
   double _eraserSize = 0.04; 
+
   Map<int, List<DrawingLine>> _pageDrawings = {};
   DrawingLine? _currentLine;
   int _activePage = 0; 
@@ -246,21 +250,18 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             Uri.parse(_filePath!),
             controller: _pdfController,
             
-            // 🔥 تفعيل البث والكاش في نفس الوقت
+            // 🔥 تفعيل البث والكاش
             preferRangeAccess: true, 
 
             params: PdfViewerParams(
               backgroundColor: AppColors.backgroundPrimary,
-              
-              // ✅ منع النسخ
               textSelectionParams: const PdfTextSelectionParams(enabled: false), 
               
-              // ✅ تثبيت التخطيط لمنع القفز
+              // ✅✅✅ الآن سيعمل هذا السطر لأننا أضفنا الاستيراد الصحيح
               layoutPages: (pages, params, helper) {
                   return SequentialPagesLayout.fromPages(pages, params, helper: helper);
               },
               
-              // ✅ حركة ناعمة
               scrollPhysics: const BouncingScrollPhysics(),
 
               loadingBannerBuilder: (context, bytesDownloaded, totalBytes) {
