@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:ui'; // ضروري للرسم
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -27,19 +28,32 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
-  // الرابط المحلي (Localhost) دائماً
+  // --- متغيرات النظام ---
   String? _viewerUrl;
-  
-  // السيرفر المحلي (يعمل كـ Decryptor أو Proxy)
   LocalPdfServer? _localServer;
-
   bool _loading = true;
   String? _error;
-  int _totalPages = 0;
-  int _currentPage = 0;
   String _watermarkText = '';
   
+  // --- متغيرات الـ PDF ---
   final GlobalKey<SfPdfViewerState> _pdfViewerKey = GlobalKey();
+  int _totalPages = 0;
+  int _currentPage = 1; // نبدأ من 1 لتوافق المنطق
+  bool _isOffline = false; // لتفعيل أدوات الرسم
+
+  // --- 🎨 متغيرات الرسم (Drawing Engine) ---
+  bool _isDrawingMode = false; // تفعيل وضع الرسم
+  bool _isHighlighter = false; // هل الأداة الحالية هايلايت؟
+  
+  // الألوان المختارة
+  Color _penColor = Colors.red;
+  Color _highlightColor = Colors.yellow;
+
+  // تخزين الرسومات: Map<رقم الصفحة, قائمة الخطوط>
+  Map<int, List<DrawingLine>> _pageDrawings = {};
+  
+  // الخط الحالي الذي يتم رسمه الآن
+  DrawingLine? _currentLine;
 
   void _log(String message) {
     final msg = "🔍 [PDF_SCREEN] $message";
@@ -57,10 +71,53 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   void dispose() {
-    _log("Closing Screen - Stopping Local Server");
+    _log("Closing Screen");
+    // حفظ الرسومات عند الخروج
+    if (_isOffline) _saveDrawingsToHive();
     _localServer?.stop();
     super.dispose();
   }
+
+  // 💾 --- منطق حفظ واسترجاع الرسومات (Hive) ---
+  Future<void> _saveDrawingsToHive() async {
+    try {
+      final box = await Hive.openBox('pdf_drawings_db');
+      // تحويل البيانات إلى JSON بسيط للحفظ
+      // المفتاح: pdfID_pageNumber
+      _pageDrawings.forEach((page, lines) {
+        final List<Map<String, dynamic>> serializedLines = lines.map((line) => line.toJson()).toList();
+        box.put('${widget.pdfId}_$page', serializedLines);
+      });
+      _log("✅ Drawings saved successfully.");
+    } catch (e) {
+      _log("❌ Error saving drawings: $e");
+    }
+  }
+
+  Future<void> _loadDrawingsForPage(int pageNum) async {
+    try {
+      final box = await Hive.openBox('pdf_drawings_db');
+      final dynamic data = box.get('${widget.pdfId}_$pageNum');
+      
+      if (data != null) {
+        // تحويل البيانات من JSON إلى كائنات
+        final List<dynamic> rawList = data;
+        final List<DrawingLine> loadedLines = rawList.map((e) => DrawingLine.fromJson(Map<String, dynamic>.from(e))).toList();
+        
+        setState(() {
+          _pageDrawings[pageNum] = loadedLines;
+        });
+      } else {
+        // لا توجد رسومات لهذه الصفحة
+        setState(() {
+          _pageDrawings[pageNum] = [];
+        });
+      }
+    } catch (e) {
+      _log("⚠️ Error loading page $pageNum drawings: $e");
+    }
+  }
+  // ---------------------------------------------
 
   void _initWatermarkText() {
     String displayText = '';
@@ -84,67 +141,65 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     try {
       await EncryptionHelper.init(); 
 
-      // 1. تحديد ما إذا كان الملف أوفلاين أم أونلاين
+      // 1. فحص هل الملف موجود أوفلاين
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
       
-      bool isOffline = false;
       String? offlinePath;
 
       if (downloadItem != null && downloadItem['path'] != null) {
         offlinePath = downloadItem['path'];
         if (await File(offlinePath!).exists()) {
-          isOffline = true;
+          _isOffline = true;
         }
       }
 
-      _log(isOffline ? "📂 Mode: OFFLINE" : "🌐 Mode: ONLINE");
+      _log(_isOffline ? "📂 Mode: OFFLINE (Drawing Enabled)" : "🌐 Mode: ONLINE (View Only)");
+
+      // تحميل رسومات الصفحة الأولى إذا كنا أوفلاين
+      if (_isOffline) await _loadDrawingsForPage(1);
 
       // إيقاف أي سيرفر سابق
       _localServer?.stop();
 
-      if (isOffline) {
-         // ✅ إعداد السيرفر للأوفلاين (فك التشفير)
+      if (_isOffline) {
+         // ✅ أوفلاين: فك التشفير
          _localServer = LocalPdfServer.offline(offlinePath, EncryptionHelper.key.base64);
       } else {
-         // ✅ إعداد السيرفر للأونلاين (بروكسي ونفق)
+         // ✅ أونلاين: نفق البروكسي (لحماية الهيدرز)
          var box = await Hive.openBox('auth_box');
          final userId = box.get('user_id');
          final deviceId = box.get('device_id');
          
-         final headers = {
-            'x-user-id': userId,
-            'x-device-id': deviceId,
+         final Map<String, String> headers = {
+            'x-user-id': userId?.toString() ?? '',
+            'x-device-id': deviceId?.toString() ?? '',
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
          };
          
-         // إضافة timestamp لمنع الكاش القديم في التطبيق
+         // إضافة TimeStamp لمنع الكاش
          final url = 'https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=${widget.pdfId}&t=${DateTime.now().millisecondsSinceEpoch}';
          
          _localServer = LocalPdfServer.online(url, headers);
       }
 
-      // تشغيل السيرفر والحصول على البورت
       int port = await _localServer!.start();
       final localhostUrl = 'http://127.0.0.1:$port/stream.pdf';
       
-      _log("🚀 Server Started on port $port. URL: $localhostUrl");
+      _log("🚀 Server Ready: $localhostUrl");
 
       if (mounted) {
         setState(() {
-          _viewerUrl = localhostUrl; // المشغل يتصل دائماً بـ Localhost
+          _viewerUrl = localhostUrl;
           _loading = false;
         });
       }
 
     } catch (e, stack) {
-      _log("❌ FATAL LOAD ERROR: $e");
+      _log("❌ FATAL ERROR: $e");
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF Load Failed');
       if (mounted) {
-        setState(() { 
-          _error = "Failed to load PDF."; 
-          _loading = false; 
-        });
+        setState(() { _error = "Failed to load PDF."; _loading = false; });
       }
     }
   }
@@ -180,9 +235,24 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow), 
-          onPressed: () => Navigator.pop(context)
+          onPressed: () async {
+            if (_isOffline) await _saveDrawingsToHive();
+            if (context.mounted) Navigator.pop(context);
+          }
         ),
         actions: [
+          // 🖍️ زر تفعيل الرسم (أوفلاين فقط)
+          if (_isOffline)
+            IconButton(
+              icon: Icon(
+                _isDrawingMode ? LucideIcons.checkCircle : LucideIcons.penTool,
+                color: _isDrawingMode ? Colors.greenAccent : Colors.white
+              ),
+              onPressed: () {
+                setState(() => _isDrawingMode = !_isDrawingMode);
+              },
+            ),
+          
           IconButton(
             icon: const Icon(LucideIcons.search, color: Colors.white),
             onPressed: () { _pdfViewerKey.currentState?.openBookmarkView(); },
@@ -191,27 +261,40 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          if (_viewerUrl != null)
-            SfPdfViewer.network(
-              _viewerUrl!,
-              // ⚠️ لا نمرر Headers هنا، السيرفر المحلي يتولى الأمر
-              key: _pdfViewerKey,
-              enableDoubleTapZooming: true,
-              pageLayoutMode: PdfPageLayoutMode.continuous,
-              scrollDirection: PdfScrollDirection.vertical,
-              canShowScrollHead: true,
-              onDocumentLoaded: (details) {
-                if (mounted) setState(() => _totalPages = details.document.pages.count);
-              },
-              onPageChanged: (details) {
-                if (mounted) setState(() => _currentPage = details.newPageNumber - 1);
-              },
-              onDocumentLoadFailed: (args) {
-                 _log("❌ PDF Viewer Failed: ${args.description}");
-                 if (mounted) setState(() => _error = "Failed to open document.");
-              },
-            ),
+          // 1. طبقة PDF Viewer
+          SfPdfViewer.network(
+            _viewerUrl!,
+            key: _pdfViewerKey,
+            // ⛔️ هام جداً: منع النسخ وتحديد النص
+            enableTextSelection: false, 
+            
+            // ✋ منع التفاعل مع الـ PDF (السكرول) أثناء الرسم
+            interactionMode: _isDrawingMode ? PdfInteractionMode.pan : PdfInteractionMode.pan, 
+            
+            // منع الزوم أثناء الرسم لتفادي المشاكل
+            enableDoubleTapZooming: !_isDrawingMode, 
+            
+            onDocumentLoaded: (details) {
+              if (mounted) setState(() => _totalPages = details.document.pages.count);
+            },
+            onPageChanged: (details) {
+              // عند تغيير الصفحة، نحفظ السابقة ونحمل الجديدة
+              if (_isOffline) {
+                 // _saveDrawingsToHive(); // (اختياري: حفظ لحظي)
+                 setState(() {
+                   _currentPage = details.newPageNumber;
+                 });
+                 _loadDrawingsForPage(_currentPage);
+              } else {
+                 if (mounted) setState(() => _currentPage = details.newPageNumber);
+              }
+            },
+            onDocumentLoadFailed: (args) {
+               if (mounted) setState(() => _error = "Failed to open document.");
+            },
+          ),
 
+          // 2. طبقة العلامة المائية
           IgnorePointer(
             child: Container(
               width: double.infinity, height: double.infinity, color: Colors.transparent,
@@ -222,18 +305,149 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
+          // 3. 🎨 طبقة الرسم (Canvas) - تظهر فقط في الأوفلاين
+          if (_isOffline)
+            Positioned.fill(
+              child: GestureDetector(
+                // التقاط اللمس فقط في وضع الرسم
+                onPanStart: _isDrawingMode ? (details) {
+                   setState(() {
+                     _currentLine = DrawingLine(
+                       points: [details.localPosition],
+                       color: _isHighlighter ? _highlightColor.value : _penColor.value,
+                       strokeWidth: _isHighlighter ? 25.0 : 3.0,
+                       isHighlighter: _isHighlighter,
+                     );
+                   });
+                } : null,
+                onPanUpdate: _isDrawingMode ? (details) {
+                   setState(() {
+                     _currentLine?.points.add(details.localPosition);
+                   });
+                } : null,
+                onPanEnd: _isDrawingMode ? (details) {
+                   setState(() {
+                     if (_currentLine != null) {
+                       if (_pageDrawings[_currentPage] == null) {
+                         _pageDrawings[_currentPage] = [];
+                       }
+                       _pageDrawings[_currentPage]!.add(_currentLine!);
+                       _currentLine = null;
+                     }
+                   });
+                } : null,
+                child: CustomPaint(
+                  painter: SketchPainter(
+                    lines: _pageDrawings[_currentPage] ?? [],
+                    currentLine: _currentLine,
+                  ),
+                  child: Container(color: Colors.transparent),
+                ),
+              ),
+            ),
+
+          // 4. 🧰 شريط أدوات الرسم (عائم في الأسفل)
+          if (_isDrawingMode && _isOffline)
+            Positioned(
+              bottom: 60, left: 20, right: 20,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[900],
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 10)],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    // أدوات
+                    _buildToolButton(LucideIcons.pen, false),
+                    _buildToolButton(LucideIcons.highlighter, true),
+                    Container(width: 1, height: 24, color: Colors.grey),
+                    
+                    // ألوان
+                    _buildColorButton(Colors.black),
+                    _buildColorButton(Colors.red),
+                    _buildColorButton(Colors.blue),
+                    _buildColorButton(Colors.yellow, isHighlight: true),
+                    _buildColorButton(Colors.green, isHighlight: true),
+                    
+                    const Spacer(),
+                    // تراجع
+                    IconButton(
+                      icon: const Icon(LucideIcons.undo, color: Colors.white),
+                      onPressed: () {
+                        setState(() {
+                          final lines = _pageDrawings[_currentPage];
+                          if (lines != null && lines.isNotEmpty) {
+                            lines.removeLast();
+                          }
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // 5. عداد الصفحات
           Positioned(
             bottom: 20, right: 20,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
               child: Text(
-                _totalPages > 0 ? "${_currentPage + 1} / $_totalPages" : "${_currentPage + 1}",
+                _totalPages > 0 ? "${_currentPage} / $_totalPages" : "${_currentPage}",
                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // --- ودجات مساعدة للشريط ---
+  Widget _buildToolButton(IconData icon, bool isHighlightTool) {
+    final bool isSelected = _isHighlighter == isHighlightTool;
+    return IconButton(
+      icon: Icon(icon, color: isSelected ? AppColors.accentYellow : Colors.grey),
+      onPressed: () => setState(() => _isHighlighter = isHighlightTool),
+    );
+  }
+
+  Widget _buildColorButton(Color color, {bool isHighlight = false}) {
+    // إذا كانت الأداة قلم، نعرض ألوان القلم فقط، وإذا هايلايت نعرض ألوان الهايلايت
+    if (_isHighlighter != isHighlight && color != Colors.black && color != Colors.red && color != Colors.blue) {
+       // منطق بسيط لإخفاء الألوان غير المناسبة للأداة (اختياري)
+       // هنا سأعرض الكل للتبسيط، ولكن سأغير الشفافية بناءً على التحديد
+    }
+
+    final bool isSelected = _isHighlighter 
+        ? _highlightColor == color 
+        : _penColor == color;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (_isHighlighter) {
+            _highlightColor = color;
+          } else {
+            _penColor = color;
+          }
+          // إذا ضغط على لون هايلايت، حول الأداة لهايلايت تلقائياً والعكس
+          if (isHighlight) _isHighlighter = true;
+          if (!isHighlight && color != Colors.yellow && color != Colors.green) _isHighlighter = false;
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        width: 28, height: 28,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: isSelected ? Border.all(color: Colors.white, width: 2.5) : null,
+        ),
       ),
     );
   }
@@ -251,4 +465,95 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
     );
   }
+}
+
+// =========================================================
+// 🖍️ كلاسات الرسم والموديل (لعدم الحاجة لملفات خارجية)
+// =========================================================
+
+class DrawingLine {
+  final List<Offset> points;
+  final int color;
+  final double strokeWidth;
+  final bool isHighlighter;
+
+  DrawingLine({
+    required this.points,
+    required this.color,
+    required this.strokeWidth,
+    required this.isHighlighter,
+  });
+
+  // تحويل لـ JSON للحفظ
+  Map<String, dynamic> toJson() {
+    return {
+      'c': color,
+      'w': strokeWidth,
+      'h': isHighlighter,
+      'p': points.map((e) => {'x': e.dx, 'y': e.dy}).toList(),
+    };
+  }
+
+  // إنشاء من JSON
+  factory DrawingLine.fromJson(Map<String, dynamic> json) {
+    var pts = (json['p'] as List).map((e) => Offset(e['x'], e['y'])).toList();
+    return DrawingLine(
+      points: pts,
+      color: json['c'],
+      strokeWidth: json['w'],
+      isHighlighter: json['h'] ?? false,
+    );
+  }
+}
+
+// 🎨 الرسام المسؤول عن رسم الخطوط
+class SketchPainter extends CustomPainter {
+  final List<DrawingLine> lines;
+  final DrawingLine? currentLine;
+
+  SketchPainter({required this.lines, this.currentLine});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // رسم الخطوط المحفوظة
+    for (var line in lines) {
+      _paintLine(canvas, line);
+    }
+    // رسم الخط الحالي
+    if (currentLine != null) {
+      _paintLine(canvas, currentLine!);
+    }
+  }
+
+  void _paintLine(Canvas canvas, DrawingLine line) {
+    final paint = Paint()
+      ..color = Color(line.color).withOpacity(line.isHighlighter ? 0.35 : 1.0)
+      ..strokeWidth = line.strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = line.isHighlighter ? StrokeCap.butt : StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    // تحسين مظهر الهايلايت
+    if (line.isHighlighter) {
+      // نستخدم blendMode عادي لضمان الظهور فوق الـ PDF
+      // BlendMode.darken جيد للهايلايت ولكن قد لا يعمل في كل الطبقات، Normal هو الأسلم
+      paint.blendMode = BlendMode.srcOver; 
+    }
+
+    // Path لرسم خط متصل ناعم
+    if (line.points.length > 1) {
+      final path = Path();
+      path.moveTo(line.points[0].dx, line.points[0].dy);
+      for (int i = 1; i < line.points.length; i++) {
+        path.lineTo(line.points[i].dx, line.points[i].dy);
+      }
+      canvas.drawPath(path, paint);
+    } else if (line.points.length == 1) {
+      // رسم نقطة واحدة
+      canvas.drawPoints(PointMode.points, line.points, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
