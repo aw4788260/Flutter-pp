@@ -1,43 +1,68 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:isolate'; // ✅ استيراد مكتبة العزل
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+// تأكد من المسار الصحيح
+import '../utils/encryption_helper.dart';
 
 class LocalPdfServer {
   HttpServer? _server;
   final String encryptedFilePath;
   final String keyBase64;
   
-  // ✅ متغيرات التواصل مع المعالج في الخلفية
   Isolate? _workerIsolate;
   SendPort? _workerSendPort;
 
-  // إعدادات التشفير (يجب أن تطابق إعدادات التشفير وقت التحميل)
-  static const int plainBlockSize = 32 * 1024; // 32KB Chunk
+  static const int plainBlockSize = 32 * 1024; 
   static const int ivLength = 12;
   static const int tagLength = 16;
   static const int encryptedBlockSize = ivLength + plainBlockSize + tagLength;
 
   LocalPdfServer(this.encryptedFilePath, this.keyBase64);
 
-  Future<int> start() async {
-    // 1. تشغيل المعالج (Isolate) في الخلفية
-    final initPort = ReceivePort();
-    _workerIsolate = await Isolate.spawn(_decryptWorkerEntry, initPort.sendPort);
-    
-    // استلام بورت الإرسال الخاص بالمعالج
-    _workerSendPort = await initPort.first as SendPort;
+  // 🔍 دالة تسجيل موحدة للكونسول وفايربيس
+  void _log(String message) {
+    final msg = "🔍 [PDF_SERVER] $message";
+    print(msg); // يظهر في الـ Run Console
+    try {
+      FirebaseCrashlytics.instance.log(msg); // يظهر في Firebase
+    } catch (e) { /* ignore if firebase not ready */ }
+  }
 
-    // 2. تشغيل سيرفر HTTP المحلي
-    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    _server!.listen(_handleHttpRequest);
+  Future<int> start() async {
+    _log("Starting Server for file: $encryptedFilePath");
     
-    return _server!.port;
+    try {
+      final file = File(encryptedFilePath);
+      if (!await file.exists()) {
+        _log("❌ ERROR: File does not exist at path!");
+        throw Exception("File not found");
+      }
+      _log("✅ File found. Size: ${await file.length()} bytes");
+
+      final initPort = ReceivePort();
+      _workerIsolate = await Isolate.spawn(_decryptWorkerEntry, initPort.sendPort);
+      _workerSendPort = await initPort.first as SendPort;
+      _log("✅ Worker Isolate Spawned");
+
+      // استخدام Loopback IP
+      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      _server!.listen(_handleHttpRequest);
+      
+      _log("🚀 Server listening on port: ${_server!.port}");
+      return _server!.port;
+
+    } catch (e, stack) {
+      _log("❌ FATAL START ERROR: $e");
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'LocalServer Start Failed');
+      rethrow;
+    }
   }
 
   Future<void> stop() async {
-    // قتل المعالج وتنظيف السيرفر
+    _log("🛑 Stopping Server...");
     _workerIsolate?.kill(priority: Isolate.immediate);
     _workerIsolate = null;
     await _server?.close(force: true);
@@ -46,23 +71,24 @@ class LocalPdfServer {
 
   void _handleHttpRequest(HttpRequest request) async {
     final response = request.response;
-    final file = File(encryptedFilePath);
+    _log("📥 Request: ${request.method} ${request.uri}");
+    _log("Headers: Range=${request.headers.value(HttpHeaders.rangeHeader)}");
 
     try {
+      final file = File(encryptedFilePath);
       if (!await file.exists()) {
+        _log("❌ Request Error: File vanished");
         response.statusCode = HttpStatus.notFound;
         await response.close();
         return;
       }
 
       final encryptedLen = await file.length();
-      // حساب الحجم التقريبي للملف الأصلي
       final originalSize = (encryptedLen / encryptedBlockSize * plainBlockSize).toInt();
 
       response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
       response.headers.set(HttpHeaders.contentTypeHeader, 'application/pdf');
 
-      // معالجة الـ Range Request (للتنقل السريع)
       String? rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
       int start = 0;
       int end = originalSize - 1;
@@ -77,17 +103,18 @@ class LocalPdfServer {
 
         response.statusCode = HttpStatus.partialContent;
         response.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$originalSize');
+        _log("⚡ Serving Partial: $start - $end");
       } else {
+        _log("⚡ Serving Full Content");
         response.statusCode = HttpStatus.ok;
       }
 
       response.contentLength = end - start + 1;
 
       if (request.method != 'HEAD') {
-        // ✅ إنشاء قناة استقبال خاصة بهذا الطلب فقط
         final streamResponsePort = ReceivePort();
         
-        // ✅ إرسال طلب العمل للخيط المنفصل (Background Isolate)
+        _log("🔄 Asking Worker for bytes...");
         _workerSendPort!.send(_DecryptRequest(
           filePath: encryptedFilePath,
           keyBase64: keyBase64,
@@ -96,23 +123,24 @@ class LocalPdfServer {
           replyPort: streamResponsePort.sendPort,
         ));
 
-        // ✅ استقبال البيانات المفكوكة وتمريرها للمشغل فوراً
+        int chunksReceived = 0;
         await for (final chunk in streamResponsePort) {
           if (chunk is Uint8List) {
             response.add(chunk);
-            // flush اختياري لضمان سلاسة البث
-            await response.flush(); 
+            chunksReceived++;
           } else if (chunk == null) {
-            break; // إشارة الانتهاء من المعالج
+            break; 
           }
         }
+        _log("✅ Stream Finished. Chunks sent: $chunksReceived");
         streamResponsePort.close();
       }
       
       await response.close();
 
-    } catch (e) {
-      print("Server Error: $e");
+    } catch (e, s) {
+      _log("❌ Request Handler Error: $e");
+      FirebaseCrashlytics.instance.recordError(e, s, reason: 'LocalServer Request Failed');
       try {
         response.statusCode = HttpStatus.internalServerError;
         await response.close();
@@ -120,17 +148,10 @@ class LocalPdfServer {
     }
   }
 
-  // ===========================================================================
-  // ⚙️ منطقة المعالج المعزول (Runs in Parallel Background Thread)
-  // ===========================================================================
-  
   static void _decryptWorkerEntry(SendPort initSendPort) {
-    // إنشاء بورت لاستقبال الأوامر داخل العزل
     final commandPort = ReceivePort();
-    // إرسال عنوان البورت للخيط الرئيسي
     initSendPort.send(commandPort.sendPort);
 
-    // الاستماع للطلبات
     commandPort.listen((message) {
       if (message is _DecryptRequest) {
         _processDecryption(message);
@@ -139,6 +160,7 @@ class LocalPdfServer {
   }
 
   static Future<void> _processDecryption(_DecryptRequest req) async {
+    // ملاحظة: لا يمكننا استخدام Firebase داخل العزل بسهولة، سنعتمد على try-catch صارم
     final file = File(req.filePath);
     RandomAccessFile? raf;
 
@@ -147,7 +169,6 @@ class LocalPdfServer {
       final key = encrypt.Key.fromBase64(req.keyBase64);
       final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.gcm));
 
-      // تحديد البلوكات المطلوبة
       int startBlockIndex = req.startByte ~/ plainBlockSize;
       int endBlockIndex = req.endByte ~/ plainBlockSize;
       int offsetInFirstBlock = req.startByte % plainBlockSize;
@@ -158,7 +179,6 @@ class LocalPdfServer {
       for (int i = startBlockIndex; i <= endBlockIndex; i++) {
         if (bytesSent >= totalBytesToSend) break;
 
-        // القراءة من القرص (Disk I/O) داخل العزل
         int filePos = i * encryptedBlockSize;
         await raf.setPosition(filePos);
 
@@ -173,7 +193,6 @@ class LocalPdfServer {
         Uint8List encryptedChunk = await raf.read(readSize);
 
         try {
-          // 🔓 فك التشفير (Heavy CPU Work) داخل العزل
           final iv = encrypt.IV(encryptedChunk.sublist(0, ivLength));
           final cipherText = encryptedChunk.sublist(ivLength);
           
@@ -182,7 +201,6 @@ class LocalPdfServer {
             iv: iv
           );
 
-          // حساب القص الدقيق للبيانات المطلوبة
           int chunkStart = (i == startBlockIndex) ? offsetInFirstBlock : 0;
           int chunkEnd = decryptedBlock.length;
           int remainingBytesNeeded = totalBytesToSend - bytesSent;
@@ -192,25 +210,22 @@ class LocalPdfServer {
           }
 
           if (chunkStart < chunkEnd) {
-             // 📤 إرسال البيانات الجاهزة للخيط الرئيسي
             req.replyPort.send(Uint8List.fromList(decryptedBlock.sublist(chunkStart, chunkEnd)));
             bytesSent += (chunkEnd - chunkStart);
           }
         } catch (e) {
-          print("Decrypt Worker Error at block $i: $e");
+          print("Worker Decrypt Error (Block $i): $e");
         }
       }
     } catch (e) {
       print("Worker Fatal Error: $e");
     } finally {
       await raf?.close();
-      // إرسال null كإشارة لانتهاء العملية
       req.replyPort.send(null); 
     }
   }
 }
 
-// 📦 كلاس لنقل بيانات الطلب للعزل
 class _DecryptRequest {
   final String filePath;
   final String keyBase64;
