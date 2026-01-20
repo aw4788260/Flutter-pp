@@ -2,16 +2,16 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:pdfrx/pdfrx.dart';
+import 'package:pdfrx/pdfrx.dart'; //
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../../core/constants/app_colors.dart';
-import '../../core/services/app_state.dart';
-import '../../core/utils/encryption_helper.dart';
-import '../../core/services/local_pdf_server.dart';
-import '../../core/models/drawing_model.dart'; 
+import '../../core/constants/app_colors.dart'; //
+import '../../core/services/app_state.dart'; //
+import '../../core/utils/encryption_helper.dart'; //
+import '../../core/services/local_pdf_server.dart'; //
+import '../../core/models/drawing_model.dart'; //
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfId;
@@ -131,6 +131,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           'x-device-id': box.get('device_id')?.toString() ?? '',
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         };
+        // رابط الباك اند المتوافق مع البروكسي
         final url = 'https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=${widget.pdfId}';
         _localServer = LocalPdfServer.online(url, headers);
       }
@@ -144,6 +145,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         });
       }
     } catch (e) {
+      FirebaseCrashlytics.instance.recordError(e, null, reason: 'PDF Prep Failed');
       if (mounted) setState(() { _error = "Failed to load PDF."; _loading = false; });
     }
   }
@@ -154,9 +156,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     if (_error != null) return Scaffold(body: Center(child: Text(_error!)));
 
     return Scaffold(
-      key: _scaffoldKey,
+      key: _scaffoldKey, // للتحكم بالقائمة الجانبية
       backgroundColor: AppColors.backgroundPrimary,
       
+      // ✅ القائمة الجانبية لفرز الصفحات
       endDrawer: Drawer(
         backgroundColor: AppColors.backgroundSecondary,
         width: 250,
@@ -217,15 +220,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
+          // 1. عارض PDF
           PdfViewer.uri(
             Uri.parse(_filePath!),
             controller: _pdfController,
+            
+            // 🔥 هام جداً: تفعيل طلب الأجزاء ليعمل البث
+            preferRangeAccess: true, 
+
             params: PdfViewerParams(
               backgroundColor: AppColors.backgroundPrimary,
               
-              // ✅ تفعيل خيار عدم النسخ بشكل صحيح
+              // ✅ منع نسخ النص
               textSelectionParams: const PdfTextSelectionParams(enabled: false), 
               
+              // مؤشر تحميل الصفحات
               loadingBannerBuilder: (context, bytesDownloaded, totalBytes) {
                 return Center(
                   child: Container(
@@ -236,11 +245,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 );
               },
               
-              // ✅✅✅ الإصلاح هنا: التعامل مع القيمة الفارغة (Null Safety)
+              // تحديث عدد الصفحات (مع حماية Null Safety)
               onDocumentChanged: (document) {
                 if (mounted) setState(() => _totalPages = document?.pages.length ?? 0);
               },
 
+              // الرسم والممحاة
               pageOverlaysBuilder: (context, pageRect, page) {
                 if (!_isOffline) return [];
                 return [
@@ -328,28 +338,35 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
+          // 2. ✅ العلامة المائية المعدلة (3 مرات، عمودية، مدورة 90 درجة، واضحة)
           IgnorePointer(
             child: Center(
-              child: Transform.rotate(
-                angle: -0.3, 
-                child: Opacity(
-                  opacity: 0.08, 
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildWatermarkText(),
-                      const SizedBox(height: 200),
-                      _buildWatermarkText(),
-                      const SizedBox(height: 200),
-                      _buildWatermarkText(),
-                    ],
+              child: Opacity(
+                opacity: 0.3, // ✅ وضوح أعلى
+                child: Column(
+                  mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: List.generate(
+                    3, // ✅ تكرار 3 مرات فقط
+                    (index) => RotatedBox(
+                      quarterTurns: 3, // ✅ تدوير 270 درجة (أو -90) ليصبح النص عمودياً
+                      child: Text(
+                        _watermarkText, 
+                        textScaler: const TextScaler.linear(2.0), // ✅ خط أوضح وأكبر
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          color: Colors.grey, 
+                          decoration: TextDecoration.none
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
 
+          // 3. شريط الأدوات (يظهر فقط في الأوفلاين عند التفعيل)
           if (_isDrawingMode && _isOffline)
             Positioned(
               bottom: 40, left: 20, right: 20,
@@ -357,14 +374,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
         ],
       ),
-    );
-  }
-
-  Widget _buildWatermarkText() {
-    return Text(
-      _watermarkText, 
-      textScaler: const TextScaler.linear(1.8),
-      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, decoration: TextDecoration.none),
     );
   }
 
