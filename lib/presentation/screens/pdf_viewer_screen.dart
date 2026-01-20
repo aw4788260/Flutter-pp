@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:math'; // للتدوير
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart'; //
@@ -35,12 +36,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String? _filePath; 
   bool _loading = true;
   String? _error;
-  bool _isOffline = false;
+  bool _isOffline = false; // ✅ للتمييز بين الوضعين
   String _watermarkText = '';
 
   // --- أدوات الرسم ---
   bool _isDrawingMode = false;
-  int _selectedTool = 0; // 0=قلم, 1=هايلات, 2=ممحاة
+  int _selectedTool = 0; 
   
   Color _penColor = Colors.red;
   Color _highlightColor = Colors.yellow;
@@ -115,23 +116,32 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       final downloadItem = downloadsBox.get(widget.pdfId);
 
       String? offlinePath;
+      bool fileExistsLocally = false;
+
+      // 1. التحقق بدقة هل الملف موجود فعلياً في التخزين؟
       if (downloadItem != null && downloadItem['path'] != null) {
         offlinePath = downloadItem['path'];
-        if (await File(offlinePath!).exists()) _isOffline = true;
+        if (await File(offlinePath!).exists()) {
+          fileExistsLocally = true;
+        }
       }
 
       _localServer?.stop();
 
-      if (_isOffline) {
+      // 2. منطق التمييز الصارم
+      if (fileExistsLocally) {
+        // ✅ حالة الأوفلاين: الملف موجود -> نقرأ من القرص
+        setState(() => _isOffline = true);
         _localServer = LocalPdfServer.offline(offlinePath, EncryptionHelper.key.base64);
       } else {
+        // ✅ حالة الأونلاين: الملف غير موجود -> بث مباشر من الإنترنت
+        setState(() => _isOffline = false);
         var box = await Hive.openBox('auth_box');
         final headers = {
           'x-user-id': box.get('user_id')?.toString() ?? '',
           'x-device-id': box.get('device_id')?.toString() ?? '',
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         };
-        // رابط الباك اند المتوافق مع البروكسي
         final url = 'https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=${widget.pdfId}';
         _localServer = LocalPdfServer.online(url, headers);
       }
@@ -156,10 +166,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     if (_error != null) return Scaffold(body: Center(child: Text(_error!)));
 
     return Scaffold(
-      key: _scaffoldKey, // للتحكم بالقائمة الجانبية
+      key: _scaffoldKey,
       backgroundColor: AppColors.backgroundPrimary,
       
-      // ✅ القائمة الجانبية لفرز الصفحات
       endDrawer: Drawer(
         backgroundColor: AppColors.backgroundSecondary,
         width: 250,
@@ -194,7 +203,28 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
 
       appBar: AppBar(
-        title: Text(widget.title, style: const TextStyle(fontSize: 14, color: Colors.white)),
+        title: Row(
+          children: [
+            Expanded(child: Text(widget.title, style: const TextStyle(fontSize: 14, color: Colors.white), overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 8),
+            // ✅ مؤشر مرئي لحالة الاتصال (أونلاين / أوفلاين)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: _isOffline ? Colors.green.withOpacity(0.2) : Colors.blue.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _isOffline ? Colors.green : Colors.blue, width: 1),
+              ),
+              child: Row(
+                children: [
+                  Icon(_isOffline ? LucideIcons.hardDrive : LucideIcons.cloud, size: 12, color: _isOffline ? Colors.green : Colors.blue),
+                  const SizedBox(width: 4),
+                  Text(_isOffline ? "Offline" : "Stream", style: TextStyle(fontSize: 10, color: _isOffline ? Colors.green : Colors.blue, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ],
+        ),
         backgroundColor: AppColors.backgroundSecondary,
         leading: BackButton(
           color: AppColors.accentYellow,
@@ -208,6 +238,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             icon: const Icon(LucideIcons.list, color: AppColors.accentYellow),
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
           ),
+          
+          // ✅ القلم يظهر فقط في حالة الأوفلاين
           if (_isOffline)
             IconButton(
               icon: Icon(
@@ -225,7 +257,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             Uri.parse(_filePath!),
             controller: _pdfController,
             
-            // 🔥 هام جداً: تفعيل طلب الأجزاء ليعمل البث
+            // 🔥🔥🔥 هذا الخيار هو الحل لمشكلة القفز + تفعيل البث 🔥🔥🔥
+            // يخبر العارض بأن الملف يدعم الوصول العشوائي، فلا يحاول تحميله كاملاً ولا يقفز
             preferRangeAccess: true, 
 
             params: PdfViewerParams(
@@ -234,7 +267,18 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               // ✅ منع نسخ النص
               textSelectionParams: const PdfTextSelectionParams(enabled: false), 
               
-              // مؤشر تحميل الصفحات
+              // ✅✅✅ حل مشكلة القفز نهائياً ✅✅✅
+              // 1. تثبيت وضع العرض لملء العرض (يمنع الاهتزاز الأفقي)
+              fitMode: FitMode.fitWidth, 
+              
+              // 2. استخدام تخطيط متسلسل ثابت (يمنع إعادة ترتيب الصفحات أثناء التحميل)
+              layoutPages: (pages, params, helper) {
+                  return SequentialPagesLayout.fromPages(pages, params, helper: helper);
+              },
+              
+              // 3. فيزياء تمرير ناعمة (تمنع القفزات المفاجئة عند التمرير)
+              scrollPhysics: const BouncingScrollPhysics(),
+
               loadingBannerBuilder: (context, bytesDownloaded, totalBytes) {
                 return Center(
                   child: Container(
@@ -245,12 +289,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 );
               },
               
-              // تحديث عدد الصفحات (مع حماية Null Safety)
               onDocumentChanged: (document) {
                 if (mounted) setState(() => _totalPages = document?.pages.length ?? 0);
               },
 
-              // الرسم والممحاة
+              // الرسم والممحاة (فقط للأوفلاين)
               pageOverlaysBuilder: (context, pageRect, page) {
                 if (!_isOffline) return [];
                 return [
@@ -338,21 +381,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // 2. ✅ العلامة المائية المعدلة (3 مرات، عمودية، مدورة 90 درجة، واضحة)
+          // 2. ✅ العلامة المائية: مائلة ولكن مصفوفة عمودياً
           IgnorePointer(
             child: Center(
               child: Opacity(
-                opacity: 0.3, // ✅ وضوح أعلى
+                opacity: 0.35, // وضوح جيد
                 child: Column(
                   mainAxisSize: MainAxisSize.max,
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: List.generate(
-                    3, // ✅ تكرار 3 مرات فقط
-                    (index) => RotatedBox(
-                      quarterTurns: 3, // ✅ تدوير 270 درجة (أو -90) ليصبح النص عمودياً
+                    3, // تكرار 3 مرات
+                    (index) => Transform.rotate(
+                      angle: -0.5, // ✅ ميلان قطري للنص نفسه
                       child: Text(
                         _watermarkText, 
-                        textScaler: const TextScaler.linear(2.0), // ✅ خط أوضح وأكبر
+                        textScaler: const TextScaler.linear(2.2), // خط كبير
                         style: const TextStyle(
                           fontWeight: FontWeight.bold, 
                           color: Colors.grey, 
@@ -366,7 +409,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // 3. شريط الأدوات (يظهر فقط في الأوفلاين عند التفعيل)
+          // 3. شريط الأدوات (يظهر فقط في الأوفلاين)
           if (_isDrawingMode && _isOffline)
             Positioned(
               bottom: 40, left: 20, right: 20,
