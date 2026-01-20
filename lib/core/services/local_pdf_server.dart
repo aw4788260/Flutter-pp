@@ -4,45 +4,31 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-// تأكد من المسار
 import '../utils/encryption_helper.dart';
 
 class LocalPdfServer {
   HttpServer? _server;
-  final String? encryptedFilePath; // مسار الملف (للأوفلاين)
-  final String? keyBase64;         // مفتاح التشفير (للأوفلاين)
-  final String? onlineUrl;         // رابط السيرفر (للأونلاين)
-  final Map<String, String>? onlineHeaders; // هيدرز المصادقة (للأونلاين)
+  final String? encryptedFilePath;
+  final String? keyBase64;
+  final String? onlineUrl;
+  final Map<String, String>? onlineHeaders;
 
   Isolate? _workerIsolate;
   SendPort? _workerSendPort;
 
-  static const int plainBlockSize = 32 * 1024;
+  static const int plainBlockSize = 32 * 1024; 
   static const int ivLength = 12;
   static const int tagLength = 16;
   static const int encryptedBlockSize = ivLength + plainBlockSize + tagLength;
 
-  // ✅ كونستركتور للأوفلاين (فك تشفير)
   LocalPdfServer.offline(this.encryptedFilePath, this.keyBase64) 
       : onlineUrl = null, onlineHeaders = null;
 
-  // ✅ كونستركتور للأونلاين (بروكسي ونفق)
   LocalPdfServer.online(this.onlineUrl, this.onlineHeaders) 
       : encryptedFilePath = null, keyBase64 = null;
 
-  void _log(String message) {
-    if (message.contains("ERROR") || message.contains("FATAL")) {
-      print("🔍 [PDF_SERVER] $message");
-      try { FirebaseCrashlytics.instance.log("PDF_SERVER: $message"); } catch (_) {}
-    }
-  }
-
   Future<int> start() async {
-    // تجهيز المعالج فقط في حالة الأوفلاين
     if (encryptedFilePath != null) {
-      final file = File(encryptedFilePath!);
-      if (!await file.exists()) throw Exception("File missing: $encryptedFilePath");
-      
       final initPort = ReceivePort();
       _workerIsolate = await Isolate.spawn(_decryptWorkerEntry, initPort.sendPort);
       _workerSendPort = await initPort.first as SendPort;
@@ -61,49 +47,49 @@ class LocalPdfServer {
   void _handleHttpRequest(HttpRequest request) async {
     try {
       // =========================================================
-      // 🌐 الحالة 1: أونلاين (Online Proxy with Tunneling)
+      // 🌐 1. أونلاين: نفق سريع (Streaming Proxy)
       // =========================================================
       if (onlineUrl != null) {
         final client = HttpClient();
-        // تجاهل مشاكل SSL في بعض الشبكات
         client.badCertificateCallback = (cert, host, port) => true;
         
         final proxyRequest = await client.getUrl(Uri.parse(onlineUrl!));
 
-        // 1. نسخ هيدرز المصادقة
+        // نسخ الهيدرز
         onlineHeaders?.forEach((k, v) => proxyRequest.headers.set(k, v));
-
-        // 2. 🔥 تطبيق خدعة النفق: تحويل Range إلى X-Alt-Range
+        
+        // تطبيق خدعة النفق (تغيير Range إلى X-Alt-Range)
         request.headers.forEach((name, values) {
           if (name.toLowerCase() == 'range') {
-            // نغير الاسم لكي يمر من Cloudflare ويستلمه السيرفر المعدل
-            proxyRequest.headers.set('X-Alt-Range', values.first);
+             proxyRequest.headers.set('X-Alt-Range', values.first);
           } else if (name.toLowerCase() != 'host') {
-            proxyRequest.headers.set(name, values);
+             proxyRequest.headers.set(name, values);
           }
         });
 
         final proxyResponse = await proxyRequest.close();
 
-        // 3. إعادة توجيه الرد للمشغل
+        // نسخ الرد
         request.response.statusCode = proxyResponse.statusCode;
         request.response.headers.contentType = proxyResponse.headers.contentType;
-        request.response.contentLength = proxyResponse.contentLength; // مهم جداً للـ Progress
+        request.response.contentLength = proxyResponse.contentLength;
         
-        // نسخ الهيدرز المهمة للرد
         proxyResponse.headers.forEach((name, values) {
            if (name.toLowerCase() == 'content-range' || 
-               name.toLowerCase() == 'accept-ranges') {
+               name.toLowerCase() == 'accept-ranges' ||
+               name.toLowerCase() == 'content-length') {
              request.response.headers.set(name, values);
            }
         });
 
-        await proxyResponse.pipe(request.response);
+        // 🔥 التعديل الجوهري: إضافة الدفق مباشرة (Piping) لعدم الانتظار
+        await request.response.addStream(proxyResponse);
+        await request.response.close();
         return;
       }
 
       // =========================================================
-      // 📂 الحالة 2: أوفلاين (Offline Decryption)
+      // 📂 2. أوفلاين (كما هو - يعمل بنجاح)
       // =========================================================
       final response = request.response;
       final file = File(encryptedFilePath!);
@@ -161,16 +147,11 @@ class LocalPdfServer {
       }
       await response.close();
 
-    } catch (e, s) {
-      // تجاهل أخطاء إغلاق الاتصال
-      if (!e.toString().contains("Connection closed")) {
-         FirebaseCrashlytics.instance.recordError(e, s, reason: 'Proxy Server Error');
-      }
+    } catch (e) {
       try { await request.response.close(); } catch (_) {}
     }
   }
 
-  // --- Worker Logic (للفك التشفير فقط) ---
   static void _decryptWorkerEntry(SendPort initSendPort) {
     final commandPort = ReceivePort();
     initSendPort.send(commandPort.sendPort);
