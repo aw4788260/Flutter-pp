@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:pdfrx/pdfrx.dart'; // ✅ المكتبة القوية
+import 'package:pdfrx/pdfrx.dart'; 
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -12,7 +12,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/utils/encryption_helper.dart';
 import '../../core/services/local_pdf_server.dart';
-// تأكد من وجود ملف الموديل الذي أنشأناه سابقاً
+// ✅ تأكد من استيراد الموديل الذي قمنا بإصلاحه
 import '../../core/models/drawing_model.dart'; 
 
 class PdfViewerScreen extends StatefulWidget {
@@ -30,7 +30,6 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
-  // --- النظام ---
   final PdfViewerController _pdfController = PdfViewerController();
   LocalPdfServer? _localServer;
   String? _filePath; 
@@ -38,55 +37,40 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String? _error;
   bool _isOffline = false;
   
-  // --- الرسم ---
+  // --- 🎨 متغيرات الرسم ---
   bool _isDrawingMode = false;
   bool _isHighlighter = false;
   Color _penColor = Colors.red;
   Color _highlightColor = Colors.yellow;
-  double _penSize = 0.003; // حجم نسبي (صغير للقلم)
-  double _highlightSize = 0.035; // حجم نسبي (كبير للهايلايت)
+  
+  // 📏 أحجام نسبية (تتكيف مع الزوم)
+  double _penSize = 0.003; 
+  double _highlightSize = 0.035; 
 
-  // تخزين الرسومات: Map<رقم الصفحة, قائمة الخطوط>
   Map<int, List<DrawingLine>> _pageDrawings = {};
   DrawingLine? _currentLine;
-  int _activePage = 0; // الصفحة التي يلمسها المستخدم حالياً
+  int _activePage = 0; 
+  String _watermarkText = '';
 
-  // 🛡️ دالة تسجيل أخطاء مركزية ومكثفة
   void _logError(String context, Object error, [StackTrace? stack]) {
     final msg = "🔴 [PDF_ERROR][$context] $error";
     debugPrint(msg);
-    
-    // تسجيل سياق إضافي للمساعدة في الحل
-    FirebaseCrashlytics.instance.setCustomKey('pdf_id', widget.pdfId);
-    FirebaseCrashlytics.instance.setCustomKey('pdf_title', widget.title);
-    FirebaseCrashlytics.instance.setCustomKey('is_offline', _isOffline);
-    FirebaseCrashlytics.instance.setCustomKey('error_context', context);
-    
-    FirebaseCrashlytics.instance.recordError(error, stack, reason: msg, fatal: false);
+    try {
+      FirebaseCrashlytics.instance.setCustomKey('pdf_id', widget.pdfId);
+      FirebaseCrashlytics.instance.recordError(error, stack, reason: msg);
+    } catch (_) {}
   }
 
   void _logInfo(String message) {
     debugPrint("🟢 [PDF_INFO] $message");
-    FirebaseCrashlytics.instance.log(message);
+    try { FirebaseCrashlytics.instance.log(message); } catch (_) {}
   }
 
   @override
   void initState() {
     super.initState();
-    _identifyUser();
+    _initWatermarkText();
     _preparePdf();
-  }
-
-  void _identifyUser() {
-    try {
-      final userData = AppState().userData;
-      if (userData != null) {
-        FirebaseCrashlytics.instance.setUserIdentifier(userData['id']?.toString() ?? 'anon');
-        FirebaseCrashlytics.instance.setCustomKey('user_phone', userData['phone'] ?? '');
-      }
-    } catch (e) {
-      _logError('IdentifyUser', e);
-    }
   }
 
   @override
@@ -96,13 +80,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     super.dispose();
   }
 
-  // 💾 --- Hive Logic (مع تسجيل أخطاء) ---
+  // 💾 --- الحفظ والاسترجاع ---
   Future<void> _saveDrawingsToHive() async {
     if (_pageDrawings.isEmpty) return;
     try {
-      _logInfo("Saving drawings for PDF: ${widget.pdfId}");
       final box = await Hive.openBox('pdf_drawings_db');
-      
       for (var entry in _pageDrawings.entries) {
         final page = entry.key;
         final lines = entry.value;
@@ -117,31 +99,31 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   Future<List<DrawingLine>> _getDrawingsForPage(int pageNumber) async {
-    // 1. فحص الذاكرة أولاً (Cache)
     if (_pageDrawings.containsKey(pageNumber)) {
       return _pageDrawings[pageNumber]!;
     }
-    
-    // 2. التحميل من Hive
     try {
       final box = await Hive.openBox('pdf_drawings_db');
       final dynamic data = box.get('${widget.pdfId}_$pageNumber');
-      
       List<DrawingLine> lines = [];
       if (data != null) {
         final List<dynamic> rawList = data;
         lines = rawList.map((e) => DrawingLine.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      
-      _pageDrawings[pageNumber] = lines; // حفظ في الذاكرة
+      _pageDrawings[pageNumber] = lines;
       return lines;
     } catch (e, s) {
-      _logError('HiveLoad_Page_$pageNumber', e, s);
+      _logError('HiveLoad', e, s);
       return [];
     }
   }
 
-  // 🚀 --- تجهيز الملف ---
+  void _initWatermarkText() {
+    String displayText = '';
+    if (AppState().userData != null) displayText = AppState().userData!['phone'] ?? '';
+    setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
+  }
+
   Future<void> _preparePdf() async {
     setState(() => _loading = true);
     try {
@@ -149,26 +131,17 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
 
-      // فحص الأوفلاين
       String? offlinePath;
       if (downloadItem != null && downloadItem['path'] != null) {
         offlinePath = downloadItem['path'];
-        if (await File(offlinePath!).exists()) {
-          _isOffline = true;
-        } else {
-           _logError('FileCheck', 'File path found in DB but file missing on disk: $offlinePath');
-        }
+        if (await File(offlinePath!).exists()) _isOffline = true;
       }
 
       _localServer?.stop();
 
       if (_isOffline) {
-        _logInfo("Starting Offline Mode");
-        // ✅ تشغيل السيرفر لفك التشفير
         _localServer = LocalPdfServer.offline(offlinePath, EncryptionHelper.key.base64);
       } else {
-        _logInfo("Starting Online Mode");
-        // ✅ تشغيل السيرفر كبروكسي
         var box = await Hive.openBox('auth_box');
         final headers = {
           'x-user-id': box.get('user_id')?.toString() ?? '',
@@ -180,18 +153,16 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       }
 
       int port = await _localServer!.start();
-      _logInfo("Server running on port: $port");
-
+      
       if (mounted) {
         setState(() {
-          // مكتبة pdfrx تأخذ الرابط
           _filePath = 'http://127.0.0.1:$port/stream.pdf';
           _loading = false;
         });
       }
     } catch (e, s) {
       _logError('PreparePdf', e, s);
-      if (mounted) setState(() { _error = "Failed to load PDF. Please check internet or storage."; _loading = false; });
+      if (mounted) setState(() { _error = "Failed to load PDF."; _loading = false; });
     }
   }
 
@@ -225,35 +196,30 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // 1. عارض PDF (pdfrx)
+          // 1. عارض PDF
           PdfViewer.uri(
             Uri.parse(_filePath!),
             controller: _pdfController,
             params: PdfViewerParams(
-              enableTextSelection: false, // ⛔️ منع النسخ
               backgroundColor: AppColors.backgroundPrimary,
+              // تم إزالة enableTextSelection لأنه غير مدعوم في هذا الإصدار كباراميتر مباشر
+              // لمنع النسخ، نعتمد على أننا لا نعرض أدوات التحديد أو نستخدم طبقة الرسم كحاجز
               
-              // ✅ بناء الصفحة + الرسم
               pageBuilder: (context, pageRect, page, buildPage) {
                 return Stack(
                   children: [
-                    // أ. صفحة الـ PDF الأصلية
+                    // الصفحة الأصلية
                     buildPage(context, pageRect, page),
                     
-                    // ب. طبقة الرسم (فقط أوفلاين)
+                    // طبقة الرسم
                     if (_isOffline)
                     Positioned.fill(
                       child: FutureBuilder<List<DrawingLine>>(
                         future: _getDrawingsForPage(page.pageNumber),
                         builder: (context, snapshot) {
-                          if (snapshot.hasError) {
-                             _logError('DrawingBuilder', snapshot.error!, snapshot.stackTrace);
-                          }
-                          
                           final lines = snapshot.data ?? [];
                           final allLines = [...lines];
                           
-                          // إضافة الخط الجاري رسمه الآن
                           if (_isDrawingMode && _currentLine != null && _activePage == page.pageNumber) {
                             allLines.add(_currentLine!);
                           }
@@ -264,8 +230,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                               behavior: HitTestBehavior.opaque,
                               onPanStart: (details) {
                                 if (!_isDrawingMode) return;
-                                
-                                // تحويل لنظام نسبي (0.0 - 1.0)
                                 final renderBox = context.findRenderObject() as RenderBox;
                                 final localPos = renderBox.globalToLocal(details.globalPosition);
                                 final relativePoint = Offset(
@@ -278,7 +242,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                                   _currentLine = DrawingLine(
                                     points: [relativePoint],
                                     color: _isHighlighter ? _highlightColor.value : _penColor.value,
-                                    // استخدام الحجم النسبي المحدد
                                     strokeWidth: _isHighlighter ? _highlightSize : _penSize,
                                     isHighlighter: _isHighlighter,
                                   );
@@ -308,7 +271,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                               child: CustomPaint(
                                 painter: RelativeSketchPainter(
                                   lines: allLines,
-                                  pageSize: pageRect.size, // الحجم الحالي للصفحة
+                                  pageSize: pageRect.size,
                                 ),
                               ),
                             ),
@@ -319,16 +282,23 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   ],
                 );
               },
-              onViewerReady: (document, controller) {
-                _logInfo("PDF Loaded. Pages: ${document.pages.length}");
-              },
-              onError: (e) {
-                 _logError('PdfViewError', e);
-              },
             ),
           ),
 
-          // 2. شريط الأدوات (يظهر عند التفعيل)
+          // 2. العلامة المائية
+          IgnorePointer(
+            child: Center(
+              child: Transform.rotate(
+                angle: -0.5,
+                child: Opacity(
+                  opacity: 0.1,
+                  child: Text(_watermarkText, textScaler: const TextScaler.linear(3), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                ),
+              ),
+            ),
+          ),
+
+          // 3. شريط الأدوات
           if (_isDrawingMode && _isOffline)
             Positioned(
               bottom: 40, left: 20, right: 20,
@@ -356,11 +326,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               _buildToolButton(LucideIcons.penTool, false),
               _buildToolButton(LucideIcons.highlighter, true),
               
-              // زر التراجع
               IconButton(
                 icon: const Icon(LucideIcons.undo, color: Colors.white),
                 onPressed: () {
-                   // تراجع عن آخر رسمة في الصفحة النشطة
                    if (_pageDrawings[_activePage]?.isNotEmpty ?? false) {
                      setState(() {
                        _pageDrawings[_activePage]!.removeLast();
@@ -380,13 +348,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           ),
           const SizedBox(height: 8),
           
-          // Slider للتحكم في الحجم
           Row(
             children: [
               const Icon(LucideIcons.circle, size: 8, color: Colors.white70),
               Expanded(
                 child: Slider(
-                  // نغير الحدود بناءً على الأداة (القلم يحتاج سمك أقل من الهايلايت)
                   value: _isHighlighter ? _highlightSize : _penSize,
                   min: _isHighlighter ? 0.01 : 0.001,
                   max: _isHighlighter ? 0.08 : 0.01, 
@@ -410,8 +376,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
     );
   }
-  
-  // (نفس دوال _buildToolButton و _buildColorButton السابقة)
+
   Widget _buildToolButton(IconData icon, bool isHighlightTool) {
     final bool isSelected = _isHighlighter == isHighlightTool;
     return IconButton(
@@ -439,7 +404,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 }
 
-// 🎨 الرسام النسبي (Relative Painter)
+// 🎨 الرسام النسبي
 class RelativeSketchPainter extends CustomPainter {
   final List<DrawingLine> lines;
   final Size pageSize;
@@ -454,14 +419,12 @@ class RelativeSketchPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeCap = line.isHighlighter ? StrokeCap.butt : StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        // 🔑 تحويل السمك النسبي إلى بكسل حقيقي بناءً على عرض الصفحة
         ..strokeWidth = line.strokeWidth * pageSize.width; 
 
       if (line.isHighlighter) paint.blendMode = BlendMode.darken; 
 
       if (line.points.length > 1) {
         final path = Path();
-        // 🔑 تحويل الإحداثيات النسبية إلى بكسل
         var start = Offset(line.points[0].dx * pageSize.width, line.points[0].dy * pageSize.height);
         path.moveTo(start.dx, start.dy);
 
