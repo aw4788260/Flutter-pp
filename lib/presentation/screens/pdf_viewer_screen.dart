@@ -38,8 +38,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // --- متغيرات الـ PDF ---
   final GlobalKey<SfPdfViewerState> _pdfViewerKey = GlobalKey();
   int _totalPages = 0;
-  int _currentPage = 1; // نبدأ من 1 لتوافق المنطق
-  bool _isOffline = false; // لتفعيل أدوات الرسم
+  int _currentPage = 1; 
+  bool _isOffline = false; 
 
   // --- 🎨 متغيرات الرسم (Drawing Engine) ---
   bool _isDrawingMode = false; // تفعيل وضع الرسم
@@ -83,7 +83,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     try {
       final box = await Hive.openBox('pdf_drawings_db');
       // تحويل البيانات إلى JSON بسيط للحفظ
-      // المفتاح: pdfID_pageNumber
       _pageDrawings.forEach((page, lines) {
         final List<Map<String, dynamic>> serializedLines = lines.map((line) => line.toJson()).toList();
         box.put('${widget.pdfId}_$page', serializedLines);
@@ -141,7 +140,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     try {
       await EncryptionHelper.init(); 
 
-      // 1. فحص هل الملف موجود أوفلاين
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
       
@@ -156,17 +154,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
       _log(_isOffline ? "📂 Mode: OFFLINE (Drawing Enabled)" : "🌐 Mode: ONLINE (View Only)");
 
-      // تحميل رسومات الصفحة الأولى إذا كنا أوفلاين
       if (_isOffline) await _loadDrawingsForPage(1);
 
-      // إيقاف أي سيرفر سابق
       _localServer?.stop();
 
       if (_isOffline) {
-         // ✅ أوفلاين: فك التشفير
          _localServer = LocalPdfServer.offline(offlinePath, EncryptionHelper.key.base64);
       } else {
-         // ✅ أونلاين: نفق البروكسي (لحماية الهيدرز)
          var box = await Hive.openBox('auth_box');
          final userId = box.get('user_id');
          final deviceId = box.get('device_id');
@@ -177,7 +171,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
          };
          
-         // إضافة TimeStamp لمنع الكاش
          final url = 'https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=${widget.pdfId}&t=${DateTime.now().millisecondsSinceEpoch}';
          
          _localServer = LocalPdfServer.online(url, headers);
@@ -241,7 +234,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           }
         ),
         actions: [
-          // 🖍️ زر تفعيل الرسم (أوفلاين فقط)
           if (_isOffline)
             IconButton(
               icon: Icon(
@@ -261,26 +253,19 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // 1. طبقة PDF Viewer
+          // 1. PDF Viewer Layer
           SfPdfViewer.network(
             _viewerUrl!,
             key: _pdfViewerKey,
-            // ⛔️ هام جداً: منع النسخ وتحديد النص
-            enableTextSelection: false, 
-            
-            // ✋ منع التفاعل مع الـ PDF (السكرول) أثناء الرسم
+            enableTextSelection: false, // ⛔️ منع النسخ
             interactionMode: _isDrawingMode ? PdfInteractionMode.pan : PdfInteractionMode.pan, 
-            
-            // منع الزوم أثناء الرسم لتفادي المشاكل
             enableDoubleTapZooming: !_isDrawingMode, 
             
             onDocumentLoaded: (details) {
               if (mounted) setState(() => _totalPages = details.document.pages.count);
             },
             onPageChanged: (details) {
-              // عند تغيير الصفحة، نحفظ السابقة ونحمل الجديدة
               if (_isOffline) {
-                 // _saveDrawingsToHive(); // (اختياري: حفظ لحظي)
                  setState(() {
                    _currentPage = details.newPageNumber;
                  });
@@ -294,7 +279,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             },
           ),
 
-          // 2. طبقة العلامة المائية
+          // 2. Watermark Layer
           IgnorePointer(
             child: Container(
               width: double.infinity, height: double.infinity, color: Colors.transparent,
@@ -305,11 +290,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // 3. 🎨 طبقة الرسم (Canvas) - تظهر فقط في الأوفلاين
+          // 3. Drawing Layer (Offline only)
           if (_isOffline)
             Positioned.fill(
               child: GestureDetector(
-                // التقاط اللمس فقط في وضع الرسم
                 onPanStart: _isDrawingMode ? (details) {
                    setState(() {
                      _currentLine = DrawingLine(
@@ -346,7 +330,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               ),
             ),
 
-          // 4. 🧰 شريط أدوات الرسم (عائم في الأسفل)
+          // 4. Drawing Toolbar
           if (_isDrawingMode && _isOffline)
             Positioned(
               bottom: 60, left: 20, right: 20,
@@ -360,12 +344,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    // أدوات
-                    _buildToolButton(LucideIcons.pen, false),
+                    // ✅ [تصحيح] استخدام penTool بدلاً من pen
+                    _buildToolButton(LucideIcons.penTool, false),
                     _buildToolButton(LucideIcons.highlighter, true),
                     Container(width: 1, height: 24, color: Colors.grey),
                     
-                    // ألوان
                     _buildColorButton(Colors.black),
                     _buildColorButton(Colors.red),
                     _buildColorButton(Colors.blue),
@@ -373,7 +356,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                     _buildColorButton(Colors.green, isHighlight: true),
                     
                     const Spacer(),
-                    // تراجع
                     IconButton(
                       icon: const Icon(LucideIcons.undo, color: Colors.white),
                       onPressed: () {
@@ -390,7 +372,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               ),
             ),
 
-          // 5. عداد الصفحات
+          // 5. Page Counter
           Positioned(
             bottom: 20, right: 20,
             child: Container(
@@ -407,7 +389,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // --- ودجات مساعدة للشريط ---
   Widget _buildToolButton(IconData icon, bool isHighlightTool) {
     final bool isSelected = _isHighlighter == isHighlightTool;
     return IconButton(
@@ -417,12 +398,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   Widget _buildColorButton(Color color, {bool isHighlight = false}) {
-    // إذا كانت الأداة قلم، نعرض ألوان القلم فقط، وإذا هايلايت نعرض ألوان الهايلايت
-    if (_isHighlighter != isHighlight && color != Colors.black && color != Colors.red && color != Colors.blue) {
-       // منطق بسيط لإخفاء الألوان غير المناسبة للأداة (اختياري)
-       // هنا سأعرض الكل للتبسيط، ولكن سأغير الشفافية بناءً على التحديد
-    }
-
     final bool isSelected = _isHighlighter 
         ? _highlightColor == color 
         : _penColor == color;
@@ -435,7 +410,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           } else {
             _penColor = color;
           }
-          // إذا ضغط على لون هايلايت، حول الأداة لهايلايت تلقائياً والعكس
           if (isHighlight) _isHighlighter = true;
           if (!isHighlight && color != Colors.yellow && color != Colors.green) _isHighlighter = false;
         });
@@ -468,7 +442,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 }
 
 // =========================================================
-// 🖍️ كلاسات الرسم والموديل (لعدم الحاجة لملفات خارجية)
+// 🖍️ Drawing Models & Painter
 // =========================================================
 
 class DrawingLine {
@@ -484,7 +458,6 @@ class DrawingLine {
     required this.isHighlighter,
   });
 
-  // تحويل لـ JSON للحفظ
   Map<String, dynamic> toJson() {
     return {
       'c': color,
@@ -494,7 +467,6 @@ class DrawingLine {
     };
   }
 
-  // إنشاء من JSON
   factory DrawingLine.fromJson(Map<String, dynamic> json) {
     var pts = (json['p'] as List).map((e) => Offset(e['x'], e['y'])).toList();
     return DrawingLine(
@@ -506,7 +478,6 @@ class DrawingLine {
   }
 }
 
-// 🎨 الرسام المسؤول عن رسم الخطوط
 class SketchPainter extends CustomPainter {
   final List<DrawingLine> lines;
   final DrawingLine? currentLine;
@@ -515,11 +486,9 @@ class SketchPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // رسم الخطوط المحفوظة
     for (var line in lines) {
       _paintLine(canvas, line);
     }
-    // رسم الخط الحالي
     if (currentLine != null) {
       _paintLine(canvas, currentLine!);
     }
@@ -533,14 +502,10 @@ class SketchPainter extends CustomPainter {
       ..strokeCap = line.isHighlighter ? StrokeCap.butt : StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    // تحسين مظهر الهايلايت
     if (line.isHighlighter) {
-      // نستخدم blendMode عادي لضمان الظهور فوق الـ PDF
-      // BlendMode.darken جيد للهايلايت ولكن قد لا يعمل في كل الطبقات، Normal هو الأسلم
       paint.blendMode = BlendMode.srcOver; 
     }
 
-    // Path لرسم خط متصل ناعم
     if (line.points.length > 1) {
       final path = Path();
       path.moveTo(line.points[0].dx, line.points[0].dy);
@@ -549,7 +514,6 @@ class SketchPainter extends CustomPainter {
       }
       canvas.drawPath(path, paint);
     } else if (line.points.length == 1) {
-      // رسم نقطة واحدة
       canvas.drawPoints(PointMode.points, line.points, paint);
     }
   }
