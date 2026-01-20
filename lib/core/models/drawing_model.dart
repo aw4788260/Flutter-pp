@@ -1,39 +1,48 @@
-import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
+import 'dart:ui'; // ضروري للتعرف على Offset
 
-part 'drawing_model.g.dart'; // تأكد من تشغيل build_runner لاحقاً
+class DrawingLine {
+  // النقاط المكونة للخط
+  final List<Offset> points;
+  // لون الخط (قيمة int)
+  final int color;
+  // سمك الخط
+  final double strokeWidth;
+  // هل هو قلم تظليل؟
+  final bool isHighlighter;
 
-@HiveType(typeId: 1) // تأكد أن هذا ID فريد في مشروعك
-class DrawingPoint extends HiveObject {
-  @HiveField(0)
-  final double x;
-  
-  @HiveField(1)
-  final double y;
-  
-  @HiveField(2)
-  final int colorValue; // نحفظ اللون كرقم
-  
-  @HiveField(3)
-  final double width;
-  
-  @HiveField(4)
-  final bool isHighlighter; // هل هو قلم عادي أم هايلايت؟
-
-  DrawingPoint({
-    required this.x,
-    required this.y,
-    required this.colorValue,
-    required this.width,
+  DrawingLine({
+    required this.points,
+    required this.color,
+    required this.strokeWidth,
     required this.isHighlighter,
   });
-}
 
-// نموذج لحفظ الخط كاملاً (مجموعة نقاط)
-@HiveType(typeId: 2)
-class DrawingLine extends HiveObject {
-  @HiveField(0)
-  final List<DrawingPoint> points;
-  
-  DrawingLine({required this.points});
+  // تحويل الكائن إلى JSON للحفظ في Hive
+  Map<String, dynamic> toJson() {
+    return {
+      'c': color,
+      'w': strokeWidth,
+      'h': isHighlighter,
+      // نحفظ النقاط كقائمة من الخرائط الصغيرة لتقليل الحجم
+      'p': points.map((e) => {'x': e.dx, 'y': e.dy}).toList(),
+    };
+  }
+
+  // إنشاء الكائن من JSON عند الاسترجاع
+  factory DrawingLine.fromJson(Map<String, dynamic> json) {
+    var rawPoints = json['p'] as List;
+    var pts = rawPoints.map((e) {
+      // التأكد من تحويل القيم إلى double لتجنب أخطاء النوع
+      double x = (e['x'] as num).toDouble();
+      double y = (e['y'] as num).toDouble();
+      return Offset(x, y);
+    }).toList();
+
+    return DrawingLine(
+      points: pts,
+      color: json['c'] as int,
+      strokeWidth: (json['w'] as num).toDouble(),
+      isHighlighter: json['h'] as bool? ?? false,
+    );
+  }
 }
