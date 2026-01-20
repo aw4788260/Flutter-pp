@@ -47,7 +47,7 @@ class LocalPdfServer {
   void _handleHttpRequest(HttpRequest request) async {
     try {
       // =========================================================
-      // 🌐 1. أونلاين: نفق سريع (Streaming Proxy)
+      // 🌐 1. أونلاين: تفعيل البث عبر X-Alt-Range
       // =========================================================
       if (onlineUrl != null) {
         final client = HttpClient();
@@ -55,34 +55,32 @@ class LocalPdfServer {
         
         final proxyRequest = await client.getUrl(Uri.parse(onlineUrl!));
 
-        // نسخ الهيدرز
+        // إضافة الهيدرز الأساسية
         onlineHeaders?.forEach((k, v) => proxyRequest.headers.set(k, v));
         
-        // تطبيق خدعة النفق (تغيير Range إلى X-Alt-Range)
-        request.headers.forEach((name, values) {
-          if (name.toLowerCase() == 'range') {
-             proxyRequest.headers.set('X-Alt-Range', values.first);
-          } else if (name.toLowerCase() != 'host') {
-             proxyRequest.headers.set(name, values);
-          }
-        });
+        // 🔥 التحويل السحري: Range -> X-Alt-Range
+        // هذا ما يجعل السيرفر يفهم طلب البث الجزئي
+        if (request.headers.value(HttpHeaders.rangeHeader) != null) {
+          final rangeVal = request.headers.value(HttpHeaders.rangeHeader)!;
+          proxyRequest.headers.set('X-Alt-Range', rangeVal);
+        }
 
         final proxyResponse = await proxyRequest.close();
 
-        // نسخ الرد
+        // نقل حالة الرد (206 Partial Content ضروري للبث)
         request.response.statusCode = proxyResponse.statusCode;
         request.response.headers.contentType = proxyResponse.headers.contentType;
         request.response.contentLength = proxyResponse.contentLength;
         
+        // نقل هيدرز النطاق ليفهم العارض أن البث مدعوم
         proxyResponse.headers.forEach((name, values) {
            if (name.toLowerCase() == 'content-range' || 
-               name.toLowerCase() == 'accept-ranges' ||
-               name.toLowerCase() == 'content-length') {
+               name.toLowerCase() == 'accept-ranges') {
              request.response.headers.set(name, values);
            }
         });
 
-        // 🔥 التعديل الجوهري: إضافة الدفق مباشرة (Piping) لعدم الانتظار
+        // 🔥 صب البيانات مباشرة (Streaming Pipe)
         await request.response.addStream(proxyResponse);
         await request.response.close();
         return;
@@ -152,6 +150,7 @@ class LocalPdfServer {
     }
   }
 
+  // (Worker functions for offline - Unchanged)
   static void _decryptWorkerEntry(SendPort initSendPort) {
     final commandPort = ReceivePort();
     initSendPort.send(commandPort.sendPort);
