@@ -1,13 +1,9 @@
-import 'dart:ui'; // ضروري للتعرف على Offset
+import 'dart:ui';
 
 class DrawingLine {
-  // النقاط المكونة للخط
   final List<Offset> points;
-  // لون الخط (قيمة int)
   final int color;
-  // سمك الخط
   final double strokeWidth;
-  // هل هو قلم تظليل؟
   final bool isHighlighter;
 
   DrawingLine({
@@ -17,25 +13,24 @@ class DrawingLine {
     required this.isHighlighter,
   });
 
-  // تحويل الكائن إلى JSON للحفظ في Hive
+  // تحويل البيانات إلى صيغة JSON للحفظ
   Map<String, dynamic> toJson() {
     return {
       'c': color,
       'w': strokeWidth,
       'h': isHighlighter,
-      // نحفظ النقاط كقائمة من الخرائط الصغيرة لتقليل الحجم
       'p': points.map((e) => {'x': e.dx, 'y': e.dy}).toList(),
     };
   }
 
-  // إنشاء الكائن من JSON عند الاسترجاع
+  // استرجاع البيانات من JSON
   factory DrawingLine.fromJson(Map<String, dynamic> json) {
-    var rawPoints = json['p'] as List;
-    var pts = rawPoints.map((e) {
-      // التأكد من تحويل القيم إلى double لتجنب أخطاء النوع
-      double x = (e['x'] as num).toDouble();
-      double y = (e['y'] as num).toDouble();
-      return Offset(x, y);
+    // التأكد من تحويل البيانات بشكل آمن
+    var pts = (json['p'] as List).map((e) {
+      return Offset(
+        (e['x'] as num).toDouble(),
+        (e['y'] as num).toDouble(),
+      );
     }).toList();
 
     return DrawingLine(
