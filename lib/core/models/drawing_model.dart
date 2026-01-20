@@ -5,27 +5,27 @@ class DrawingLine {
   final int color;
   final double strokeWidth;
   final bool isHighlighter;
+  final bool isEraser; // ✅ إضافة خاصية الممحاة
 
   DrawingLine({
     required this.points,
     required this.color,
     required this.strokeWidth,
     required this.isHighlighter,
+    this.isEraser = false, // ✅ القيمة الافتراضية
   });
 
-  // تحويل البيانات إلى صيغة JSON للحفظ
   Map<String, dynamic> toJson() {
     return {
       'c': color,
       'w': strokeWidth,
       'h': isHighlighter,
+      'e': isEraser, // ✅ حفظ الخاصية
       'p': points.map((e) => {'x': e.dx, 'y': e.dy}).toList(),
     };
   }
 
-  // استرجاع البيانات من JSON
   factory DrawingLine.fromJson(Map<String, dynamic> json) {
-    // التأكد من تحويل البيانات بشكل آمن
     var pts = (json['p'] as List).map((e) {
       return Offset(
         (e['x'] as num).toDouble(),
@@ -38,6 +38,7 @@ class DrawingLine {
       color: json['c'] as int,
       strokeWidth: (json['w'] as num).toDouble(),
       isHighlighter: json['h'] as bool? ?? false,
+      isEraser: json['e'] as bool? ?? false, // ✅ استرجاع الخاصية
     );
   }
 }
