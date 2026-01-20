@@ -6,7 +6,6 @@ import 'package:pdfrx/pdfrx.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:percent_indicator/percent_indicator.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
@@ -29,8 +28,9 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
-  // --- النظام ---
   final PdfViewerController _pdfController = PdfViewerController();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  
   LocalPdfServer? _localServer;
   String? _filePath; 
   bool _loading = true;
@@ -38,21 +38,20 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   bool _isOffline = false;
   String _watermarkText = '';
 
-  // --- الرسم ---
+  // --- أدوات الرسم ---
   bool _isDrawingMode = false;
-  bool _isHighlighter = false;
+  int _selectedTool = 0; // 0=قلم, 1=هايلات, 2=ممحاة
+  
   Color _penColor = Colors.red;
   Color _highlightColor = Colors.yellow;
   double _penSize = 0.003; 
   double _highlightSize = 0.035; 
+  double _eraserSize = 0.04; 
 
   Map<int, List<DrawingLine>> _pageDrawings = {};
   DrawingLine? _currentLine;
   int _activePage = 0; 
-
-  void _log(String message) {
-    try { FirebaseCrashlytics.instance.log("PDF: $message"); } catch (_) {}
-  }
+  int _totalPages = 0;
 
   @override
   void initState() {
@@ -68,7 +67,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     super.dispose();
   }
 
-  // 💾 --- Hive Logic ---
   Future<void> _saveDrawingsToHive() async {
     if (_pageDrawings.isEmpty) return;
     try {
@@ -133,7 +131,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           'x-device-id': box.get('device_id')?.toString() ?? '',
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         };
-        final url = 'https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=${widget.pdfId}&t=${DateTime.now().millisecondsSinceEpoch}';
+        final url = 'https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=${widget.pdfId}';
         _localServer = LocalPdfServer.online(url, headers);
       }
 
@@ -152,11 +150,47 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
     if (_error != null) return Scaffold(body: Center(child: Text(_error!)));
 
     return Scaffold(
+      key: _scaffoldKey, // للتحكم بالقائمة الجانبية
       backgroundColor: AppColors.backgroundPrimary,
+      
+      // ✅ القائمة الجانبية (Sidebar)
+      endDrawer: Drawer(
+        backgroundColor: AppColors.backgroundSecondary,
+        width: 250,
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 40, 16, 16),
+              child: Text("PAGE INDEX", style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.5)),
+            ),
+            const Divider(color: Colors.white10),
+            Expanded(
+              child: _totalPages == 0 
+                ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)) 
+                : ListView.builder(
+                    itemCount: _totalPages,
+                    itemBuilder: (context, index) {
+                      final pageNum = index + 1;
+                      final isCurrent = _pdfController.pageNumber == pageNum;
+                      return ListTile(
+                        title: Text("Page $pageNum", style: TextStyle(color: isCurrent ? AppColors.accentYellow : Colors.white, fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal)),
+                        leading: Icon(LucideIcons.fileText, color: isCurrent ? AppColors.accentYellow : Colors.white54, size: 18),
+                        onTap: () {
+                          _pdfController.goToPage(pageNumber: pageNum);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+            ),
+          ],
+        ),
+      ),
+
       appBar: AppBar(
         title: Text(widget.title, style: const TextStyle(fontSize: 14, color: Colors.white)),
         backgroundColor: AppColors.backgroundSecondary,
@@ -168,6 +202,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           }
         ),
         actions: [
+          // زر القائمة الجانبية
+          IconButton(
+            icon: const Icon(LucideIcons.list, color: AppColors.accentYellow),
+            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+          ),
           if (_isOffline)
             IconButton(
               icon: Icon(
@@ -186,26 +225,34 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             controller: _pdfController,
             params: PdfViewerParams(
               backgroundColor: AppColors.backgroundPrimary,
+              enableTextSelection: false, // 🚫 منع نسخ النص
               
-              // 🛠️ الإصلاح الجوهري: استخدام pageOverlaysBuilder
+              // ✅ مؤشر تحميل الصفحات (Spinner)
+              loadingBannerBuilder: (context, bytesDownloaded, totalBytes) {
+                return Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
+                    child: const CircularProgressIndicator(color: AppColors.accentYellow),
+                  ),
+                );
+              },
+              onDocumentChanged: (document) {
+                if (mounted) setState(() => _totalPages = document.pages.length);
+              },
+              // الرسم والممحاة
               pageOverlaysBuilder: (context, pageRect, page) {
-                // ملاحظة: لا نحتاج لـ buildPage هنا، المكتبة ترسم الصفحة ونحن نرسم فوقها فقط
-                if (!_isOffline) return []; // لا رسم في الأونلاين
-
+                if (!_isOffline) return [];
                 return [
-                  // طبقة الرسم
                   Positioned.fill(
                     child: FutureBuilder<List<DrawingLine>>(
                       future: _getDrawingsForPage(page.pageNumber),
                       builder: (context, snapshot) {
                         final lines = snapshot.data ?? [];
                         final allLines = [...lines];
-                        
                         if (_isDrawingMode && _currentLine != null && _activePage == page.pageNumber) {
                           allLines.add(_currentLine!);
                         }
-
-                        // IgnorePointer: يسمح بالتمرير إذا كان القلم مغلقاً
                         return IgnorePointer(
                           ignoring: !_isDrawingMode,
                           child: GestureDetector(
@@ -214,20 +261,33 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                               if (!_isDrawingMode) return;
                               final renderBox = context.findRenderObject() as RenderBox;
                               final localPos = renderBox.globalToLocal(details.globalPosition);
-                              
-                              // حساب الإحداثيات النسبية (0.0 - 1.0)
                               final relativePoint = Offset(
                                 localPos.dx / pageRect.width,
                                 localPos.dy / pageRect.height,
                               );
-
                               setState(() {
                                 _activePage = page.pageNumber;
+                                double width = _penSize;
+                                int color = _penColor.value;
+                                bool isHighlighter = false;
+                                bool isEraser = false;
+
+                                if (_selectedTool == 1) { // Highlighter
+                                  width = _highlightSize;
+                                  color = _highlightColor.value;
+                                  isHighlighter = true;
+                                } else if (_selectedTool == 2) { // Eraser
+                                  width = _eraserSize;
+                                  color = 0; 
+                                  isEraser = true;
+                                }
+
                                 _currentLine = DrawingLine(
                                   points: [relativePoint],
-                                  color: _isHighlighter ? _highlightColor.value : _penColor.value,
-                                  strokeWidth: _isHighlighter ? _highlightSize : _penSize,
-                                  isHighlighter: _isHighlighter,
+                                  color: color,
+                                  strokeWidth: width,
+                                  isHighlighter: isHighlighter,
+                                  isEraser: isEraser,
                                 );
                               });
                             },
@@ -268,14 +328,24 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // 2. العلامة المائية
+          // 2. العلامة المائية المعدلة (3 مرات، مائلة، صغيرة)
           IgnorePointer(
             child: Center(
               child: Transform.rotate(
-                angle: -0.5,
+                angle: -0.3, // ميلان خفيف
                 child: Opacity(
-                  opacity: 0.1,
-                  child: Text(_watermarkText, textScaler: const TextScaler.linear(3), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                  opacity: 0.08, // شفافية
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildWatermarkText(),
+                      const SizedBox(height: 200), // مسافة
+                      _buildWatermarkText(),
+                      const SizedBox(height: 200),
+                      _buildWatermarkText(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -289,6 +359,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildWatermarkText() {
+    return Text(
+      _watermarkText, 
+      textScaler: const TextScaler.linear(1.8), // حجم متوسط
+      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, decoration: TextDecoration.none),
     );
   }
 
@@ -306,8 +384,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildToolButton(LucideIcons.penTool, false),
-              _buildToolButton(LucideIcons.highlighter, true),
+              _buildToolButton(LucideIcons.penTool, 0),
+              _buildToolButton(LucideIcons.highlighter, 1),
+              _buildToolButton(LucideIcons.eraser, 2), // زر الممحاة
               
               IconButton(
                 icon: const Icon(LucideIcons.undo, color: Colors.white),
@@ -322,11 +401,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
               Container(width: 1, height: 24, color: Colors.grey),
               
-              _buildColorButton(Colors.black),
-              _buildColorButton(Colors.red),
-              _buildColorButton(Colors.blue),
-              _buildColorButton(Colors.yellow, isHighlight: true),
-              _buildColorButton(Colors.green, isHighlight: true),
+              if (_selectedTool != 2) ...[
+                _buildColorButton(Colors.black),
+                _buildColorButton(Colors.red),
+                _buildColorButton(Colors.blue),
+                _buildColorButton(Colors.yellow, isHighlight: true),
+                _buildColorButton(Colors.green, isHighlight: true),
+              ] else 
+                const Text("Eraser Active", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 8),
@@ -336,18 +418,16 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               const Icon(LucideIcons.circle, size: 8, color: Colors.white70),
               Expanded(
                 child: Slider(
-                  value: _isHighlighter ? _highlightSize : _penSize,
-                  min: _isHighlighter ? 0.01 : 0.001,
-                  max: _isHighlighter ? 0.08 : 0.01, 
-                  activeColor: _isHighlighter ? _highlightColor : _penColor,
+                  value: _getCurrentSize(),
+                  min: 0.001,
+                  max: 0.08, 
+                  activeColor: _selectedTool == 2 ? Colors.white : (_selectedTool == 1 ? _highlightColor : _penColor),
                   inactiveColor: Colors.grey,
                   onChanged: (val) {
                     setState(() {
-                      if (_isHighlighter) {
-                        _highlightSize = val;
-                      } else {
-                        _penSize = val;
-                      }
+                      if (_selectedTool == 2) _eraserSize = val;
+                      else if (_selectedTool == 1) _highlightSize = val;
+                      else _penSize = val;
                     });
                   },
                 ),
@@ -360,22 +440,32 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  Widget _buildToolButton(IconData icon, bool isHighlightTool) {
-    final bool isSelected = _isHighlighter == isHighlightTool;
+  double _getCurrentSize() {
+    if (_selectedTool == 2) return _eraserSize;
+    if (_selectedTool == 1) return _highlightSize;
+    return _penSize;
+  }
+
+  Widget _buildToolButton(IconData icon, int toolIndex) {
+    final bool isSelected = _selectedTool == toolIndex;
     return IconButton(
       icon: Icon(icon, color: isSelected ? AppColors.accentYellow : Colors.grey),
-      onPressed: () => setState(() => _isHighlighter = isHighlightTool),
+      onPressed: () => setState(() => _selectedTool = toolIndex),
     );
   }
 
   Widget _buildColorButton(Color color, {bool isHighlight = false}) {
-    final bool isSelected = _isHighlighter ? _highlightColor == color : _penColor == color;
+    final bool isSelected = _selectedTool == 1 ? _highlightColor == color : _penColor == color;
     return GestureDetector(
       onTap: () {
         setState(() {
-          if (_isHighlighter) { _highlightColor = color; } else { _penColor = color; }
-          if (isHighlight) _isHighlighter = true;
-          if (!isHighlight && (color != Colors.yellow && color != Colors.green)) _isHighlighter = false;
+          if (isHighlight) {
+             _highlightColor = color;
+             _selectedTool = 1;
+          } else { 
+             _penColor = color;
+             _selectedTool = 0;
+          }
         });
       },
       child: Container(
@@ -387,7 +477,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 }
 
-// 🎨 الرسام النسبي
+// ✅ الرسام مع دعم الممحاة (saveLayer + BlendMode.clear)
 class RelativeSketchPainter extends CustomPainter {
   final List<DrawingLine> lines;
   final Size pageSize;
@@ -396,15 +486,23 @@ class RelativeSketchPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 🎨 حفظ الطبقة لضمان أن الممحاة تمسح كل شيء (قلم + هايلات) في هذه الطبقة فقط
+    canvas.saveLayer(Rect.fromLTWH(0, 0, size.width, size.height), Paint());
+
     for (var line in lines) {
       final paint = Paint()
-        ..color = Color(line.color).withOpacity(line.isHighlighter ? 0.35 : 1.0)
         ..style = PaintingStyle.stroke
         ..strokeCap = line.isHighlighter ? StrokeCap.butt : StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = line.strokeWidth * pageSize.width; 
+        ..strokeWidth = line.strokeWidth * pageSize.width;
 
-      if (line.isHighlighter) paint.blendMode = BlendMode.darken; 
+      if (line.isEraser) {
+        paint.blendMode = BlendMode.clear; // مسح
+        paint.color = Colors.transparent; 
+      } else {
+        paint.color = Color(line.color).withOpacity(line.isHighlighter ? 0.35 : 1.0);
+        if (line.isHighlighter) paint.blendMode = BlendMode.darken; 
+      }
 
       if (line.points.length > 1) {
         final path = Path();
@@ -421,6 +519,9 @@ class RelativeSketchPainter extends CustomPainter {
         canvas.drawPoints(PointMode.points, [p], paint);
       }
     }
+    
+    // استعادة الطبقة ودمجها (لتظهر الشفافية)
+    canvas.restore();
   }
 
   @override
