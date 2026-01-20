@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:pdfrx/pdfrx.dart'; 
+import 'package:pdfrx/pdfrx.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -12,7 +12,6 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/utils/encryption_helper.dart';
 import '../../core/services/local_pdf_server.dart';
-// ✅ تأكد من استيراد الموديل الذي قمنا بإصلاحه
 import '../../core/models/drawing_model.dart'; 
 
 class PdfViewerScreen extends StatefulWidget {
@@ -30,40 +29,29 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
+  // --- النظام ---
   final PdfViewerController _pdfController = PdfViewerController();
   LocalPdfServer? _localServer;
   String? _filePath; 
   bool _loading = true;
   String? _error;
   bool _isOffline = false;
-  
-  // --- 🎨 متغيرات الرسم ---
+  String _watermarkText = '';
+
+  // --- الرسم ---
   bool _isDrawingMode = false;
   bool _isHighlighter = false;
   Color _penColor = Colors.red;
   Color _highlightColor = Colors.yellow;
-  
-  // 📏 أحجام نسبية (تتكيف مع الزوم)
   double _penSize = 0.003; 
   double _highlightSize = 0.035; 
 
   Map<int, List<DrawingLine>> _pageDrawings = {};
   DrawingLine? _currentLine;
   int _activePage = 0; 
-  String _watermarkText = '';
 
-  void _logError(String context, Object error, [StackTrace? stack]) {
-    final msg = "🔴 [PDF_ERROR][$context] $error";
-    debugPrint(msg);
-    try {
-      FirebaseCrashlytics.instance.setCustomKey('pdf_id', widget.pdfId);
-      FirebaseCrashlytics.instance.recordError(error, stack, reason: msg);
-    } catch (_) {}
-  }
-
-  void _logInfo(String message) {
-    debugPrint("🟢 [PDF_INFO] $message");
-    try { FirebaseCrashlytics.instance.log(message); } catch (_) {}
+  void _log(String message) {
+    try { FirebaseCrashlytics.instance.log("PDF: $message"); } catch (_) {}
   }
 
   @override
@@ -80,7 +68,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     super.dispose();
   }
 
-  // 💾 --- الحفظ والاسترجاع ---
+  // 💾 --- Hive Logic ---
   Future<void> _saveDrawingsToHive() async {
     if (_pageDrawings.isEmpty) return;
     try {
@@ -93,9 +81,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
            await box.put('${widget.pdfId}_$page', serialized);
         }
       }
-    } catch (e, s) {
-      _logError('HiveSave', e, s);
-    }
+    } catch (_) {}
   }
 
   Future<List<DrawingLine>> _getDrawingsForPage(int pageNumber) async {
@@ -112,8 +98,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       }
       _pageDrawings[pageNumber] = lines;
       return lines;
-    } catch (e, s) {
-      _logError('HiveLoad', e, s);
+    } catch (_) {
       return [];
     }
   }
@@ -160,8 +145,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           _loading = false;
         });
       }
-    } catch (e, s) {
-      _logError('PreparePdf', e, s);
+    } catch (e) {
       if (mounted) setState(() { _error = "Failed to load PDF."; _loading = false; });
     }
   }
@@ -202,85 +186,84 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             controller: _pdfController,
             params: PdfViewerParams(
               backgroundColor: AppColors.backgroundPrimary,
-              // تم إزالة enableTextSelection لأنه غير مدعوم في هذا الإصدار كباراميتر مباشر
-              // لمنع النسخ، نعتمد على أننا لا نعرض أدوات التحديد أو نستخدم طبقة الرسم كحاجز
               
-              pageBuilder: (context, pageRect, page, buildPage) {
-                return Stack(
-                  children: [
-                    // الصفحة الأصلية
-                    buildPage(context, pageRect, page),
-                    
-                    // طبقة الرسم
-                    if (_isOffline)
-                    Positioned.fill(
-                      child: FutureBuilder<List<DrawingLine>>(
-                        future: _getDrawingsForPage(page.pageNumber),
-                        builder: (context, snapshot) {
-                          final lines = snapshot.data ?? [];
-                          final allLines = [...lines];
-                          
-                          if (_isDrawingMode && _currentLine != null && _activePage == page.pageNumber) {
-                            allLines.add(_currentLine!);
-                          }
+              // 🛠️ الإصلاح الجوهري: استخدام pageOverlaysBuilder
+              pageOverlaysBuilder: (context, pageRect, page) {
+                // ملاحظة: لا نحتاج لـ buildPage هنا، المكتبة ترسم الصفحة ونحن نرسم فوقها فقط
+                if (!_isOffline) return []; // لا رسم في الأونلاين
 
-                          return IgnorePointer(
-                            ignoring: !_isDrawingMode,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onPanStart: (details) {
-                                if (!_isDrawingMode) return;
-                                final renderBox = context.findRenderObject() as RenderBox;
-                                final localPos = renderBox.globalToLocal(details.globalPosition);
-                                final relativePoint = Offset(
-                                  localPos.dx / pageRect.width,
-                                  localPos.dy / pageRect.height,
-                                );
+                return [
+                  // طبقة الرسم
+                  Positioned.fill(
+                    child: FutureBuilder<List<DrawingLine>>(
+                      future: _getDrawingsForPage(page.pageNumber),
+                      builder: (context, snapshot) {
+                        final lines = snapshot.data ?? [];
+                        final allLines = [...lines];
+                        
+                        if (_isDrawingMode && _currentLine != null && _activePage == page.pageNumber) {
+                          allLines.add(_currentLine!);
+                        }
 
-                                setState(() {
-                                  _activePage = page.pageNumber;
-                                  _currentLine = DrawingLine(
-                                    points: [relativePoint],
-                                    color: _isHighlighter ? _highlightColor.value : _penColor.value,
-                                    strokeWidth: _isHighlighter ? _highlightSize : _penSize,
-                                    isHighlighter: _isHighlighter,
-                                  );
-                                });
-                              },
-                              onPanUpdate: (details) {
-                                if (!_isDrawingMode || _currentLine == null) return;
-                                final renderBox = context.findRenderObject() as RenderBox;
-                                final localPos = renderBox.globalToLocal(details.globalPosition);
-                                final relativePoint = Offset(
-                                  localPos.dx / pageRect.width,
-                                  localPos.dy / pageRect.height,
+                        // IgnorePointer: يسمح بالتمرير إذا كان القلم مغلقاً
+                        return IgnorePointer(
+                          ignoring: !_isDrawingMode,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onPanStart: (details) {
+                              if (!_isDrawingMode) return;
+                              final renderBox = context.findRenderObject() as RenderBox;
+                              final localPos = renderBox.globalToLocal(details.globalPosition);
+                              
+                              // حساب الإحداثيات النسبية (0.0 - 1.0)
+                              final relativePoint = Offset(
+                                localPos.dx / pageRect.width,
+                                localPos.dy / pageRect.height,
+                              );
+
+                              setState(() {
+                                _activePage = page.pageNumber;
+                                _currentLine = DrawingLine(
+                                  points: [relativePoint],
+                                  color: _isHighlighter ? _highlightColor.value : _penColor.value,
+                                  strokeWidth: _isHighlighter ? _highlightSize : _penSize,
+                                  isHighlighter: _isHighlighter,
                                 );
+                              });
+                            },
+                            onPanUpdate: (details) {
+                              if (!_isDrawingMode || _currentLine == null) return;
+                              final renderBox = context.findRenderObject() as RenderBox;
+                              final localPos = renderBox.globalToLocal(details.globalPosition);
+                              final relativePoint = Offset(
+                                localPos.dx / pageRect.width,
+                                localPos.dy / pageRect.height,
+                              );
+                              setState(() {
+                                _currentLine!.points.add(relativePoint);
+                              });
+                            },
+                            onPanEnd: (details) {
+                              if (_currentLine != null) {
                                 setState(() {
-                                  _currentLine!.points.add(relativePoint);
+                                  if (_pageDrawings[page.pageNumber] == null) _pageDrawings[page.pageNumber] = [];
+                                  _pageDrawings[page.pageNumber]!.add(_currentLine!);
+                                  _currentLine = null;
                                 });
-                              },
-                              onPanEnd: (details) {
-                                if (_currentLine != null) {
-                                  setState(() {
-                                    if (_pageDrawings[page.pageNumber] == null) _pageDrawings[page.pageNumber] = [];
-                                    _pageDrawings[page.pageNumber]!.add(_currentLine!);
-                                    _currentLine = null;
-                                  });
-                                }
-                              },
-                              child: CustomPaint(
-                                painter: RelativeSketchPainter(
-                                  lines: allLines,
-                                  pageSize: pageRect.size,
-                                ),
+                              }
+                            },
+                            child: CustomPaint(
+                              painter: RelativeSketchPainter(
+                                lines: allLines,
+                                pageSize: pageRect.size,
                               ),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
                     ),
-                  ],
-                );
+                  ),
+                ];
               },
             ),
           ),
