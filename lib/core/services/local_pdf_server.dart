@@ -4,65 +4,109 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-// تأكد من المسار الصحيح لملف التشفير الخاص بك
+// تأكد من المسار
 import '../utils/encryption_helper.dart';
 
 class LocalPdfServer {
   HttpServer? _server;
-  final String encryptedFilePath;
-  final String keyBase64;
-  
+  final String? encryptedFilePath; // مسار الملف (للأوفلاين)
+  final String? keyBase64;         // مفتاح التشفير (للأوفلاين)
+  final String? onlineUrl;         // رابط السيرفر (للأونلاين)
+  final Map<String, String>? onlineHeaders; // هيدرز المصادقة (للأونلاين)
+
   Isolate? _workerIsolate;
   SendPort? _workerSendPort;
 
-  // إعدادات التشفير (يجب أن تطابق إعدادات التشفير وقت التحميل)
-  static const int plainBlockSize = 32 * 1024; // 32KB Data
+  static const int plainBlockSize = 32 * 1024;
   static const int ivLength = 12;
   static const int tagLength = 16;
   static const int encryptedBlockSize = ivLength + plainBlockSize + tagLength;
 
-  LocalPdfServer(this.encryptedFilePath, this.keyBase64);
+  // ✅ كونستركتور للأوفلاين (فك تشفير)
+  LocalPdfServer.offline(this.encryptedFilePath, this.keyBase64) 
+      : onlineUrl = null, onlineHeaders = null;
+
+  // ✅ كونستركتور للأونلاين (بروكسي ونفق)
+  LocalPdfServer.online(this.onlineUrl, this.onlineHeaders) 
+      : encryptedFilePath = null, keyBase64 = null;
 
   void _log(String message) {
-    // تسجيل الأخطاء المهمة فقط في الفايربيس لتوفير الموارد
     if (message.contains("ERROR") || message.contains("FATAL")) {
       print("🔍 [PDF_SERVER] $message");
-      try {
-        FirebaseCrashlytics.instance.log("PDF_SERVER: $message");
-      } catch (_) {}
+      try { FirebaseCrashlytics.instance.log("PDF_SERVER: $message"); } catch (_) {}
     }
   }
 
   Future<int> start() async {
-    final file = File(encryptedFilePath);
-    if (!await file.exists()) {
-      throw Exception("File not found at $encryptedFilePath");
+    // تجهيز المعالج فقط في حالة الأوفلاين
+    if (encryptedFilePath != null) {
+      final file = File(encryptedFilePath!);
+      if (!await file.exists()) throw Exception("File missing: $encryptedFilePath");
+      
+      final initPort = ReceivePort();
+      _workerIsolate = await Isolate.spawn(_decryptWorkerEntry, initPort.sendPort);
+      _workerSendPort = await initPort.first as SendPort;
     }
 
-    // تهيئة المعالج في الخلفية
-    final initPort = ReceivePort();
-    _workerIsolate = await Isolate.spawn(_decryptWorkerEntry, initPort.sendPort);
-    _workerSendPort = await initPort.first as SendPort;
-
-    // بدء السيرفر
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     _server!.listen(_handleHttpRequest);
-    
     return _server!.port;
   }
 
   Future<void> stop() async {
     _workerIsolate?.kill(priority: Isolate.immediate);
-    _workerIsolate = null;
     await _server?.close(force: true);
-    _server = null;
   }
 
   void _handleHttpRequest(HttpRequest request) async {
-    final response = request.response;
-
     try {
-      final file = File(encryptedFilePath);
+      // =========================================================
+      // 🌐 الحالة 1: أونلاين (Online Proxy with Tunneling)
+      // =========================================================
+      if (onlineUrl != null) {
+        final client = HttpClient();
+        // تجاهل مشاكل SSL في بعض الشبكات
+        client.badCertificateCallback = (cert, host, port) => true;
+        
+        final proxyRequest = await client.getUrl(Uri.parse(onlineUrl!));
+
+        // 1. نسخ هيدرز المصادقة
+        onlineHeaders?.forEach((k, v) => proxyRequest.headers.set(k, v));
+
+        // 2. 🔥 تطبيق خدعة النفق: تحويل Range إلى X-Alt-Range
+        request.headers.forEach((name, values) {
+          if (name.toLowerCase() == 'range') {
+            // نغير الاسم لكي يمر من Cloudflare ويستلمه السيرفر المعدل
+            proxyRequest.headers.set('X-Alt-Range', values.first);
+          } else if (name.toLowerCase() != 'host') {
+            proxyRequest.headers.set(name, values);
+          }
+        });
+
+        final proxyResponse = await proxyRequest.close();
+
+        // 3. إعادة توجيه الرد للمشغل
+        request.response.statusCode = proxyResponse.statusCode;
+        request.response.headers.contentType = proxyResponse.headers.contentType;
+        request.response.contentLength = proxyResponse.contentLength; // مهم جداً للـ Progress
+        
+        // نسخ الهيدرز المهمة للرد
+        proxyResponse.headers.forEach((name, values) {
+           if (name.toLowerCase() == 'content-range' || 
+               name.toLowerCase() == 'accept-ranges') {
+             request.response.headers.set(name, values);
+           }
+        });
+
+        await proxyResponse.pipe(request.response);
+        return;
+      }
+
+      // =========================================================
+      // 📂 الحالة 2: أوفلاين (Offline Decryption)
+      // =========================================================
+      final response = request.response;
+      final file = File(encryptedFilePath!);
       if (!await file.exists()) {
         response.statusCode = HttpStatus.notFound;
         await response.close();
@@ -70,16 +114,10 @@ class LocalPdfServer {
       }
 
       final encryptedLen = await file.length();
-
-      // ✅ 1. الحساب الدقيق للحجم (يمنع خطأ Content size mismatch)
       final int fullBlocks = encryptedLen ~/ encryptedBlockSize;
       final int remainingBytes = encryptedLen % encryptedBlockSize;
-      
-      // حماية: إذا تبقى بايتات أقل من حجم الهيدر، نعتبرها صفر (ملف تالف أو نهاية دقيقة)
       final int lastBlockSize = remainingBytes > (ivLength + tagLength) 
-          ? (remainingBytes - ivLength - tagLength) 
-          : 0;
-          
+          ? (remainingBytes - ivLength - tagLength) : 0;
       final int originalSize = (fullBlocks * plainBlockSize) + lastBlockSize;
 
       response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
@@ -87,92 +125,63 @@ class LocalPdfServer {
 
       int start = 0;
       int end = originalSize - 1;
-
       String? rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
 
       if (rangeHeader != null) {
-        // ✅ 2. دعم الـ Streaming والتنقل (Range Request)
         try {
           final range = rangeHeader.split('=')[1].split('-');
           start = int.parse(range[0]);
-          if (range.length > 1 && range[1].isNotEmpty) {
-            end = int.parse(range[1]);
-          }
+          if (range.length > 1 && range[1].isNotEmpty) end = int.parse(range[1]);
           if (end >= originalSize) end = originalSize - 1;
-
           response.statusCode = HttpStatus.partialContent;
           response.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$originalSize');
-        } catch (e) {
-          // في حال فشل قراءة الرينج، نرسل الملف كاملاً
-          response.statusCode = HttpStatus.ok;
-          start = 0;
-          end = originalSize - 1;
+        } catch (_) {
+           response.statusCode = HttpStatus.ok;
         }
       } else {
-        // طلب عادي (كامل الملف)
         response.statusCode = HttpStatus.ok;
       }
 
-      // ✅ 3. تحديد الحجم بدقة (يسمح للمشغل بالعرض الفوري دون انتظار)
       response.contentLength = end - start + 1;
 
       if (request.method != 'HEAD') {
         final streamResponsePort = ReceivePort();
-        
-        // إرسال طلب فك التشفير للمعالج
         _workerSendPort!.send(_DecryptRequest(
-          filePath: encryptedFilePath,
-          keyBase64: keyBase64,
+          filePath: encryptedFilePath!,
+          keyBase64: keyBase64!,
           startByte: start,
           endByte: end,
           replyPort: streamResponsePort.sendPort,
         ));
-
-        // استقبال البيانات وبثها
         await for (final chunk in streamResponsePort) {
-          if (chunk is Uint8List) {
-            response.add(chunk);
-          } else if (chunk == null) {
-            break; 
-          }
+          if (chunk is Uint8List) response.add(chunk);
+          else if (chunk == null) break;
         }
         streamResponsePort.close();
       }
-      
       await response.close();
 
     } catch (e, s) {
-      // تجاهل أخطاء إغلاق الاتصال المعتادة من المتصفحات/العارض
-      if (!e.toString().contains("Connection closed") && 
-          !e.toString().contains("Broken pipe")) {
-         _log("Handler Error: $e");
-         FirebaseCrashlytics.instance.recordError(e, s, reason: 'LocalServer Error');
+      // تجاهل أخطاء إغلاق الاتصال
+      if (!e.toString().contains("Connection closed")) {
+         FirebaseCrashlytics.instance.recordError(e, s, reason: 'Proxy Server Error');
       }
-      try {
-        await response.close();
-      } catch (_) {}
+      try { await request.response.close(); } catch (_) {}
     }
   }
 
-  // ===========================================================================
-  // ⚙️ منطقة المعالج المعزول (Worker Isolate)
-  // ===========================================================================
-
+  // --- Worker Logic (للفك التشفير فقط) ---
   static void _decryptWorkerEntry(SendPort initSendPort) {
     final commandPort = ReceivePort();
     initSendPort.send(commandPort.sendPort);
-
     commandPort.listen((message) {
-      if (message is _DecryptRequest) {
-        _processDecryption(message);
-      }
+      if (message is _DecryptRequest) _processDecryption(message);
     });
   }
 
   static Future<void> _processDecryption(_DecryptRequest req) async {
     final file = File(req.filePath);
     RandomAccessFile? raf;
-
     try {
       raf = await file.open(mode: FileMode.read);
       final key = encrypt.Key.fromBase64(req.keyBase64);
@@ -187,71 +196,42 @@ class LocalPdfServer {
 
       for (int i = startBlockIndex; i <= endBlockIndex; i++) {
         if (bytesSent >= totalBytesToSend) break;
-
-        // حساب موقع القراءة
         int filePos = i * encryptedBlockSize;
         await raf.setPosition(filePos);
-
         int readSize = encryptedBlockSize;
         int fileLen = await file.length();
-        if (filePos + readSize > fileLen) {
-          readSize = fileLen - filePos;
-        }
-
+        if (filePos + readSize > fileLen) readSize = fileLen - filePos;
         if (readSize <= ivLength + tagLength) break;
 
         Uint8List encryptedChunk = await raf.read(readSize);
-
         try {
-          // فك التشفير
           final iv = encrypt.IV(encryptedChunk.sublist(0, ivLength));
           final cipherText = encryptedChunk.sublist(ivLength);
-          
-          List<int> decryptedBlock = encrypter.decryptBytes(
-            encrypt.Encrypted(cipherText), 
-            iv: iv
-          );
+          List<int> decryptedBlock = encrypter.decryptBytes(encrypt.Encrypted(cipherText), iv: iv);
 
-          // تحديد الجزء المطلوب من البلوك المفكوك
           int chunkStart = (i == startBlockIndex) ? offsetInFirstBlock : 0;
           int chunkEnd = decryptedBlock.length;
-          int remainingBytesNeeded = totalBytesToSend - bytesSent;
-
-          if (chunkEnd - chunkStart > remainingBytesNeeded) {
-            chunkEnd = chunkStart + remainingBytesNeeded;
+          if (chunkEnd - chunkStart > (totalBytesToSend - bytesSent)) {
+            chunkEnd = chunkStart + (totalBytesToSend - bytesSent);
           }
-
           if (chunkStart < chunkEnd) {
             req.replyPort.send(Uint8List.fromList(decryptedBlock.sublist(chunkStart, chunkEnd)));
             bytesSent += (chunkEnd - chunkStart);
           }
-        } catch (e) {
-           print("Worker: Decrypt Block Error at index $i: $e");
-           // يمكن هنا إرسال بايتات فارغة للحفاظ على التزامن إذا لزم الأمر
-        }
+        } catch (_) {}
       }
-    } catch (e) {
-      print("Worker Fatal Error: $e");
-    } finally {
+    } catch (_) {} finally {
       await raf?.close();
-      req.replyPort.send(null); // إشارة الانتهاء
+      req.replyPort.send(null);
     }
   }
 }
 
-// كلاس نقل البيانات للعزل
 class _DecryptRequest {
   final String filePath;
   final String keyBase64;
   final int startByte;
   final int endByte;
   final SendPort replyPort;
-
-  _DecryptRequest({
-    required this.filePath,
-    required this.keyBase64,
-    required this.startByte,
-    required this.endByte,
-    required this.replyPort,
-  });
+  _DecryptRequest({required this.filePath, required this.keyBase64, required this.startByte, required this.endByte, required this.replyPort});
 }
