@@ -46,53 +46,50 @@ class LocalPdfServer {
 
   void _handleHttpRequest(HttpRequest request) async {
     try {
-      // =========================================================
-      // 🌐 1. أونلاين: إصلاح جذري لمشكلة البث
-      // =========================================================
+      // ---------------------------------------------------------
+      // 🌐 1. وضع الأونلاين: حل مشكلة البث والتحميل
+      // ---------------------------------------------------------
       if (onlineUrl != null) {
         final client = HttpClient();
         client.badCertificateCallback = (cert, host, port) => true;
         
-        // 🔥🔥 هام جداً: يمنع Dart من فك الضغط وحذف هيدر Content-Length
-        // هذا يحل مشكلة طلب النطاقات الخاطئة (15MB+)
+        // 🔥 هذا السطر هو الأهم: يمنع Dart من إفساد هيدر Content-Length
         client.autoUncompress = false; 
         
         final proxyRequest = await client.getUrl(Uri.parse(onlineUrl!));
 
-        // نسخ الهيدرز
+        // نسخ الهيدرز الخاصة بالأمان
         onlineHeaders?.forEach((k, v) => proxyRequest.headers.set(k, v));
         
-        // تمرير الـ Range كما هو (أو تحويله إذا كان السيرفر يحتاج ذلك)
-        // في حالتك، يبدو أن السيرفر يقبل Range أو X-Alt-Range، سنمرر Range القياسي هنا لضمان التوافق
+        // تمرير الـ Range كما هو ليتمكن العارض من طلب أجزاء الملف
         if (request.headers.value(HttpHeaders.rangeHeader) != null) {
           final rangeVal = request.headers.value(HttpHeaders.rangeHeader)!;
           proxyRequest.headers.set(HttpHeaders.rangeHeader, rangeVal);
-          // FirebaseCrashlytics.instance.log("🌐 Online Range: $rangeVal");
         }
 
         final proxyResponse = await proxyRequest.close();
 
-        // نسخ الحالة (206 Partial Content هو المطلوب للبث)
+        // إرجاع الحالة كما هي (206 Partial Content هو المطلوب)
         request.response.statusCode = proxyResponse.statusCode;
         
-        // نسخ الهيدرز المهمة (Content-Range, Content-Length, Content-Type)
+        // نسخ الهيدرز الضرورية لعمل المكتبة
         proxyResponse.headers.forEach((name, values) {
-            request.response.headers.set(name, values);
+           if (name.toLowerCase() == 'content-range' || 
+               name.toLowerCase() == 'accept-ranges' ||
+               name.toLowerCase() == 'content-length' ||
+               name.toLowerCase() == 'content-type') {
+             request.response.headers.set(name, values);
+           }
         });
-        
-        // التأكد من تمرير الطول إذا لم يتم نسخه تلقائياً
-        if (proxyResponse.contentLength != -1) {
-            request.response.contentLength = proxyResponse.contentLength;
-        }
 
         await request.response.addStream(proxyResponse);
         await request.response.close();
         return;
       }
 
-      // =========================================================
-      // 📂 2. أوفلاين (القراءة من الملف المشفر محلياً)
-      // =========================================================
+      // ---------------------------------------------------------
+      // 📂 2. وضع الأوفلاين: فك التشفير المباشر
+      // ---------------------------------------------------------
       final response = request.response;
       final file = File(encryptedFilePath!);
       if (!await file.exists()) {
