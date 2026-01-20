@@ -48,6 +48,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // الألوان المختارة
   Color _penColor = Colors.red;
   Color _highlightColor = Colors.yellow;
+  
+  // الأحجام المختارة
+  double _penSize = 3.0;
+  double _highlightSize = 25.0;
 
   // تخزين الرسومات: Map<رقم الصفحة, قائمة الخطوط>
   Map<int, List<DrawingLine>> _pageDrawings = {};
@@ -72,7 +76,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   @override
   void dispose() {
     _log("Closing Screen");
-    // حفظ الرسومات عند الخروج
     if (_isOffline) _saveDrawingsToHive();
     _localServer?.stop();
     super.dispose();
@@ -82,7 +85,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   Future<void> _saveDrawingsToHive() async {
     try {
       final box = await Hive.openBox('pdf_drawings_db');
-      // تحويل البيانات إلى JSON بسيط للحفظ
       _pageDrawings.forEach((page, lines) {
         final List<Map<String, dynamic>> serializedLines = lines.map((line) => line.toJson()).toList();
         box.put('${widget.pdfId}_$page', serializedLines);
@@ -99,7 +101,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       final dynamic data = box.get('${widget.pdfId}_$pageNum');
       
       if (data != null) {
-        // تحويل البيانات من JSON إلى كائنات
         final List<dynamic> rawList = data;
         final List<DrawingLine> loadedLines = rawList.map((e) => DrawingLine.fromJson(Map<String, dynamic>.from(e))).toList();
         
@@ -107,7 +108,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           _pageDrawings[pageNum] = loadedLines;
         });
       } else {
-        // لا توجد رسومات لهذه الصفحة
         setState(() {
           _pageDrawings[pageNum] = [];
         });
@@ -116,7 +116,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _log("⚠️ Error loading page $pageNum drawings: $e");
     }
   }
-  // ---------------------------------------------
 
   void _initWatermarkText() {
     String displayText = '';
@@ -159,8 +158,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _localServer?.stop();
 
       if (_isOffline) {
+         // ✅ أوفلاين: فك التشفير
          _localServer = LocalPdfServer.offline(offlinePath, EncryptionHelper.key.base64);
       } else {
+         // ✅ أونلاين: بروكسي لحماية الهيدرز
          var box = await Hive.openBox('auth_box');
          final userId = box.get('user_id');
          final deviceId = box.get('device_id');
@@ -234,6 +235,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           }
         ),
         actions: [
+          // 🖍️ زر تفعيل وضع الرسم (أوفلاين فقط)
           if (_isOffline)
             IconButton(
               icon: Icon(
@@ -258,7 +260,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             _viewerUrl!,
             key: _pdfViewerKey,
             enableTextSelection: false, // ⛔️ منع النسخ
-            interactionMode: _isDrawingMode ? PdfInteractionMode.pan : PdfInteractionMode.pan, 
+            // السماح بالتمرير دائماً (لأننا نستخدم IgnorePointer للتحكم)
+            interactionMode: PdfInteractionMode.pan, 
             enableDoubleTapZooming: !_isDrawingMode, 
             
             onDocumentLoaded: (details) {
@@ -293,39 +296,43 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           // 3. Drawing Layer (Offline only)
           if (_isOffline)
             Positioned.fill(
-              child: GestureDetector(
-                onPanStart: _isDrawingMode ? (details) {
-                   setState(() {
-                     _currentLine = DrawingLine(
-                       points: [details.localPosition],
-                       color: _isHighlighter ? _highlightColor.value : _penColor.value,
-                       strokeWidth: _isHighlighter ? 25.0 : 3.0,
-                       isHighlighter: _isHighlighter,
-                     );
-                   });
-                } : null,
-                onPanUpdate: _isDrawingMode ? (details) {
-                   setState(() {
-                     _currentLine?.points.add(details.localPosition);
-                   });
-                } : null,
-                onPanEnd: _isDrawingMode ? (details) {
-                   setState(() {
-                     if (_currentLine != null) {
-                       if (_pageDrawings[_currentPage] == null) {
-                         _pageDrawings[_currentPage] = [];
+              // ✅ استخدام IgnorePointer للسماح بالتمرير عند إغلاق الأقلام
+              child: IgnorePointer(
+                ignoring: !_isDrawingMode,
+                child: GestureDetector(
+                  onPanStart: (details) {
+                     setState(() {
+                       _currentLine = DrawingLine(
+                         points: [details.localPosition],
+                         color: _isHighlighter ? _highlightColor.value : _penColor.value,
+                         strokeWidth: _isHighlighter ? _highlightSize : _penSize,
+                         isHighlighter: _isHighlighter,
+                       );
+                     });
+                  },
+                  onPanUpdate: (details) {
+                     setState(() {
+                       _currentLine?.points.add(details.localPosition);
+                     });
+                  },
+                  onPanEnd: (details) {
+                     setState(() {
+                       if (_currentLine != null) {
+                         if (_pageDrawings[_currentPage] == null) {
+                           _pageDrawings[_currentPage] = [];
+                         }
+                         _pageDrawings[_currentPage]!.add(_currentLine!);
+                         _currentLine = null;
                        }
-                       _pageDrawings[_currentPage]!.add(_currentLine!);
-                       _currentLine = null;
-                     }
-                   });
-                } : null,
-                child: CustomPaint(
-                  painter: SketchPainter(
-                    lines: _pageDrawings[_currentPage] ?? [],
-                    currentLine: _currentLine,
+                     });
+                  },
+                  child: CustomPaint(
+                    painter: SketchPainter(
+                      lines: _pageDrawings[_currentPage] ?? [],
+                      currentLine: _currentLine,
+                    ),
+                    child: Container(color: Colors.transparent),
                   ),
-                  child: Container(color: Colors.transparent),
                 ),
               ),
             ),
@@ -335,37 +342,90 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             Positioned(
               bottom: 60, left: 20, right: 20,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.grey[900],
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(25),
                   boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 10)],
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // ✅ [تصحيح] استخدام penTool بدلاً من pen
-                    _buildToolButton(LucideIcons.penTool, false),
-                    _buildToolButton(LucideIcons.highlighter, true),
-                    Container(width: 1, height: 24, color: Colors.grey),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // أدوات الرسم
+                        _buildToolButton(LucideIcons.penTool, false),
+                        _buildToolButton(LucideIcons.highlighter, true),
+                        
+                        const SizedBox(width: 8),
+                        
+                        // ✅ زر التراجع (Undo) بجوار الأقلام
+                        IconButton(
+                          icon: const Icon(LucideIcons.undo, color: Colors.white),
+                          onPressed: () {
+                            setState(() {
+                              if (_pageDrawings[_currentPage]?.isNotEmpty ?? false) {
+                                _pageDrawings[_currentPage]!.removeLast();
+                              }
+                            });
+                          },
+                        ),
+
+                        const SizedBox(width: 8),
+                        Container(width: 1, height: 24, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        
+                        // الألوان (باستخدام Expanded لتوزيع المساحة)
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _buildColorButton(Colors.black),
+                                _buildColorButton(Colors.red),
+                                _buildColorButton(Colors.blue),
+                                _buildColorButton(Colors.yellow, isHighlight: true),
+                                _buildColorButton(Colors.green, isHighlight: true),
+                                _buildColorButton(Colors.pinkAccent, isHighlight: true),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     
-                    _buildColorButton(Colors.black),
-                    _buildColorButton(Colors.red),
-                    _buildColorButton(Colors.blue),
-                    _buildColorButton(Colors.yellow, isHighlight: true),
-                    _buildColorButton(Colors.green, isHighlight: true),
+                    const SizedBox(height: 12),
                     
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(LucideIcons.undo, color: Colors.white),
-                      onPressed: () {
-                        setState(() {
-                          final lines = _pageDrawings[_currentPage];
-                          if (lines != null && lines.isNotEmpty) {
-                            lines.removeLast();
-                          }
-                        });
-                      },
+                    // التحكم في الحجم (Slider)
+                    Row(
+                      children: [
+                        const Icon(LucideIcons.circle, size: 10, color: Colors.white70),
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              activeTrackColor: _isHighlighter ? _highlightColor : _penColor,
+                              thumbColor: Colors.white,
+                              trackHeight: 2.0,
+                            ),
+                            child: Slider(
+                              value: _isHighlighter ? _highlightSize : _penSize,
+                              min: _isHighlighter ? 10.0 : 1.0,
+                              max: _isHighlighter ? 50.0 : 15.0,
+                              onChanged: (val) {
+                                setState(() {
+                                  if (_isHighlighter) {
+                                    _highlightSize = val;
+                                  } else {
+                                    _penSize = val;
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                        const Icon(LucideIcons.circle, size: 20, color: Colors.white70),
+                      ],
                     ),
                   ],
                 ),
@@ -391,27 +451,24 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   Widget _buildToolButton(IconData icon, bool isHighlightTool) {
     final bool isSelected = _isHighlighter == isHighlightTool;
-    return IconButton(
-      icon: Icon(icon, color: isSelected ? AppColors.accentYellow : Colors.grey),
-      onPressed: () => setState(() => _isHighlighter = isHighlightTool),
+    return Container(
+      decoration: isSelected ? BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)) : null,
+      child: IconButton(
+        icon: Icon(icon, color: isSelected ? AppColors.accentYellow : Colors.grey),
+        onPressed: () => setState(() => _isHighlighter = isHighlightTool),
+      ),
     );
   }
 
   Widget _buildColorButton(Color color, {bool isHighlight = false}) {
-    final bool isSelected = _isHighlighter 
-        ? _highlightColor == color 
-        : _penColor == color;
-
+    final bool isSelected = _isHighlighter ? _highlightColor == color : _penColor == color;
     return GestureDetector(
       onTap: () {
         setState(() {
-          if (_isHighlighter) {
-            _highlightColor = color;
-          } else {
-            _penColor = color;
-          }
+          if (_isHighlighter) { _highlightColor = color; } else { _penColor = color; }
+          // تبديل الأداة تلقائياً بناءً على نوع اللون المختار
           if (isHighlight) _isHighlighter = true;
-          if (!isHighlight && color != Colors.yellow && color != Colors.green) _isHighlighter = false;
+          if (!isHighlight && (color == Colors.black || color == Colors.red || color == Colors.blue)) _isHighlighter = false;
         });
       },
       child: Container(
