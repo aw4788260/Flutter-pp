@@ -4,8 +4,7 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart'; 
-// 🔥🔥🔥 إضافة الاستيراد الضروري لكلاس التخطيط 🔥🔥🔥
-import 'package:pdfrx/src/widgets/pdf_page_layout.dart'; 
+// ❌ تم حذف الاستيراد المسبب للمشاكل
 
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -257,10 +256,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               backgroundColor: AppColors.backgroundPrimary,
               textSelectionParams: const PdfTextSelectionParams(enabled: false), 
               
-              // ✅✅✅ الآن سيعمل هذا السطر لأننا أضفنا الاستيراد الصحيح
-              layoutPages: (pages, params, helper) {
-                  return SequentialPagesLayout.fromPages(pages, params, helper: helper);
-              },
+              // ❌❌❌ تم حذف layoutPages لتجنب أخطاء البناء
+              // المكتبة ستستخدم التخطيط الافتراضي وهو مناسب
               
               scrollPhysics: const BouncingScrollPhysics(),
 
