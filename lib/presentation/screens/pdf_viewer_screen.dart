@@ -1,7 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:isolate'; // ✅ استيراد مكتبة العزل
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -44,16 +42,26 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   
   final GlobalKey<SfPdfViewerState> _pdfViewerKey = GlobalKey();
 
+  // 🔍 دالة تسجيل موحدة (Logs)
+  void _log(String message) {
+    final msg = "🔍 [PDF_SCREEN] $message";
+    print(msg); // يظهر في Run Console
+    try {
+      FirebaseCrashlytics.instance.log(msg); // يرسل لـ Firebase
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
-    FirebaseCrashlytics.instance.log("📄 PDF Screen Opened: ${widget.title}");
+    _log("Opened Screen for: ${widget.title}");
     _initWatermarkText();
     _loadPdf();
   }
 
   @override
   void dispose() {
+    _log("Closing Screen - Stopping Local Server if running");
     // ✅ إيقاف السيرفر المحلي عند الخروج
     _localServer?.stop();
     super.dispose();
@@ -84,6 +92,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       await EncryptionHelper.init(); 
 
       // 1. فحص الملفات الأوفلاين
+      _log("Checking offline database for PDF ID: ${widget.pdfId}");
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
 
@@ -91,26 +100,45 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         final String encryptedPath = downloadItem['path'];
         final File encryptedFile = File(encryptedPath);
         
+        _log("Found offline entry. Path: $encryptedPath");
+
         if (await encryptedFile.exists()) {
-          // ✅ المنطق الموحد: تشغيل السيرفر المحلي المعزول
-          _localServer = LocalPdfServer(encryptedPath, EncryptionHelper.key.base64);
-          int port = await _localServer!.start();
+          _log("✅ File exists on disk. Starting Local Proxy Server...");
           
-          if (mounted) {
-            setState(() {
-              _viewerUrl = 'http://127.0.0.1:$port/stream.pdf';
-              _viewerHeaders = null; 
-              _loading = false;
-            });
+          try {
+            // ✅ المنطق الموحد: تشغيل السيرفر المحلي المعزول
+            _localServer = LocalPdfServer(encryptedPath, EncryptionHelper.key.base64);
+            int port = await _localServer!.start();
+            
+            final localhostUrl = 'http://127.0.0.1:$port/stream.pdf';
+            _log("🚀 Proxy Started Successfully. URL: $localhostUrl");
+
+            if (mounted) {
+              setState(() {
+                _viewerUrl = localhostUrl;
+                _viewerHeaders = null; // لا نحتاج headers مع السيرفر المحلي
+                _loading = false;
+              });
+            }
+            return; 
+          } catch (serverError, stack) {
+             _log("❌ Failed to start Local Server: $serverError");
+             FirebaseCrashlytics.instance.recordError(serverError, stack, reason: 'Local Server Start Failed');
+             // لا نوقف التنفيذ، سنحاول الأونلاين كبديل
           }
-          return; 
+        } else {
+          _log("⚠️ File path is in DB but file is MISSING on disk!");
         }
+      } else {
+        _log("No offline download found. Switching to Online Mode.");
       }
 
       // 2. التحميل من الإنترنت (Online)
       var box = await Hive.openBox('auth_box');
       final userId = box.get('user_id');
       final deviceId = box.get('device_id');
+
+      _log("Preparing Online Stream...");
 
       if (mounted) {
         setState(() {
@@ -122,9 +150,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           };
           _loading = false;
         });
+        _log("✅ Online Stream URL set.");
       }
 
     } catch (e, stack) {
+      _log("❌ FATAL ERROR in _loadPdf: $e");
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF Load Failed');
       if (mounted) {
         setState(() { 
@@ -140,7 +170,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     if (_loading) {
       return Scaffold(
         backgroundColor: AppColors.backgroundPrimary,
-        // ✅ تم تصحيح الخطأ هنا: حذف const
+        // ✅ تم الإصلاح: حذفنا const من هنا لأن الودجت يحتوي على أنيميشن
         body: Center(
           child: CircularPercentIndicator(
             radius: 30.0,
@@ -195,12 +225,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               scrollDirection: PdfScrollDirection.vertical,
               canShowScrollHead: true,
               onDocumentLoaded: (details) {
+                _log("✅ PDF Document Loaded. Pages: ${details.document.pages.count}");
                 if (mounted) setState(() => _totalPages = details.document.pages.count);
               },
               onPageChanged: (details) {
                 if (mounted) setState(() => _currentPage = details.newPageNumber - 1);
               },
               onDocumentLoadFailed: (args) {
+                 _log("❌ PDF Viewer Failed: ${args.error} - ${args.description}");
                  if (mounted) setState(() => _error = "Failed to open document.");
               },
             ),
