@@ -223,7 +223,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             params: PdfViewerParams(
               backgroundColor: AppColors.backgroundPrimary,
               
-              // ✅ الإصلاح: الطريقة الصحيحة لتعطيل تحديد النص والنسخ
+              // ✅ تفعيل خيار عدم النسخ بشكل صحيح
               textSelectionParams: const PdfTextSelectionParams(enabled: false), 
               
               loadingBannerBuilder: (context, bytesDownloaded, totalBytes) {
@@ -235,9 +235,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   ),
                 );
               },
+              
+              // ✅✅✅ الإصلاح هنا: التعامل مع القيمة الفارغة (Null Safety)
               onDocumentChanged: (document) {
-                if (mounted) setState(() => _totalPages = document.pages.length);
+                if (mounted) setState(() => _totalPages = document?.pages.length ?? 0);
               },
+
               pageOverlaysBuilder: (context, pageRect, page) {
                 if (!_isOffline) return [];
                 return [
