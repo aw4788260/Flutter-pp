@@ -36,12 +36,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String? _filePath; 
   bool _loading = true;
   String? _error;
-  bool _isOffline = false;
+  bool _isOffline = false; // لتحديد حالة الاتصال
   String _watermarkText = '';
 
   // --- أدوات الرسم ---
   bool _isDrawingMode = false;
-  int _selectedTool = 0; 
+  int _selectedTool = 0; // 0=قلم, 1=هايلات, 2=ممحاة
   
   Color _penColor = Colors.red;
   Color _highlightColor = Colors.yellow;
@@ -120,6 +120,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
       if (downloadItem != null && downloadItem['path'] != null) {
         offlinePath = downloadItem['path'];
+        // التحقق الفعلي من وجود الملف
         if (await File(offlinePath!).exists()) {
           fileExistsLocally = true;
         }
@@ -127,7 +128,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
       _localServer?.stop();
 
-      // التمييز بين الأونلاين والأوفلاين بناءً على وجود الملف
+      // ✅ التمييز بين الأونلاين والأوفلاين بناءً على وجود الملف
       if (fileExistsLocally) {
         setState(() => _isOffline = true);
         _localServer = LocalPdfServer.offline(offlinePath, EncryptionHelper.key.base64);
@@ -139,6 +140,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           'x-device-id': box.get('device_id')?.toString() ?? '',
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         };
+        // رابط الأونلاين
         final url = 'https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=${widget.pdfId}';
         _localServer = LocalPdfServer.online(url, headers);
       }
@@ -152,6 +154,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         });
       }
     } catch (e) {
+      FirebaseCrashlytics.instance.recordError(e, null, reason: 'PDF Prep Failed');
       if (mounted) setState(() { _error = "Failed to load PDF."; _loading = false; });
     }
   }
@@ -203,7 +206,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           children: [
             Expanded(child: Text(widget.title, style: const TextStyle(fontSize: 14, color: Colors.white), overflow: TextOverflow.ellipsis)),
             const SizedBox(width: 8),
-            // أيقونة توضح الوضع (أونلاين / أوفلاين)
+            // ✅ أيقونة التمييز (أونلاين / أوفلاين)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
@@ -235,7 +238,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
           ),
           
-          // القلم يظهر فقط في الأوفلاين
+          // ✅ أدوات الرسم تظهر فقط في الأوفلاين
           if (_isOffline)
             IconButton(
               icon: Icon(
@@ -252,18 +255,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             Uri.parse(_filePath!),
             controller: _pdfController,
             
-            // 🔥 تفعيل البث (Streaming)
+            // 🔥 هام جداً: تفعيل البث، ومنع القفز عبر الاعتماد على التخطيط الافتراضي المستقر
             preferRangeAccess: true, 
 
             params: PdfViewerParams(
               backgroundColor: AppColors.backgroundPrimary,
-              textSelectionParams: const PdfTextSelectionParams(enabled: false), 
               
-              // ✅ منع القفز: تثبيت التخطيط التسلسلي
-              layoutPages: (pages, params, helper) {
-                  return SequentialPagesLayout.fromPages(pages, params, helper: helper);
-              },
-              // ✅ فيزياء تمرير ناعمة
+              // ✅ حذف الخصائص المسببة للأخطاء والاعتماد على السلوك الافتراضي المتوافق
+              // ✅ استخدام فيزياء تمرير ناعمة لمنع القفزات الحادة
               scrollPhysics: const BouncingScrollPhysics(),
 
               loadingBannerBuilder: (context, bytesDownloaded, totalBytes) {
@@ -281,7 +280,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               },
 
               pageOverlaysBuilder: (context, pageRect, page) {
+                // الرسم مسموح فقط في الأوفلاين
                 if (!_isOffline) return [];
+                
                 return [
                   Positioned.fill(
                     child: FutureBuilder<List<DrawingLine>>(
@@ -367,7 +368,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
-          // 2. ✅ العلامة المائية المعدلة: عمودية مع ميلان للنص
+          // 2. ✅ العلامة المائية: نصوص مائلة (Diagonal) مصفوفة عمودياً (Column)
           IgnorePointer(
             child: Center(
               child: Opacity(
@@ -378,7 +379,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   children: List.generate(
                     3, // تكرار 3 مرات
                     (index) => Transform.rotate(
-                      angle: -0.5, // ميلان قطري للنص نفسه
+                      angle: -0.5, // ✅ ميلان للنص (-30 درجة)
                       child: Text(
                         _watermarkText, 
                         textScaler: const TextScaler.linear(2.2),
@@ -395,6 +396,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
 
+          // 3. شريط الأدوات (يظهر فقط في الأوفلاين)
           if (_isDrawingMode && _isOffline)
             Positioned(
               bottom: 40, left: 20, right: 20,
