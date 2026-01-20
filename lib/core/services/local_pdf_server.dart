@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+// تأكد من المسار
 import '../utils/encryption_helper.dart';
 
 class LocalPdfServer {
@@ -14,6 +15,7 @@ class LocalPdfServer {
   Isolate? _workerIsolate;
   SendPort? _workerSendPort;
 
+  // الثوابت
   static const int plainBlockSize = 32 * 1024; 
   static const int ivLength = 12;
   static const int tagLength = 16;
@@ -22,43 +24,27 @@ class LocalPdfServer {
   LocalPdfServer(this.encryptedFilePath, this.keyBase64);
 
   void _log(String message) {
-    final msg = "🔍 [PDF_SERVER] $message";
-    print(msg);
-    try {
-      FirebaseCrashlytics.instance.log(msg);
-    } catch (e) { /* ignore */ }
-  }
-
-  Future<int> start() async {
-    _log("Starting Server for file: $encryptedFilePath");
-    
-    try {
-      final file = File(encryptedFilePath);
-      if (!await file.exists()) {
-        _log("❌ ERROR: File does not exist at path!");
-        throw Exception("File not found");
-      }
-      
-      // تهيئة المعالج
-      final initPort = ReceivePort();
-      _workerIsolate = await Isolate.spawn(_decryptWorkerEntry, initPort.sendPort);
-      _workerSendPort = await initPort.first as SendPort;
-
-      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      _server!.listen(_handleHttpRequest);
-      
-      _log("🚀 Server listening on port: ${_server!.port}");
-      return _server!.port;
-
-    } catch (e, stack) {
-      _log("❌ FATAL START ERROR: $e");
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'LocalServer Start Failed');
-      rethrow;
+    if (message.contains("ERROR") || message.contains("FATAL")) {
+      print("🔍 [PDF_SERVER] $message");
+      try { FirebaseCrashlytics.instance.log(message); } catch (_) {}
     }
   }
 
+  Future<int> start() async {
+    final file = File(encryptedFilePath);
+    if (!await file.exists()) throw Exception("File missing: $encryptedFilePath");
+
+    final initPort = ReceivePort();
+    _workerIsolate = await Isolate.spawn(_decryptWorkerEntry, initPort.sendPort);
+    _workerSendPort = await initPort.first as SendPort;
+
+    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _server!.listen(_handleHttpRequest);
+    
+    return _server!.port;
+  }
+
   Future<void> stop() async {
-    _log("🛑 Stopping Server...");
     _workerIsolate?.kill(priority: Isolate.immediate);
     _workerIsolate = null;
     await _server?.close(force: true);
@@ -67,7 +53,6 @@ class LocalPdfServer {
 
   void _handleHttpRequest(HttpRequest request) async {
     final response = request.response;
-    // _log("📥 Request: ${request.method} ${request.uri}");
 
     try {
       final file = File(encryptedFilePath);
@@ -79,34 +64,45 @@ class LocalPdfServer {
 
       final encryptedLen = await file.length();
 
-      // ✅ [تصحيح] حساب الحجم الدقيق لتجنب خطأ Content-Length
+      // ✅ 1. الحساب الدقيق (للاستخدام مع Range Header)
       final int fullBlocks = encryptedLen ~/ encryptedBlockSize;
       final int remainingBytes = encryptedLen % encryptedBlockSize;
-      final int lastBlockSize = remainingBytes > 0 ? (remainingBytes - ivLength - tagLength) : 0;
+      final int lastBlockSize = remainingBytes > (ivLength + tagLength) 
+          ? (remainingBytes - ivLength - tagLength) 
+          : 0;
       final int originalSize = (fullBlocks * plainBlockSize) + lastBlockSize;
 
-      response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
       response.headers.set(HttpHeaders.contentTypeHeader, 'application/pdf');
+      response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
 
-      String? rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
       int start = 0;
       int end = originalSize - 1;
+      
+      String? rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
 
       if (rangeHeader != null) {
-        final range = rangeHeader.split('=')[1].split('-');
-        start = int.parse(range[0]);
-        if (range.length > 1 && range[1].isNotEmpty) {
-          end = int.parse(range[1]);
+        // ✅ حالة وجود Range: يجب تحديد Content-Length بدقة
+        try {
+          final range = rangeHeader.split('=')[1].split('-');
+          start = int.parse(range[0]);
+          if (range.length > 1 && range[1].isNotEmpty) {
+            end = int.parse(range[1]);
+          }
+          if (end >= originalSize) end = originalSize - 1;
+
+          response.statusCode = HttpStatus.partialContent;
+          response.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$originalSize');
+          response.contentLength = end - start + 1; // إلزامي هنا
+        } catch (e) {
+          response.statusCode = HttpStatus.ok;
+          // في حال فشل قراءة الرينج، ننتقل للوضع "الجذري" بالأسفل
         }
-        if (end >= originalSize) end = originalSize - 1;
-
-        response.statusCode = HttpStatus.partialContent;
-        response.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$originalSize');
       } else {
+        // 🔥 الحل الجذري: في حال طلب الملف كاملاً، لا ترسل Content-Length
+        // دع السيرفر يستخدم Chunked Transfer Encoding تلقائياً
         response.statusCode = HttpStatus.ok;
+        // response.contentLength = originalSize; // ❌ تم الإلغاء لتجنب الخطأ
       }
-
-      response.contentLength = end - start + 1;
 
       if (request.method != 'HEAD') {
         final streamResponsePort = ReceivePort();
@@ -132,18 +128,20 @@ class LocalPdfServer {
       await response.close();
 
     } catch (e, s) {
-      _log("❌ Request Handler Error: $e");
-      // تجاهل الأخطاء الناتجة عن إغلاق العميل للاتصال مبكراً
-      if (!e.toString().contains("Connection closed")) {
-         FirebaseCrashlytics.instance.recordError(e, s, reason: 'LocalServer Request Failed');
+      // تجاهل أخطاء إغلاق الاتصال المعتادة
+      if (!e.toString().contains("Connection closed") && 
+          !e.toString().contains("Broken pipe")) {
+        _log("Handler Error: $e");
+        FirebaseCrashlytics.instance.recordError(e, s, reason: 'LocalServer Error');
       }
       try {
-        response.statusCode = HttpStatus.internalServerError;
-        await response.close();
+        // محاولة إغلاق الاستجابة بأمان إذا لم تكن مغلقة
+        await response.close(); 
       } catch (_) {}
     }
   }
 
+  // --- Worker Logic (بدون تغيير) ---
   static void _decryptWorkerEntry(SendPort initSendPort) {
     final commandPort = ReceivePort();
     initSendPort.send(commandPort.sendPort);
@@ -209,11 +207,11 @@ class LocalPdfServer {
             bytesSent += (chunkEnd - chunkStart);
           }
         } catch (e) {
-          print("Worker Decrypt Error (Block $i): $e");
+          print("Decrypt Block Error: $e");
         }
       }
     } catch (e) {
-      print("Worker Fatal Error: $e");
+      print("Worker Fatal: $e");
     } finally {
       await raf?.close();
       req.replyPort.send(null); 
