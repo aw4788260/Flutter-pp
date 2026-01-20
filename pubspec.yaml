@@ -31,6 +31,7 @@ dependencies:
   wakelock_plus: ^1.4.0        # لإبقاء الشاشة تعمل
   syncfusion_flutter_pdfviewer: ^32.1.23
   syncfusion_flutter_pdf: ^32.1.23
+  pdfrx: ^2.2.24
   
   
   # ✅ التعديل 1: استخدام نسخة GitHub للحصول على دوال الاستماع (addListener)
