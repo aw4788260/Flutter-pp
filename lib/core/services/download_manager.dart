@@ -412,7 +412,7 @@ class DownloadManager with WidgetsBindingObserver {
   }
 
   // ---------------------------------------------------------------------------
-  // 📄 PDF Downloader (Streaming & Encrypting)
+  // 📄 PDF Downloader (Simplified)
   // ---------------------------------------------------------------------------
   Future<void> _downloadPdfWithEncryption({
     required String url,
@@ -423,50 +423,38 @@ class DownloadManager with WidgetsBindingObserver {
   }) async {
     final saveFile = File(savePath);
     final sink = await saveFile.open(mode: FileMode.write);
-    // Buffer to hold incoming bytes until we have a full chunk
-    List<int> buffer = [];
 
     try {
-      final response = await _dio.get(
+      // ✅ تحميل الملف كاملاً في الذاكرة لتبسيط العملية
+      final response = await _dio.get<List<int>>(
         url,
         options: Options(
-          responseType: ResponseType.stream, // ✅ تغيير إلى stream للتحميل المتدفق
-          headers: headers,
+          responseType: ResponseType.bytes, // استلام الملف كبايتات مباشرة
+          headers: headers, 
           followRedirects: true
         ),
         cancelToken: cancelToken,
+        onReceiveProgress: (received, total) {
+           if (total != -1) onProgress(received / total);
+        },
       );
 
-      // الحصول على الحجم الكلي لحساب التقدم
-      int total = int.parse(response.headers.value(Headers.contentLengthHeader) ?? '-1');
-      int received = 0;
+      final bytes = response.data!;
+      int offset = 0;
 
-      Stream<Uint8List> stream = response.data.stream;
-
-      await for (final chunk in stream) {
+      // ✅ حلقة بسيطة لتقسيم وتشفير الملف
+      while (offset < bytes.length) {
         if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
         
-        buffer.addAll(chunk);
-
-        // تشفير الكتل المكتملة وكتابتها فوراً
-        while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
-          final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
-          buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
-          
-          final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
-          await sink.writeFrom(encrypted);
-        }
-
-        // تحديث شريط التقدم
-        received += chunk.length;
-        if (total != -1) onProgress(received / total);
-      }
-
-      // تشفير ما تبقى في البفر (الجزئية الأخيرة)
-      if (buffer.isNotEmpty) {
-        final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(buffer));
+        // أخذ كتلة بحجم CHUNK_SIZE أو ما تبقى
+        int end = min(offset + EncryptionHelper.CHUNK_SIZE, bytes.length);
+        final block = bytes.sublist(offset, end);
+        
+        // التشفير والكتابة
+        final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
         await sink.writeFrom(encrypted);
-        buffer.clear();
+        
+        offset += EncryptionHelper.CHUNK_SIZE;
       }
 
     } finally {
@@ -608,47 +596,47 @@ class DownloadManager with WidgetsBindingObserver {
   }
 
   Future<void> _downloadHls(String m3u8Url, RandomAccessFile sink, List<int> buffer, Function(double) onProgress, CancelToken cancelToken) async {
-      final response = await _dio.get(m3u8Url, cancelToken: cancelToken);
-      final content = response.data.toString();
-      final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
-      List<String> tsUrls = [];
-      for (var line in content.split('\n')) {
-        line = line.trim();
-        if (line.isNotEmpty && !line.startsWith('#')) tsUrls.add(line.startsWith('http') ? line : baseUrl + line);
-      }
-      if (tsUrls.isEmpty) throw Exception("No TS segments");
-      
-      int total = tsUrls.length;
-      int done = 0;
-      int batchSize = 8; 
+     final response = await _dio.get(m3u8Url, cancelToken: cancelToken);
+     final content = response.data.toString();
+     final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+     List<String> tsUrls = [];
+     for (var line in content.split('\n')) {
+       line = line.trim();
+       if (line.isNotEmpty && !line.startsWith('#')) tsUrls.add(line.startsWith('http') ? line : baseUrl + line);
+     }
+     if (tsUrls.isEmpty) throw Exception("No TS segments");
+     
+     int total = tsUrls.length;
+     int done = 0;
+     int batchSize = 8; 
 
-      for (int i = 0; i < total; i += batchSize) {
-        if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
-        
-        int end = min(i + batchSize, total);
-        List<String> batchUrls = tsUrls.sublist(i, end);
-        List<Future<List<int>?>> futures = batchUrls.map((url) async {
-          try {
-            final rs = await _dio.get<List<int>>(url, options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(seconds: 15)), cancelToken: cancelToken);
-            return rs.data;
-          } catch (e) { return null; }
-        }).toList();
+     for (int i = 0; i < total; i += batchSize) {
+       if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
+       
+       int end = min(i + batchSize, total);
+       List<String> batchUrls = tsUrls.sublist(i, end);
+       List<Future<List<int>?>> futures = batchUrls.map((url) async {
+         try {
+           final rs = await _dio.get<List<int>>(url, options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(seconds: 15)), cancelToken: cancelToken);
+           return rs.data;
+         } catch (e) { return null; }
+       }).toList();
 
-        List<List<int>?> results = await Future.wait(futures);
-        
-        for (var data in results) {
-          if (data != null) {
-            buffer.addAll(data); 
-            while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
-              final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
-              buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
-              final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
-              await sink.writeFrom(enc);
-            }
-          }
-          done++;
-          onProgress(done / total);
-        }
-      }
+       List<List<int>?> results = await Future.wait(futures);
+       
+       for (var data in results) {
+         if (data != null) {
+           buffer.addAll(data); 
+           while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
+             final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
+             buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
+             final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
+             await sink.writeFrom(enc);
+           }
+         }
+         done++;
+         onProgress(done / total);
+       }
+     }
   }
 }
