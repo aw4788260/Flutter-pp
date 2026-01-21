@@ -9,6 +9,8 @@ import 'change_password_screen.dart';
 import 'my_requests_screen.dart';
 import 'dev_info_screen.dart';
 import 'login_screen.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -23,7 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // دالة تسجيل الخروج (أو العودة لصفحة الدخول للضيف)
   Future<void> _logout() async {
     try {
-      var authBox = await Hive.openBox('auth_box');
+      var authBox = await StorageService.openBox('auth_box');
       final token = authBox.get('jwt_token');
       final deviceId = authBox.get('device_id');
 
