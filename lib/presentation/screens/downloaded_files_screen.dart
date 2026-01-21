@@ -7,6 +7,8 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/local_proxy.dart';
 import '../../core/services/download_manager.dart'; 
 import 'downloaded_subjects_screen.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class DownloadedFilesScreen extends StatefulWidget {
   const DownloadedFilesScreen({super.key});
@@ -30,8 +32,8 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
       FirebaseCrashlytics.instance.log("Initializing Downloads Box and Proxy...");
 
       if (!Hive.isBoxOpen('downloads_box')) {
-        await Hive.openBox('downloads_box');
-      }
+  await StorageService.openBox('downloads_box');
+}
       
       await _proxy.start();
       
