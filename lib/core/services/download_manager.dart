@@ -9,7 +9,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 
-import '../utils/encryption_helper.dart';
+import '../utils/encryption_helper.dart'; // للفيديو (AES)
+import 'file_crypto_service.dart'; // ✅ للملفات (ChaCha20) - استيراد جديد
 import 'notification_service.dart';
 
 class DownloadManager with WidgetsBindingObserver {
@@ -252,7 +253,8 @@ class DownloadManager with WidgetsBindingObserver {
 
       // Execution
       if (isPdf) {
-        await _downloadPdfWithEncryption(
+        // ✅ استخدام النظام الجديد (ChaCha20) للملفات
+        await _downloadAndEncryptPdfNew(
           url: finalVideoUrl,
           savePath: videoSavePath,
           headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
@@ -276,6 +278,7 @@ class DownloadManager with WidgetsBindingObserver {
           }
         );
       } else {
+        // 🎥 استخدام النظام القديم (AES) للفيديو كما هو
         double vidProg = 0.0;
         double audProg = 0.0;
 
@@ -412,58 +415,47 @@ class DownloadManager with WidgetsBindingObserver {
   }
 
   // ---------------------------------------------------------------------------
-  // 📄 PDF Downloader (Simplified)
+  // 📄 New PDF Downloader (ChaCha20) - تحميل ثم تشفير
   // ---------------------------------------------------------------------------
-  Future<void> _downloadPdfWithEncryption({
+  Future<void> _downloadAndEncryptPdfNew({
     required String url,
     required String savePath,
     required Map<String, dynamic> headers,
     required Function(double) onProgress,
     required CancelToken cancelToken,
   }) async {
-    final saveFile = File(savePath);
-    final sink = await saveFile.open(mode: FileMode.write);
-
+    final tempDir = await getTemporaryDirectory();
+    final tempPath = '${tempDir.path}/downloading_${DateTime.now().millisecondsSinceEpoch}.tmp';
+    
     try {
-      // ✅ تحميل الملف كاملاً في الذاكرة لتبسيط العملية
-      final response = await _dio.get<List<int>>(
+      // 1. تحميل الملف الخام (سريع)
+      await _dio.download(
         url,
-        options: Options(
-          responseType: ResponseType.bytes, // استلام الملف كبايتات مباشرة
-          headers: headers, 
-          followRedirects: true
-        ),
+        tempPath,
+        options: Options(headers: headers),
         cancelToken: cancelToken,
-        onReceiveProgress: (received, total) {
-           if (total != -1) onProgress(received / total);
+        onReceiveProgress: (rec, total) {
+          if (total != -1) onProgress(rec / total);
         },
       );
 
-      final bytes = response.data!;
-      int offset = 0;
+      if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
 
-      // ✅ حلقة بسيطة لتقسيم وتشفير الملف
-      while (offset < bytes.length) {
-        if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
-        
-        // أخذ كتلة بحجم CHUNK_SIZE أو ما تبقى
-        int end = min(offset + EncryptionHelper.CHUNK_SIZE, bytes.length);
-        final block = bytes.sublist(offset, end);
-        
-        // التشفير والكتابة
-        final encrypted = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
-        await sink.writeFrom(encrypted);
-        
-        offset += EncryptionHelper.CHUNK_SIZE;
-      }
+      // 2. التشفير باستخدام ChaCha20 ونقله للمكان الدائم
+      await FileCryptoService.encryptFile(tempPath, savePath);
 
-    } finally {
-      await sink.close();
+      // 3. حذف الملف الخام
+      final tempFile = File(tempPath);
+      if (await tempFile.exists()) await tempFile.delete();
+
+    } catch (e) {
+      try { await File(tempPath).delete(); } catch (_) {}
+      rethrow;
     }
   }
 
   // ---------------------------------------------------------------------------
-  // 🎥 Video Downloader
+  // 🎥 Video Downloader (Legacy AES) - يعمل كما هو بدون تغيير
   // ---------------------------------------------------------------------------
 
   Future<void> _downloadFileSmartly({
