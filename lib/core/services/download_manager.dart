@@ -10,7 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../utils/encryption_helper.dart'; // للفيديو (AES)
-import 'file_crypto_service.dart'; // ✅ للملفات (ChaCha20) - استيراد جديد
+import 'file_crypto_service.dart'; // ✅ للملفات (ChaCha20)
 import 'notification_service.dart';
 
 class DownloadManager with WidgetsBindingObserver {
@@ -200,11 +200,20 @@ class DownloadManager with WidgetsBindingObserver {
     try {
       await EncryptionHelper.init();
       var box = await Hive.openBox('auth_box');
-      final userId = box.get('user_id');
+      
+      // ✅ استخراج التوكن والبصمة
       final deviceId = box.get('device_id');
+      final token = box.get('jwt_token');
       const String appSecret = String.fromEnvironment('APP_SECRET');
 
-      if (userId == null) throw Exception("User auth missing");
+      // ✅ بناء الهيدرز الموحدة
+      final Map<String, dynamic> requestHeaders = {
+        'Authorization': 'Bearer $token',
+        'x-device-id': deviceId,
+        'x-app-secret': appSecret,
+      };
+
+      if (token == null) throw Exception("User auth missing (Token not found)");
 
       // Links Preparation
       String? finalVideoUrl = downloadUrl;
@@ -217,7 +226,7 @@ class DownloadManager with WidgetsBindingObserver {
            final res = await _dio.get(
             '$_baseUrl/api/secure/get-video-id',
             queryParameters: {'lessonId': lessonId},
-            options: Options(headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret}),
+            options: Options(headers: requestHeaders), // ✅ استخدام الهيدرز الجديدة
             cancelToken: cancelToken,
           );
           if (res.statusCode == 200 && res.data['url'] != null) {
@@ -253,11 +262,11 @@ class DownloadManager with WidgetsBindingObserver {
 
       // Execution
       if (isPdf) {
-        // ✅ استخدام النظام الجديد (ChaCha20) للملفات
+        // ✅ تحميل PDF (ChaCha20)
         await _downloadAndEncryptPdfNew(
           url: finalVideoUrl,
           savePath: videoSavePath,
-          headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
+          headers: requestHeaders, // ✅ تمرير الهيدرز
           cancelToken: cancelToken,
           onProgress: (p) {
              if (cancelToken.isCancelled) return;
@@ -278,7 +287,7 @@ class DownloadManager with WidgetsBindingObserver {
           }
         );
       } else {
-        // 🎥 استخدام النظام القديم (AES) للفيديو كما هو
+        // 🎥 تحميل فيديو (AES)
         double vidProg = 0.0;
         double audProg = 0.0;
 
@@ -309,7 +318,7 @@ class DownloadManager with WidgetsBindingObserver {
         tasks.add(_downloadFileSmartly(
           url: finalVideoUrl,
           savePath: videoSavePath,
-          headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
+          headers: requestHeaders, // ✅ تمرير الهيدرز
           cancelToken: cancelToken,
           onProgress: (p) { vidProg = p; updateAggregatedProgress(); }
         ));
@@ -318,7 +327,7 @@ class DownloadManager with WidgetsBindingObserver {
           tasks.add(_downloadFileSmartly(
             url: finalAudioUrl,
             savePath: audioSavePath,
-            headers: {'x-user-id': userId, 'x-device-id': deviceId, 'x-app-secret': appSecret},
+            headers: requestHeaders, // ✅ تمرير الهيدرز
             cancelToken: cancelToken,
             onProgress: (p) { audProg = p; updateAggregatedProgress(); }
           ));
@@ -588,47 +597,47 @@ class DownloadManager with WidgetsBindingObserver {
   }
 
   Future<void> _downloadHls(String m3u8Url, RandomAccessFile sink, List<int> buffer, Function(double) onProgress, CancelToken cancelToken) async {
-     final response = await _dio.get(m3u8Url, cancelToken: cancelToken);
-     final content = response.data.toString();
-     final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
-     List<String> tsUrls = [];
-     for (var line in content.split('\n')) {
-       line = line.trim();
-       if (line.isNotEmpty && !line.startsWith('#')) tsUrls.add(line.startsWith('http') ? line : baseUrl + line);
-     }
-     if (tsUrls.isEmpty) throw Exception("No TS segments");
-     
-     int total = tsUrls.length;
-     int done = 0;
-     int batchSize = 8; 
+      final response = await _dio.get(m3u8Url, cancelToken: cancelToken);
+      final content = response.data.toString();
+      final baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+      List<String> tsUrls = [];
+      for (var line in content.split('\n')) {
+        line = line.trim();
+        if (line.isNotEmpty && !line.startsWith('#')) tsUrls.add(line.startsWith('http') ? line : baseUrl + line);
+      }
+      if (tsUrls.isEmpty) throw Exception("No TS segments");
+      
+      int total = tsUrls.length;
+      int done = 0;
+      int batchSize = 8; 
 
-     for (int i = 0; i < total; i += batchSize) {
-       if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
-       
-       int end = min(i + batchSize, total);
-       List<String> batchUrls = tsUrls.sublist(i, end);
-       List<Future<List<int>?>> futures = batchUrls.map((url) async {
-         try {
-           final rs = await _dio.get<List<int>>(url, options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(seconds: 15)), cancelToken: cancelToken);
-           return rs.data;
-         } catch (e) { return null; }
-       }).toList();
+      for (int i = 0; i < total; i += batchSize) {
+        if (cancelToken.isCancelled) throw DioException(requestOptions: RequestOptions(), type: DioExceptionType.cancel);
+        
+        int end = min(i + batchSize, total);
+        List<String> batchUrls = tsUrls.sublist(i, end);
+        List<Future<List<int>?>> futures = batchUrls.map((url) async {
+          try {
+            final rs = await _dio.get<List<int>>(url, options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(seconds: 15)), cancelToken: cancelToken);
+            return rs.data;
+          } catch (e) { return null; }
+        }).toList();
 
-       List<List<int>?> results = await Future.wait(futures);
-       
-       for (var data in results) {
-         if (data != null) {
-           buffer.addAll(data); 
-           while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
-             final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
-             buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
-             final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
-             await sink.writeFrom(enc);
-           }
-         }
-         done++;
-         onProgress(done / total);
-       }
-     }
+        List<List<int>?> results = await Future.wait(futures);
+        
+        for (var data in results) {
+          if (data != null) {
+            buffer.addAll(data); 
+            while (buffer.length >= EncryptionHelper.CHUNK_SIZE) {
+              final block = buffer.sublist(0, EncryptionHelper.CHUNK_SIZE);
+              buffer.removeRange(0, EncryptionHelper.CHUNK_SIZE);
+              final enc = EncryptionHelper.encryptBlock(Uint8List.fromList(block));
+              await sink.writeFrom(enc);
+            }
+          }
+          done++;
+          onProgress(done / total);
+        }
+      }
   }
 }
