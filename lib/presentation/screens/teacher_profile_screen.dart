@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import 'course_details_screen.dart'; // للانتقال للكورس عند الضغط عليه
@@ -24,12 +25,19 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
 
   Future<void> _fetchTeacher() async {
     try {
+      var box = await Hive.openBox('auth_box');
+      // ✅ جلب التوكن والبصمة
+      final String? token = box.get('jwt_token');
+      final String? deviceId = box.get('device_id');
+
       final res = await Dio().get(
         'https://courses.aw478260.dpdns.org/api/public/get-teacher-details',
         queryParameters: {'teacherId': widget.teacherId},
         options: Options(
           headers: {
-            'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة السر هنا
+            if (token != null) 'Authorization': 'Bearer $token', // ✅ إرسال التوكن إن وجد
+            'x-device-id': deviceId,
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
         ),
       );
@@ -137,9 +145,9 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
               ),
 
               // --- Courses Section ---
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: const Text("AVAILABLE COURSES", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.5)),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24),
+                child: Text("AVAILABLE COURSES", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.5)),
               ),
               const SizedBox(height: 16),
 
@@ -155,7 +163,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                     final c = courses[index];
                     return GestureDetector(
                       onTap: () {
-                         Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailsScreen(courseCode: c['code'])));
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailsScreen(courseCode: c['code'])));
                       },
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 12),
