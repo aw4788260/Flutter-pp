@@ -8,6 +8,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 import '../../core/constants/app_colors.dart';
 import 'main_wrapper.dart'; 
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class CheckoutScreen extends StatefulWidget {
   final double amount;
@@ -65,7 +67,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() => _isUploading = true);
 
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // ✅ جلب التوكن والبصمة
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
