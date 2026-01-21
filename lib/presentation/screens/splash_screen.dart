@@ -6,7 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:path_provider/path_provider.dart'; // ✅ ضروري للوصول للملفات المؤقتة
+import 'package:path_provider/path_provider.dart'; 
 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
@@ -61,7 +61,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     _initializeApp();
   }
 
-  /// ✅ دالة جديدة لحذف الملفات المؤقتة (تنظيف المخلفات)
+  /// ✅ دالة لحذف الملفات المؤقتة (تنظيف المخلفات)
   Future<void> _cleanupTempFiles() async {
     try {
       final tempDir = await getTemporaryDirectory();
@@ -104,7 +104,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
-          content: SingleChildScrollView( // ✅ لضمان العرض الجيد على الشاشات الصغيرة
+          content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -253,11 +253,14 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   Future<void> _initAsUser(String userId, String deviceId, Box box) async {
     try {
+      // ✅ جلب التوكن لإرساله
+      String? token = box.get('jwt_token');
+
       final response = await _dio.get(
         '$_baseUrl/api/public/get-app-init-data',
         options: Options(
           headers: {
-            'x-user-id': userId,
+            if (token != null) 'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
             'x-device-id': deviceId,
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
@@ -271,8 +274,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
         bool isLoggedIn = response.data['isLoggedIn'] ?? false;
 
+        // إذا قال السيرفر أن المستخدم غير مسجل (مثلاً التوكن منتهي أو محظور)
         if (!isLoggedIn) {
-          await box.clear();
+          await box.clear(); // حذف البيانات القديمة
           await box.put('terms_accepted', true); 
           
           if (mounted && !SecurityManager.instance.isBlocked) {
@@ -335,12 +339,11 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    // ✅ حسابات الأبعاد لجعل التصميم متجاوب (Responsive)
+    // حسابات الأبعاد لجعل التصميم متجاوب
     final size = MediaQuery.of(context).size;
     final isLandscape = size.width > size.height;
     final isTablet = size.shortestSide > 600;
 
-    // تحديد حجم اللوجو بناءً على الوضع (عرضي/طولي) ونوع الجهاز
     final logoWidth = size.width * (isLandscape ? 0.25 : (isTablet ? 0.4 : 0.6));
 
     return Scaffold(
@@ -350,10 +353,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // ✅ مساحة مرنة علوية لدفع المحتوى للوسط
               const Spacer(flex: 3),
 
-              // اللوجو المتحرك
               AnimatedBuilder(
                 animation: _bounceAnimation,
                 builder: (context, child) {
@@ -381,10 +382,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 ),
               ),
 
-              // ✅ مساحة مرنة بين اللوجو وشريط التحميل
               const Spacer(flex: 2),
 
-              // شريط التحميل والنص
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -431,7 +430,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 ],
               ),
 
-              // ✅ مساحة سفلية
               const Spacer(flex: 1),
             ],
           ),
