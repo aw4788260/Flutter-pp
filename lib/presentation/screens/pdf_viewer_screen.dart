@@ -11,7 +11,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/utils/encryption_helper.dart';
-import '../../core/services/file_crypto_service.dart'; // ✅ الخدمة الجديدة لفك التشفير
+import '../../core/services/file_crypto_service.dart'; // ✅ الخدمة الجديدة
 import '../../core/models/drawing_model.dart';
 
 class PdfViewerScreen extends StatefulWidget {
@@ -32,17 +32,19 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   final PdfViewerController _pdfController = PdfViewerController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   
-  // ✅ متغيرات جديدة لإدارة الملف المؤقت
   File? _decryptedTempFile; 
   String? _filePath; 
-  Map<String, String>? _onlineHeaders; // لتخزين الهيدرز في حالة الأونلاين
+  Map<String, String>? _onlineHeaders; 
 
   bool _loading = true;
+  // ✅ متغير جديد لرسالة التحميل
+  String _loadingMessage = "جار التحقق من الملف...";
+  
   String? _error;
   bool _isOffline = false;
   String _watermarkText = '';
 
-  // --- أدوات الرسم (كما هي) ---
+  // --- أدوات الرسم ---
   bool _isDrawingMode = false;
   int _selectedTool = 0; 
   Color _penColor = Colors.red;
@@ -65,10 +67,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   void dispose() {
-    // ✅ حفظ الرسم قبل الخروج
     if (_isOffline) _saveDrawingsToHive();
     
-    // ✅ تنظيف الملف المؤقت فور الخروج (أمان + توفير مساحة)
+    // تنظيف الملف المؤقت
     if (_decryptedTempFile != null && _decryptedTempFile!.existsSync()) {
       try { _decryptedTempFile!.deleteSync(); } catch (_) {}
     }
@@ -116,11 +117,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
   }
 
-  // ✅ الدالة الأساسية المعدلة
+  // ✅ الدالة المعدلة لتحديث رسائل التحميل
   Future<void> _preparePdf() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadingMessage = "جار التحقق من الملف...";
+    });
+
     try {
-      // التأكد من تهيئة مفاتيح التشفير
       await EncryptionHelper.init(); 
       await FileCryptoService.init();
 
@@ -130,31 +134,38 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       String? offlinePath;
       bool fileExistsLocally = false;
 
-      // 1. التحقق من وجود الملف في بيانات التحميل
+      // 1. التحقق من وجود الملف
       if (downloadItem != null && downloadItem['path'] != null) {
         offlinePath = downloadItem['path'];
-        // 2. التحقق من وجود الملف فعلياً على القرص
         if (await File(offlinePath!).exists()) {
           fileExistsLocally = true;
         }
       }
 
       if (fileExistsLocally) {
-        // 🟢 المسار الأول: أوفلاين (فك تشفير لملف مؤقت)
-        setState(() => _isOffline = true);
+        // 🟢 حالة الأوفلاين
+        setState(() {
+          _isOffline = true;
+          // ✅ تحديث الرسالة
+          _loadingMessage = "جار فك التشفير...";
+        });
         
-        // فك التشفير باستخدام ChaCha20
+        // فك التشفير للملف المؤقت
         _decryptedTempFile = await FileCryptoService.decryptToTempFile(offlinePath!);
         
         if (mounted) {
           setState(() {
-            _filePath = _decryptedTempFile!.path; // مسار الملف المحلي الصريح
+            _filePath = _decryptedTempFile!.path;
             _loading = false;
           });
         }
       } else {
-        // 🟠 المسار الثاني: أونلاين (عرض مباشر من الرابط مع Headers)
-        setState(() => _isOffline = false);
+        // 🟠 حالة الأونلاين
+        setState(() {
+          _isOffline = false;
+          // ✅ تحديث الرسالة
+          _loadingMessage = "جار التحميل...";
+        });
         
         var box = await Hive.openBox('auth_box');
         final headers = {
@@ -168,7 +179,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         if (mounted) {
           setState(() {
             _filePath = url;
-            _onlineHeaders = headers; // حفظ الهيدرز لاستخدامها في العرض
+            _onlineHeaders = headers;
             _loading = false;
           });
         }
@@ -181,8 +192,38 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
-    if (_error != null) return Scaffold(backgroundColor: AppColors.backgroundPrimary, appBar: AppBar(backgroundColor: Colors.transparent, leading: const BackButton(color: Colors.white)), body: Center(child: Text(_error!, style: const TextStyle(color: Colors.white))));
+    // ✅ تعديل واجهة التحميل لعرض الرسالة
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: AppColors.backgroundPrimary,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(color: AppColors.accentYellow),
+              const SizedBox(height: 16),
+              Text(
+                _loadingMessage,
+                style: const TextStyle(
+                  color: AppColors.accentYellow, 
+                  fontSize: 14, 
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: AppColors.backgroundPrimary,
+        appBar: AppBar(backgroundColor: Colors.transparent, leading: const BackButton(color: Colors.white)),
+        body: Center(child: Text(_error!, style: const TextStyle(color: Colors.white)))
+      );
+    }
 
     return Scaffold(
       key: _scaffoldKey,
@@ -247,7 +288,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         leading: BackButton(
           color: AppColors.accentYellow,
           onPressed: () async {
-             // حفظ عند الرجوع إذا كان أوفلاين
              if(_isOffline) await _saveDrawingsToHive();
              if(context.mounted) Navigator.pop(context);
           }
@@ -269,7 +309,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // ✅ العرض: نستخدم PdfViewer.file للأوفلاين و PdfViewer.uri للأونلاين (مع الهيدرز)
           _isOffline 
           ? PdfViewer.file(
               _filePath!,
@@ -278,13 +317,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             )
           : PdfViewer.uri(
               Uri.parse(_filePath!),
-              httpHeaders: _onlineHeaders, // تمرير الهيدرز هنا
+              httpHeaders: _onlineHeaders,
               controller: _pdfController,
-              preferRangeAccess: true, // تفعيل طلبات النطاق للأونلاين
+              preferRangeAccess: true,
               params: _buildPdfParams(),
             ),
 
-          // 2. العلامة المائية
           IgnorePointer(
             child: Center(
               child: Opacity(
@@ -322,7 +360,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ✅ فصل إعدادات الـ PDF لتقليل التكرار
   PdfViewerParams _buildPdfParams() {
     return PdfViewerParams(
       backgroundColor: AppColors.backgroundPrimary,
