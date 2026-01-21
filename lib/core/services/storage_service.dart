@@ -18,11 +18,13 @@ class StorageService {
     if (keyString == null) {
       // 3. إذا لم يوجد (أول مرة)، قم بتوليد مفتاح عشوائي جديد وحفظه
       final key = Hive.generateSecureKey();
-      await _secureStorage.write(key: 'hive_key', value: base64UrlEncode(key));
+      // ✅ تصحيح: استخدام base64Url.encode
+      await _secureStorage.write(key: 'hive_key', value: base64Url.encode(key));
       _encryptionKey = key;
     } else {
       // 4. إذا وجد، قم بفك تشفيره لاستخدامه
-      _encryptionKey = base64UrlDecode(keyString);
+      // ✅ تصحيح: استخدام base64Url.decode
+      _encryptionKey = base64Url.decode(keyString);
     }
     return _encryptionKey!;
   }
