@@ -6,6 +6,8 @@ import 'package:percent_indicator/percent_indicator.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class ExamResultScreen extends StatefulWidget {
   final String attemptId;
@@ -37,7 +39,7 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
 
   Future<void> _fetchResults() async {
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       _userId = box.get('user_id');
       _deviceId = box.get('device_id');
       _token = box.get('jwt_token'); // ✅ جلب التوكن
@@ -70,7 +72,7 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
   // دالة التخزين المحلي
   Future<void> _cacheResultLocally(Map<String, dynamic> data) async {
     try {
-      var historyBox = await Hive.openBox('exams_history_box');
+      var historyBox = await StorageService.openBox('exams_history_box');
       await historyBox.put(widget.attemptId, data);
     } catch (e) {
       debugPrint("Failed to cache result: $e");
