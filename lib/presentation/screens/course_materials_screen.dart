@@ -47,12 +47,18 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
   Future<void> _fetchSubjects() async {
     try {
       var box = await Hive.openBox('auth_box');
-      final userId = box.get('user_id');
+      // ✅ جلب التوكن والبصمة
+      final String? token = box.get('jwt_token');
+      final String? deviceId = box.get('device_id');
 
       final res = await Dio().get(
         '$_baseUrl/api/public/get-course-sales-details',
         queryParameters: {'courseCode': widget.courseCode},
-        options: Options(headers: {'x-user-id': userId}),
+        options: Options(headers: {
+          if (token != null) 'Authorization': 'Bearer $token', // ✅ إرسال التوكن
+          'x-device-id': deviceId,
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
       );
 
       if (mounted) {
