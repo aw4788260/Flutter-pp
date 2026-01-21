@@ -5,7 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:url_launcher/url_launcher.dart'; // ✅ إضافة الاستيراد
+import 'package:url_launcher/url_launcher.dart'; 
 import '../../core/constants/app_colors.dart';
 import 'main_wrapper.dart'; 
 
@@ -42,7 +42,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  // ✅ دالة فتح الروابط
+  // دالة فتح الروابط
   Future<void> _launchURL(String url) async {
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -66,7 +66,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       var box = await Hive.openBox('auth_box');
-      final userId = box.get('user_id');
+      // ✅ جلب التوكن والبصمة
+      final token = box.get('jwt_token');
+      final deviceId = box.get('device_id');
 
       String fileName = _receiptImage!.path.split('/').last;
       
@@ -81,7 +83,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         data: formData,
         options: Options(
           headers: {
-            'x-user-id': userId,
+            'Authorization': 'Bearer $token', // ✅ إرسال التوكن
+            'x-device-id': deviceId,
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
           validateStatus: (status) => status! < 500,
@@ -146,7 +149,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget build(BuildContext context) {
     final String vodafone = widget.paymentInfo['vodafone_cash_number'] ?? '';
     final String instapayNum = widget.paymentInfo['instapay_number'] ?? '';
-    final String instapayLink = widget.paymentInfo['instapay_link'] ?? ''; // ✅ جلب رابط انستا باي
+    final String instapayLink = widget.paymentInfo['instapay_link'] ?? ''; 
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -210,7 +213,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         "INSTAPAY", 
                         instapayNum, 
                         LucideIcons.creditCard,
-                        link: instapayLink // ✅ تمرير الرابط
+                        link: instapayLink 
                       ),
 
                     const SizedBox(height: 32),
@@ -308,7 +311,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // ✅ تحديث دالة بناء طريقة الدفع لإضافة زر الرابط
+  // دالة بناء طريقة الدفع لإضافة زر الرابط
   Widget _buildPaymentMethod(String title, String value, IconData icon, {String? link}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -318,7 +321,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
-      child: Column( // تم التغيير إلى Column لاستيعاب الزر
+      child: Column( 
         children: [
           Row(
             children: [
@@ -347,7 +350,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
           
-          // ✅ إضافة زر الفتح إذا وجد الرابط
           if (link != null && link.isNotEmpty) ...[
             const SizedBox(height: 12),
             SizedBox(
