@@ -7,6 +7,8 @@ import '../../core/constants/app_colors.dart';
 import 'chapter_contents_screen.dart';
 import 'exam_view_screen.dart';
 import 'exam_result_screen.dart'; 
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class SubjectMaterialsScreen extends StatefulWidget {
   final String subjectId;
@@ -39,7 +41,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
 
   Future<void> _fetchContent() async {
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // ✅ جلب التوكن والبصمة
       final String? token = box.get('jwt_token');
       final String? deviceId = box.get('device_id');
