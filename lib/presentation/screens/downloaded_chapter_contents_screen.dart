@@ -8,6 +8,8 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/local_proxy.dart'; // ✅ استيراد خدمة البروكسي
 import 'video_player_screen.dart';
 import 'pdf_viewer_screen.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class DownloadedChapterContentsScreen extends StatefulWidget {
   final String courseTitle;
@@ -143,7 +145,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
   // --- حذف الملف ---
   Future<void> _deleteFile(String key) async {
     try {
-      var box = await Hive.openBox('downloads_box');
+      var box = await StorageService.openBox('downloads_box');
       if (box.containsKey(key)) {
         await box.delete(key);
         FirebaseCrashlytics.instance.log("✅ File deleted: $key");
