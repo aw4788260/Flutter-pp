@@ -15,6 +15,8 @@ import 'login_screen.dart';
 import 'main_wrapper.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_conditions_screen.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -165,8 +167,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       }
 
       await Hive.initFlutter();
-      var box = await Hive.openBox('auth_box');
-      await Hive.openBox('downloads_box'); 
+      var box = await StorageService.openBox('auth_box');
+await StorageService.openBox('downloads_box');
       
       if (SecurityManager.instance.isBlocked) return;
 
