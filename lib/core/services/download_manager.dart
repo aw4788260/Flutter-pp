@@ -12,6 +12,8 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import '../utils/encryption_helper.dart'; // للفيديو (AES)
 import 'file_crypto_service.dart'; // ✅ للملفات (ChaCha20)
 import 'notification_service.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class DownloadManager with WidgetsBindingObserver {
   static final DownloadManager _instance = DownloadManager._internal();
@@ -199,7 +201,7 @@ class DownloadManager with WidgetsBindingObserver {
 
     try {
       await EncryptionHelper.init();
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       
       // ✅ استخراج التوكن والبصمة
       final deviceId = box.get('device_id');
@@ -343,7 +345,7 @@ class DownloadManager with WidgetsBindingObserver {
         totalSizeBytes += await File(audioSavePath).length();
       }
 
-      var downloadsBox = await Hive.openBox('downloads_box');
+      var downloadsBox = await StorageService.openBox('downloads_box');
       await downloadsBox.put(lessonId, {
         'id': lessonId,
         'title': videoTitle,
