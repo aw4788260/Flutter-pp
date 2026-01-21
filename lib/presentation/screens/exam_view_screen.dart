@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // ✅ لعرض الصور مع الهيدرز
+import 'package:cached_network_image/cached_network_image.dart'; 
 import '../../core/constants/app_colors.dart';
 import 'exam_result_screen.dart';
 
@@ -34,9 +34,10 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
   Timer? _timer;
   String? _attemptId;
   
-  // لغرض الـ Image Headers
+  // متغيرات الهيدرز
   String? _userId;
   String? _deviceId;
+  String? _token; // ✅ التوكن ضروري للصور والطلبات
   final String _appSecret = const String.fromEnvironment('APP_SECRET');
 
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
@@ -53,6 +54,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       var box = await Hive.openBox('auth_box');
       _userId = box.get('user_id');
       _deviceId = box.get('device_id');
+      _token = box.get('jwt_token'); // ✅ جلب التوكن
       final name = box.get('first_name') ?? 'Student';
 
       // 1. بدء المحاولة
@@ -60,7 +62,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
         '$_baseUrl/api/exams/start-attempt',
         data: {'examId': widget.examId, 'studentName': name},
         options: Options(headers: {
-          'x-user-id': _userId,
+          'Authorization': 'Bearer $_token', // ✅ إرسال التوكن
           'x-device-id': _deviceId,
           'x-app-secret': _appSecret,
         }),
@@ -69,12 +71,9 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       if (mounted && res.statusCode == 200) {
         final data = res.data;
         
-        // جلب المدة من بيانات الامتحان (قد تحتاج لجلب التفاصيل أولاً أو الاعتماد على رد start-attempt إذا تم تعديله)
-        // سنفترض هنا 30 دقيقة افتراضية إذا لم ترسل في start-attempt، 
-        // الأفضل استدعاء get-details قبل هذا، لكن للاختصار:
-        int durationMinutes = 30; // قيمة افتراضية
+        // افتراض مدة 30 دقيقة إذا لم تأتِ من السيرفر (يمكن تحسينه بجلب تفاصيل الامتحان)
+        int durationMinutes = 30; 
         
-        // إذا كان الباك اند يرجع الأسئلة مباشرة
         setState(() {
           _questions = data['questions'] ?? [];
           _attemptId = data['attemptId'].toString();
@@ -88,7 +87,10 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Start Exam Failed');
       if (mounted) {
         String msg = "Failed to start exam";
-        if (e is DioException && e.response?.statusCode == 403) msg = "Access Denied or Exam Completed";
+        if (e is DioException) {
+           if (e.response?.statusCode == 403) msg = "Access Denied";
+           if (e.response?.statusCode == 409) msg = "Exam already completed";
+        }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppColors.error));
         Navigator.pop(context);
       }
@@ -135,18 +137,23 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
         '$_baseUrl/api/exams/submit-attempt',
         data: {'attemptId': _attemptId, 'answers': finalAnswers},
         options: Options(headers: {
-          'x-user-id': _userId,
+          'Authorization': 'Bearer $_token', // ✅ إرسال التوكن
           'x-device-id': _deviceId,
           'x-app-secret': _appSecret,
         }),
       );
 
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context); // إغلاق اللودينج
+        
+        // التوجيه لصفحة النتيجة
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => ExamResultScreen(attemptId: _attemptId!, examTitle: widget.examTitle),
+            builder: (_) => ExamResultScreen(
+                attemptId: _attemptId!, 
+                examTitle: widget.examTitle
+            ),
           ),
         );
       }
@@ -164,7 +171,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
 
     final questionData = _questions[currentIdx];
     final String questionId = questionData['id'].toString();
-    final String? imageFileId = questionData['image_file_id']; // ✅ اسم الحقل في الباك اند الجديد
+    final String? imageFileId = questionData['image_file_id'];
     final options = (questionData['options'] as List).cast<Map<String, dynamic>>();
     final progress = (currentIdx + 1) / _questions.length;
 
@@ -207,7 +214,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ✅ عرض الصورة (إذا وجدت) باستخدام API الصور الآمن
+                    // ✅ عرض الصورة مع الهيدرز الصحيحة (Authorization)
                     if (imageFileId != null && imageFileId.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(bottom: 24),
@@ -222,7 +229,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                           child: CachedNetworkImage(
                             imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
                             httpHeaders: {
-                              'x-user-id': _userId ?? '',
+                              'Authorization': 'Bearer $_token', // ✅ إضافة التوكن
                               'x-device-id': _deviceId ?? '',
                               'x-app-secret': _appSecret,
                             },
