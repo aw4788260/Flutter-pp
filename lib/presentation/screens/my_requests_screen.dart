@@ -25,14 +25,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   Future<void> _fetchRequests() async {
     try {
       var box = await Hive.openBox('auth_box');
-      final userId = box.get('user_id');
+      // ✅ جلب التوكن وبصمة الجهاز بدلاً من user_id
+      final token = box.get('jwt_token');
+      final deviceId = box.get('device_id');
       
       final res = await Dio().get(
         '$_baseUrl/api/student/my-requests',
         options: Options(headers: {
-    'x-user-id': userId,
-    'x-app-secret': const String.fromEnvironment('APP_SECRET'),
-  }),
+          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'x-device-id': deviceId,
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
       );
       
       if (mounted) {
@@ -205,7 +208,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           
           if (status == 'rejected' && req['rejection_reason'] != null)
             Container(
-              // ✅ تم التصحيح هنا: استخدام only بدلاً من top
               margin: const EdgeInsets.only(top: 16),
               padding: const EdgeInsets.all(12),
               width: double.infinity,
