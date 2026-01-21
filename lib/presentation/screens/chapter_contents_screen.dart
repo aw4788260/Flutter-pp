@@ -110,13 +110,16 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
     try {
       var box = await Hive.openBox('auth_box');
+      // ✅ تحديث الهيدرز: استخدام التوكن والبصمة
+      final token = box.get('jwt_token');
+      final deviceId = box.get('device_id');
       
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-video-id',
         queryParameters: {'lessonId': video['id'].toString()},
         options: Options(headers: {
-          'x-user-id': box.get('user_id'),
-          'x-device-id': box.get('device_id'),
+          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
@@ -186,13 +189,16 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
     try {
       var box = await Hive.openBox('auth_box');
+      // ✅ تحديث الهيدرز
+      final token = box.get('jwt_token');
+      final deviceId = box.get('device_id');
       
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-stream-proxy', 
         queryParameters: {'lessonId': video['id'].toString()},
         options: Options(headers: {
-          'x-user-id': box.get('user_id'),
-          'x-device-id': box.get('device_id'),
+          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
@@ -273,13 +279,16 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
     try {
       var box = await Hive.openBox('auth_box');
+      // ✅ تحديث الهيدرز
+      final token = box.get('jwt_token');
+      final deviceId = box.get('device_id');
       
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-stream-proxy', 
         queryParameters: {'lessonId': videoId},
         options: Options(headers: {
-          'x-user-id': box.get('user_id'),
-          'x-device-id': box.get('device_id'),
+          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
@@ -325,18 +334,16 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // ✅ تم التعديل: إصلاح مشكلة السكرول في القائمة
   void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration, String? audioUrl) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.backgroundSecondary,
-      isScrollControlled: true, // 1. السماح بالتحكم في الارتفاع والتمرير
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
         return Container(
-          // 2. تحديد حد أقصى للارتفاع لضمان عدم تغطية الشاشة بالكامل إلا عند الحاجة
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(context).size.height * 0.8,
           ),
@@ -355,7 +362,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
               const SizedBox(height: 16),
               
-              // 3. استخدام Flexible + SingleChildScrollView لجعل القائمة قابلة للتمرير
               Flexible(
                 child: SingleChildScrollView(
                   child: Column(
@@ -413,10 +419,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
   // ✅ منطق تحميل PDF
   void _startPdfDownload(String pdfId, String pdfTitle) {
-     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
-     FirebaseCrashlytics.instance.log("⬇️ Starting PDF download: $pdfTitle");
-     
-     DownloadManager().startDownload(
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
+      FirebaseCrashlytics.instance.log("⬇️ Starting PDF download: $pdfTitle");
+      
+      DownloadManager().startDownload(
       lessonId: pdfId, 
       videoTitle: pdfTitle, 
       courseName: widget.courseTitle, 
@@ -645,8 +651,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         if (isDownloaded) {
                            final item = box.get(videoId);
                            if (item != null) {
-                              int bytes = item['size'] ?? 0;
-                              sizeStr = "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+                             int bytes = item['size'] ?? 0;
+                             sizeStr = "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
                            }
                         }
 
