@@ -5,6 +5,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import 'checkout_screen.dart';
 import 'teacher_profile_screen.dart'; // ✅ تم إضافة الاستيراد
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class CourseDetailsScreen extends StatefulWidget {
   final String courseCode;
@@ -29,7 +31,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
 
   Future<void> _fetchDetails() async {
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // ✅ جلب التوكن بدلاً من user_id المباشر
       final String? token = box.get('jwt_token');
       final String? deviceId = box.get('device_id');
