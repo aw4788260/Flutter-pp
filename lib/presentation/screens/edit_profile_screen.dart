@@ -4,6 +4,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart'; // لجلب البيانات الحالية
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -39,7 +41,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _saveChanges() async {
     setState(() => _isLoading = true);
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // ✅ جلب التوكن والبصمة
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
