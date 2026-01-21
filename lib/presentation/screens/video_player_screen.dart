@@ -213,8 +213,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _isOfflineMode = true;
         final file = File(playUrl);
         if (!await file.exists()) throw Exception("Offline file missing");
-        
-        playUrl = 'http://127.0.0.1:${_proxyService.videoPort}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4';
+        playUrl = 'http://127.0.0.1:${_proxyService.videoPort}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4&token=${_proxyService.authToken}';
 
         // Find local audio
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
@@ -228,7 +227,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
              if (downloadItem != null && downloadItem['audioPath'] != null) {
                 final audioPath = downloadItem['audioPath'];
                 if (await File(audioPath).exists()) {
-                   audioUrl = 'http://127.0.0.1:${_proxyService.audioPort}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4';
+                   audioUrl = 'http://127.0.0.1:${_proxyService.audioPort}/video?path=${Uri.encodeComponent(audioPath)}&ext=.mp4&token=${_proxyService.authToken}';
                 }
              }
            } catch (_) {}
