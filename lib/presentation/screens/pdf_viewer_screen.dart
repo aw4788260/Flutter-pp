@@ -13,6 +13,8 @@ import '../../core/services/app_state.dart';
 import '../../core/utils/encryption_helper.dart';
 import '../../core/services/file_crypto_service.dart';
 import '../../core/models/drawing_model.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfId;
@@ -80,7 +82,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   Future<void> _saveDrawingsToHive() async {
     if (_pageDrawings.isEmpty) return;
     try {
-      final box = await Hive.openBox('pdf_drawings_db');
+      final box = await StorageService.openBox('pdf_drawings_db');
       for (var entry in _pageDrawings.entries) {
         final page = entry.key;
         final lines = entry.value;
@@ -97,7 +99,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       return _pageDrawings[pageNumber]!;
     }
     try {
-      final box = await Hive.openBox('pdf_drawings_db');
+      final box = await StorageService.openBox('pdf_drawings_db');
       final dynamic data = box.get('${widget.pdfId}_$pageNumber');
       List<DrawingLine> lines = [];
       if (data != null) {
@@ -127,7 +129,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       await EncryptionHelper.init();
       await FileCryptoService.init();
 
-      final downloadsBox = await Hive.openBox('downloads_box');
+      final downloadsBox = await StorageService.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
 
       String? offlinePath;
@@ -165,7 +167,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           _loadingMessage = "جار التحميل...";
         });
         
-        var box = await Hive.openBox('auth_box');
+        var box = await StorageService.openBox('auth_box');
         
         // ✅ تحديث الهيدرز: استخدام التوكن والبصمة
         final String? token = box.get('jwt_token');
