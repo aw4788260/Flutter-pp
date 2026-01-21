@@ -40,7 +40,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isLoading = true);
     try {
       var box = await Hive.openBox('auth_box');
-      final userId = box.get('user_id');
+      // ✅ جلب التوكن والبصمة
+      final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
 
       final res = await Dio().post(
@@ -51,10 +52,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           'username': _usernameController.text,
         },
         options: Options(headers: {
-    'x-user-id': userId, 
-    'x-device-id': deviceId,
-    'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
-  }),
+          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'x-device-id': deviceId,
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'), 
+        }),
       );
 
       if (res.statusCode == 200 && res.data['success'] == true) {
