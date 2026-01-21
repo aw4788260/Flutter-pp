@@ -5,7 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import 'course_details_screen.dart';
 import 'my_requests_screen.dart';
-import 'teacher_profile_screen.dart'; // ✅ تم تفعيل الاستيراد
+import 'teacher_profile_screen.dart'; // ✅ تم تفعيل الاستيراد للتنقل لصفحة المدرس
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late Timer _timer;
   final PageController _pageController = PageController();
 
+  // جلب البيانات من مدير الحالة المركزي
   final _allCourses = AppState().allCourses;
   final _user = AppState().userData;
 
@@ -34,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // إعداد مؤقت السلايدر للنص التشجيعي
     _timer = Timer.periodic(const Duration(seconds: 8), (Timer timer) {
       if (_currentSlide < _encouragements.length - 1) {
         _currentSlide++;
@@ -60,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // تصفية الكورسات محلياً بناءً على البحث
     final filteredCourses = _allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
       course.code.toLowerCase().contains(_searchTerm.toLowerCase())
@@ -70,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // --- Header & Search ---
+            // --- Header & Search Section ---
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -106,6 +109,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
+                      
+                      // زر الطلبات السابقة
                       GestureDetector(
                         onTap: () {
                            Navigator.push(
@@ -145,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 24),
 
+                  // Search Bar
                   Container(
                     decoration: BoxDecoration(
                       color: AppColors.backgroundSecondary,
@@ -276,111 +282,111 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Text("No courses found", style: TextStyle(color: AppColors.textSecondary.withOpacity(0.5))),
                       )
                     : ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: filteredCourses.length,
-                      itemBuilder: (context, index) {
-                        final course = filteredCourses[index];
-                        
-                        return GestureDetector(
-                          onTap: () {
-                             Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => CourseDetailsScreen(courseCode: course.code),
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: filteredCourses.length,
+                        itemBuilder: (context, index) {
+                          final course = filteredCourses[index];
+                          
+                          return GestureDetector(
+                            onTap: () {
+                               Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => CourseDetailsScreen(courseCode: course.code),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: AppColors.backgroundSecondary,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  )
+                                ],
                               ),
-                            );
-                          },
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                )
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Header: ID and Chevron
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.accentOrange.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        "#${course.code}",
-                                        style: const TextStyle(
-                                          color: AppColors.accentOrange,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 1.0,
-                                        ),
-                                      ),
-                                    ),
-                                    const Icon(LucideIcons.chevronRight, color: AppColors.accentYellow, size: 20),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                
-                                // Title
-                                Text(
-                                  course.title.toUpperCase(),
-                                  style: const TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: -0.5,
-                                    height: 1.1,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-
-                                // ✅ Teacher info (CLICKABLE NOW)
-                                GestureDetector(
-                                  onTap: () {
-                                    if (course.teacherId.isNotEmpty) {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => TeacherProfileScreen(teacherId: course.teacherId)
-                                        ),
-                                      );
-                                    }
-                                  },
-                                  child: Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Header: ID and Chevron
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        course.instructorName.toUpperCase(),
-                                        style: const TextStyle(
-                                          color: AppColors.textSecondary,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 1.5,
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accentOrange.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          "#${course.code}",
+                                          style: const TextStyle(
+                                            color: AppColors.accentOrange,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 1.0,
+                                          ),
                                         ),
                                       ),
+                                      const Icon(LucideIcons.chevronRight, color: AppColors.accentYellow, size: 20),
                                     ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 12),
+                                  
+                                  // Title
+                                  Text(
+                                    course.title.toUpperCase(),
+                                    style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: -0.5,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+
+                                  // ✅ Teacher info (CLICKABLE)
+                                  GestureDetector(
+                                    onTap: () {
+                                      if (course.teacherId.isNotEmpty) {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => TeacherProfileScreen(teacherId: course.teacherId)
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: Row(
+                                      children: [
+                                        const Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          course.instructorName.toUpperCase(),
+                                          style: const TextStyle(
+                                            color: AppColors.textSecondary,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 1.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
+                          );
+                        },
+                      ),
                   ],
                 ),
               ),
