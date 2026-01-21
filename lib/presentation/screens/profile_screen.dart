@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart'; // ✅ تمت إضافة مكتبة الشبكة
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/app_state.dart'; // ✅ استيراد مصدر البيانات الحقيقي
+import '../../core/services/app_state.dart';
 import 'edit_profile_screen.dart';
 import 'change_password_screen.dart';
 import 'my_requests_screen.dart';
@@ -17,36 +18,68 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  
+  final String _baseUrl = 'https://courses.aw478260.dpdns.org';
+
   // دالة تسجيل الخروج (أو العودة لصفحة الدخول للضيف)
   Future<void> _logout() async {
     try {
-      // 1. مسح البيانات من التخزين المحلي (بما في ذلك jwt_token و is_guest)
       var authBox = await Hive.openBox('auth_box');
+      final token = authBox.get('jwt_token');
+      final deviceId = authBox.get('device_id');
+
+      // ✅ 1. إرسال طلب للسيرفر لحذف التوكن من قاعدة البيانات (إن وجد)
+      if (token != null && deviceId != null) {
+        try {
+          await Dio().post(
+            '$_baseUrl/api/auth/logout',
+            options: Options(
+              headers: {
+                'Authorization': 'Bearer $token',
+                'x-device-id': deviceId,
+                'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+              },
+              // حتى لو فشل السيرفر أو كان التوكن منتهي، نكمل عملية المسح المحلي
+              validateStatus: (status) => status! < 500, 
+              sendTimeout: const Duration(seconds: 3), // مهلة قصيرة لعدم تعطيل المستخدم
+            ),
+          );
+        } catch (e) {
+          debugPrint("Server Logout Warning: $e");
+        }
+      }
+
+      // ✅ 2. مسح البيانات من التخزين المحلي
       await authBox.clear();
       
-      // 2. مسح البيانات من الذاكرة
+      // ✅ 3. مسح البيانات من الذاكرة
       AppState().clear();
 
       if (mounted) {
-        // 3. التوجيه لشاشة تسجيل الدخول ومسح كل الصفحات السابقة
+        // 4. التوجيه لشاشة تسجيل الدخول ومسح كل الصفحات السابقة
         Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginScreen()),
           (route) => false,
         );
       }
     } catch (e) {
-      debugPrint("Logout Error: $e");
+      debugPrint("Local Logout Error: $e");
+      // في أسوأ الحالات، نعيد التوجيه للدخول لضمان عدم تعليق التطبيق
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 1. التحقق من حالة الضيف وجلب البيانات
+    // 1. التحقق من حالة الضيف وجلب البيانات
     final isGuest = AppState().isGuest;
     final user = AppState().userData;
 
-    // ✅ 2. ضبط النصوص بناءً على الحالة
+    // 2. ضبط النصوص بناءً على الحالة
     final String name = isGuest ? "GUEST USER" : (user?['first_name'] ?? "User").toUpperCase();
     final String username = isGuest ? "Not Logged In" : (user?['username'] ?? "@user");
     final String firstLetter = isGuest ? "?" : (name.isNotEmpty ? name[0] : "U");
@@ -144,7 +177,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     
-                    // ✅ إخفاء زر التعديل إذا كان المستخدم ضيفاً
+                    // إخفاء زر التعديل إذا كان المستخدم ضيفاً
                     if (!isGuest)
                       GestureDetector(
                         onTap: () {
@@ -166,7 +199,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 32),
 
               // --- Account Settings (Only for Registered Users) ---
-              // ✅ إخفاء القسم بالكامل للضيوف
               if (!isGuest) ...[
                 const Padding(
                   padding: EdgeInsets.only(left: 8, bottom: 12),
@@ -225,11 +257,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // --- Action Button (Logout / Login) ---
               GestureDetector(
-                onTap: _logout, // نفس الدالة تقوم بالتنظيف والتوجيه لصفحة الدخول
+                onTap: _logout, 
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    // ✅ تغيير اللون إذا كان ضيفاً (أصفر للدخول، أحمر للخروج)
+                    // تغيير اللون إذا كان ضيفاً (أصفر للدخول، أحمر للخروج)
                     color: isGuest ? AppColors.accentYellow : AppColors.error.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
@@ -246,7 +278,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(width: 12),
                       Text(
-                        isGuest ? "LOGIN / REGISTER" : "LOGOUT", // ✅ تغيير النص
+                        isGuest ? "LOGIN / REGISTER" : "LOGOUT", 
                         style: TextStyle(
                           fontSize: 12, 
                           fontWeight: FontWeight.bold, 
