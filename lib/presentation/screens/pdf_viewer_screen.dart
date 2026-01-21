@@ -133,7 +133,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       String? offlinePath;
       bool fileExistsLocally = false;
 
-      // ✅ 1. التحقق من وجود الملف في قاعدة البيانات + وجوده فعلياً على الجهاز
+      // 1. التحقق من وجود الملف في قاعدة البيانات + وجوده فعلياً على الجهاز
       if (downloadItem != null && downloadItem['path'] != null) {
         offlinePath = downloadItem['path'];
         if (await File(offlinePath!).exists()) {
@@ -166,9 +166,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         });
         
         var box = await Hive.openBox('auth_box');
+        
+        // ✅ تحديث الهيدرز: استخدام التوكن والبصمة
+        final String? token = box.get('jwt_token');
+        final String? deviceId = box.get('device_id');
+        
         final headers = {
-          'x-user-id': box.get('user_id')?.toString() ?? '',
-          'x-device-id': box.get('device_id')?.toString() ?? '',
+          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'x-device-id': deviceId ?? '',
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         };
         
@@ -301,7 +306,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // ✅ 2. استخدام PdfViewer.file للأوفلاين و PdfViewer.uri للأونلاين (مع headers)
+          // 2. استخدام PdfViewer.file للأوفلاين و PdfViewer.uri للأونلاين (مع headers)
           if (_isOffline)
             PdfViewer.file(
               _filePath!,
@@ -472,7 +477,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ✅ 4. إضافة SingleChildScrollView لجعل الشريط قابلاً للتمرير
+          // 4. إضافة SingleChildScrollView لجعل الشريط قابلاً للتمرير
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -488,14 +493,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 IconButton(
                   icon: const Icon(LucideIcons.undo, color: Colors.white),
                   onPressed: () {
-                     if (_pageDrawings[_activePage]?.isNotEmpty ?? false) {
-                       setState(() {
-                         _pageDrawings[_activePage]!.removeLast();
-                       });
-                     }
+                      if (_pageDrawings[_activePage]?.isNotEmpty ?? false) {
+                        setState(() {
+                          _pageDrawings[_activePage]!.removeLast();
+                        });
+                      }
                   },
                 ),
-          
+           
                 const SizedBox(width: 8),
                 Container(width: 1, height: 24, color: Colors.grey),
                 const SizedBox(width: 8),
