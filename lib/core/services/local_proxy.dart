@@ -24,9 +24,14 @@ class LocalProxyService {
   
   int _videoPort = 0;
   int _audioPort = 0;
+  
+  // ✅ إضافة متغير التوكن
+  String _authToken = "";
 
   int get videoPort => _videoPort;
   int get audioPort => _audioPort;
+  // ✅ Getter للوصول للتوكن من الملفات الأخرى
+  String get authToken => _authToken;
   
   ReceivePort? _videoReceivePort;
   ReceivePort? _audioReceivePort;
@@ -48,11 +53,18 @@ class LocalProxyService {
       await EncryptionHelper.init();
       String keyBase64 = EncryptionHelper.key.base64;
       
-      // 1. Start Video Server (Port 0 = Random)
+      // ✅ 1. توليد توكن عشوائي آمن عند بدء التشغيل
+      final random = Random.secure();
+      final values = List<int>.generate(32, (i) => random.nextInt(256));
+      _authToken = values.map((e) => e.toRadixString(16).padLeft(2, '0')).join();
+      print('🔒 [SECURITY] Proxy Auth Token Generated');
+
+      // 2. Start Video Server (Port 0 = Random)
       _videoReceivePort = ReceivePort();
       _videoServerIsolate = await Isolate.spawn(
         _proxyServerEntryPoint, 
-        _ProxyInitData(_videoReceivePort!.sendPort, keyBase64, "VideoIsolate")
+        // ✅ تمرير التوكن للـ Isolate
+        _ProxyInitData(_videoReceivePort!.sendPort, keyBase64, "VideoIsolate", _authToken)
       );
       
       // Wait for ready message with port number
@@ -66,11 +78,12 @@ class LocalProxyService {
         }
       }
 
-      // 2. Start Audio Server (Port 0 = Random)
+      // 3. Start Audio Server (Port 0 = Random)
       _audioReceivePort = ReceivePort();
       _audioServerIsolate = await Isolate.spawn(
         _proxyServerEntryPoint, 
-        _ProxyInitData(_audioReceivePort!.sendPort, keyBase64, "AudioIsolate")
+        // ✅ تمرير التوكن للـ Isolate
+        _ProxyInitData(_audioReceivePort!.sendPort, keyBase64, "AudioIsolate", _authToken)
       );
 
       // Wait for ready message with port number
@@ -97,6 +110,7 @@ class LocalProxyService {
     _readyCompleter = null;
     _videoPort = 0;
     _audioPort = 0;
+    _authToken = ""; // تصفير التوكن
     
     if (_videoServerIsolate != null) {
         print('🛑 Stopping Video Proxy');
@@ -118,8 +132,9 @@ class _ProxyInitData {
   final SendPort sendPort;
   final String keyBase64;
   final String name;
+  final String authToken; // ✅ إضافة حقل التوكن
 
-  _ProxyInitData(this.sendPort, this.keyBase64, this.name);
+  _ProxyInitData(this.sendPort, this.keyBase64, this.name, this.authToken);
 }
 
 void _proxyServerEntryPoint(_ProxyInitData initData) async {
@@ -128,13 +143,14 @@ void _proxyServerEntryPoint(_ProxyInitData initData) async {
      final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.gcm));
      
      final router = Router();
-     router.get('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
-     router.head('/video', (Request req) => _handleRequest(req, encrypter, initData.name));
+     // ✅ تمرير التوكن لدالة المعالجة
+     router.get('/video', (Request req) => _handleRequest(req, encrypter, initData.name, initData.authToken));
+     router.head('/video', (Request req) => _handleRequest(req, encrypter, initData.name, initData.authToken));
      
      // Use port 0 to let the system choose an available port
      final server = await shelf_io.serve(
        router, 
-       InternetAddress.anyIPv4, 
+       InternetAddress.loopbackIPv4, // ✅ إغلاق الثغرة: الاستماع لـ 127.0.0.1 فقط
        0, // Dynamic Port
        shared: false
      );
@@ -150,10 +166,17 @@ void _proxyServerEntryPoint(_ProxyInitData initData) async {
    }
 }
 
-Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, String isolateName) async {
-  final requestStopwatch = Stopwatch()..start(); // ⏱️ Measure request response time
+Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, String isolateName, String expectedToken) async {
+  final requestStopwatch = Stopwatch()..start(); 
   
   try {
+    // ✅ التحقق من التوكن قبل أي شيء
+    final requestToken = request.url.queryParameters['token'];
+    if (requestToken == null || requestToken != expectedToken) {
+      print("⛔ [$isolateName] Unauthorized Access Attempt!");
+      return Response.forbidden('Access Denied: Invalid Token');
+    }
+
     final pathParam = request.url.queryParameters['path'];
     if (pathParam == null) return Response.notFound('Path missing');
 
@@ -173,12 +196,11 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
 
     final encryptedLength = await file.length();
     
-    // ✅ تعديل: أخذ حجم الشنك من الكلاس المساعد لضمان التوافق مع التحميل
     final int CHUNK_SIZE = EncryptionHelper.CHUNK_SIZE; 
     
     const int IV_LENGTH = 12;
     const int TAG_LENGTH = 16;
-    final int ENCRYPTED_CHUNK_SIZE = IV_LENGTH + CHUNK_SIZE + TAG_LENGTH; // ✅ أصبح ديناميكياً بناءً على القيمة أعلاه
+    final int ENCRYPTED_CHUNK_SIZE = IV_LENGTH + CHUNK_SIZE + TAG_LENGTH; 
 
     final int totalChunks = (encryptedLength / ENCRYPTED_CHUNK_SIZE).ceil();
     if (totalChunks == 0) return Response.ok('');
@@ -203,13 +225,13 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     
     final contentLength = end - start + 1;
 
-    print("🔍 [PROXY_REQ] $isolateName | Requested Range: $start-$end | Header processing time: ${requestStopwatch.elapsedMilliseconds}ms");
+    print("🔍 [PROXY_REQ] $isolateName | Range: $start-$end | Processing: ${requestStopwatch.elapsedMilliseconds}ms");
 
     final Map<String, Object> headers = {
         'Content-Type': contentType, 
         'Content-Length': contentLength.toString(),
         'Accept-Ranges': 'bytes',
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': '*', // يمكن تقييدها أكثر إذا لزم الأمر
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Connection': 'keep-alive',
     };
@@ -233,7 +255,7 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
 }
 
 Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, encrypt.Encrypter encrypter, String isolateName) async* {
-  final streamStopwatch = Stopwatch()..start(); // ⏱️ Measure the entire process
+  final streamStopwatch = Stopwatch()..start(); 
   RandomAccessFile? raf;
   int totalSent = 0; 
   final int requiredLength = reqEnd - reqStart + 1;
@@ -241,7 +263,6 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
   try {
     raf = await file.open(mode: FileMode.read);
     
-    // ✅ تعديل: أخذ حجم الشنك من الكلاس المساعد هنا أيضاً
     final int CHUNK_SIZE = EncryptionHelper.CHUNK_SIZE;
     
     const int IV_LENGTH = 12;
@@ -254,7 +275,6 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
     
     int loopCount = 0;
     
-    // ⏱️ Performance measurement variables
     int totalReadTime = 0;
     int totalDecryptTime = 0;
     int chunksProcessed = 0;
@@ -262,8 +282,6 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
     for (int i = startChunkIndex; i <= endChunkIndex; i++) {
       if (totalSent >= requiredLength) break;
 
-      // Stop every 32 loops instead of every loop
-      // This reduces "context switching" by 97%, doubling speed on older devices
       if (++loopCount % 32 == 0) {
           await Future.delayed(Duration.zero);
       }
@@ -278,7 +296,6 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
       int bytesToRead = min(ENCRYPTED_CHUNK_SIZE, fileLen - seekPos);
       if (bytesToRead <= IV_LENGTH) break;
 
-      // 1. Measure disk read time
       final readStart = chunkTimer.elapsedMicroseconds;
       Uint8List encryptedBlock = await raf.read(bytesToRead);
       final readEnd = chunkTimer.elapsedMicroseconds;
@@ -290,7 +307,6 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
         if (encryptedBlock.length < IV_LENGTH) {
              outputBlock = Uint8List(0);
         } else {
-            // 2. Measure decryption time
             final decryptStart = chunkTimer.elapsedMicroseconds;
             final iv = encrypt.IV(encryptedBlock.sublist(0, IV_LENGTH));
             final cipherBytes = encryptedBlock.sublist(IV_LENGTH);
@@ -303,7 +319,6 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
         }
 
       } catch (e) {
-         // In case of error, send an empty block to avoid connection collapse
          int expectedSize = (bytesToRead == ENCRYPTED_CHUNK_SIZE) 
              ? CHUNK_SIZE 
              : max(0, bytesToRead - IV_LENGTH - TAG_LENGTH);
@@ -323,9 +338,9 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
         }
       }
       
-      // 📝 Print report every 50 chunks (or always the first chunk)
       if (chunksProcessed == 1 || chunksProcessed % 50 == 0) {
-          print("📊 [PROXY_STATS] $isolateName | Chunk #$chunksProcessed | Read: ${(readEnd - readStart)/1000}ms | Decrypt: ${(totalDecryptTime/chunksProcessed)/1000}ms avg");
+          // Optional logging
+          // print("📊 [PROXY_STATS] $isolateName | Chunk #$chunksProcessed");
       }
     }
     
@@ -334,7 +349,6 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
   } catch(e) {
       print("Stream Error: $e");
   } finally {
-    // Fill in missing bytes to prevent player hang
     if (totalSent < requiredLength) {
         int missingBytes = requiredLength - totalSent;
         if (missingBytes > 0 && missingBytes < 1024 * 1024) { 
@@ -343,4 +357,4 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
     }
     await raf?.close();
   }
-}
+} 
