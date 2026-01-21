@@ -1,11 +1,9 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:math'; 
+import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:pdfrx/pdfrx.dart'; 
-// ❌ تم حذف الاستيراد المسبب للمشاكل
-
+import 'package:pdfrx/pdfrx.dart'; // مكتبة العرض
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -13,8 +11,8 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/utils/encryption_helper.dart';
-import '../../core/services/local_pdf_server.dart';
-import '../../core/models/drawing_model.dart'; 
+import '../../core/services/file_crypto_service.dart'; // ✅ الخدمة الجديدة لفك التشفير
+import '../../core/models/drawing_model.dart';
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfId;
@@ -34,14 +32,17 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   final PdfViewerController _pdfController = PdfViewerController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   
-  LocalPdfServer? _localServer;
+  // ✅ متغيرات جديدة لإدارة الملف المؤقت
+  File? _decryptedTempFile; 
   String? _filePath; 
+  Map<String, String>? _onlineHeaders; // لتخزين الهيدرز في حالة الأونلاين
+
   bool _loading = true;
   String? _error;
   bool _isOffline = false;
   String _watermarkText = '';
 
-  // --- أدوات الرسم ---
+  // --- أدوات الرسم (كما هي) ---
   bool _isDrawingMode = false;
   int _selectedTool = 0; 
   Color _penColor = Colors.red;
@@ -64,8 +65,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   void dispose() {
+    // ✅ حفظ الرسم قبل الخروج
     if (_isOffline) _saveDrawingsToHive();
-    _localServer?.stop();
+    
+    // ✅ تنظيف الملف المؤقت فور الخروج (أمان + توفير مساحة)
+    if (_decryptedTempFile != null && _decryptedTempFile!.existsSync()) {
+      try { _decryptedTempFile!.deleteSync(); } catch (_) {}
+    }
+    
     super.dispose();
   }
 
@@ -109,57 +116,73 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
   }
 
+  // ✅ الدالة الأساسية المعدلة
   Future<void> _preparePdf() async {
     setState(() => _loading = true);
     try {
-      await EncryptionHelper.init();
+      // التأكد من تهيئة مفاتيح التشفير
+      await EncryptionHelper.init(); 
+      await FileCryptoService.init();
+
       final downloadsBox = await Hive.openBox('downloads_box');
       final downloadItem = downloadsBox.get(widget.pdfId);
 
       String? offlinePath;
       bool fileExistsLocally = false;
 
+      // 1. التحقق من وجود الملف في بيانات التحميل
       if (downloadItem != null && downloadItem['path'] != null) {
         offlinePath = downloadItem['path'];
+        // 2. التحقق من وجود الملف فعلياً على القرص
         if (await File(offlinePath!).exists()) {
           fileExistsLocally = true;
         }
       }
 
-      _localServer?.stop();
-
       if (fileExistsLocally) {
+        // 🟢 المسار الأول: أوفلاين (فك تشفير لملف مؤقت)
         setState(() => _isOffline = true);
-        _localServer = LocalPdfServer.offline(offlinePath, EncryptionHelper.key.base64);
+        
+        // فك التشفير باستخدام ChaCha20
+        _decryptedTempFile = await FileCryptoService.decryptToTempFile(offlinePath!);
+        
+        if (mounted) {
+          setState(() {
+            _filePath = _decryptedTempFile!.path; // مسار الملف المحلي الصريح
+            _loading = false;
+          });
+        }
       } else {
+        // 🟠 المسار الثاني: أونلاين (عرض مباشر من الرابط مع Headers)
         setState(() => _isOffline = false);
+        
         var box = await Hive.openBox('auth_box');
         final headers = {
           'x-user-id': box.get('user_id')?.toString() ?? '',
           'x-device-id': box.get('device_id')?.toString() ?? '',
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         };
+        
         final url = 'https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=${widget.pdfId}';
-        _localServer = LocalPdfServer.online(url, headers);
+        
+        if (mounted) {
+          setState(() {
+            _filePath = url;
+            _onlineHeaders = headers; // حفظ الهيدرز لاستخدامها في العرض
+            _loading = false;
+          });
+        }
       }
-
-      int port = await _localServer!.start();
-      
-      if (mounted) {
-        setState(() {
-          _filePath = 'http://127.0.0.1:$port/stream.pdf';
-          _loading = false;
-        });
-      }
-    } catch (e) {
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: "PDF Open Error");
       if (mounted) setState(() { _error = "Failed to load PDF."; _loading = false; });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
-    if (_error != null) return Scaffold(body: Center(child: Text(_error!)));
+    if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
+    if (_error != null) return Scaffold(backgroundColor: AppColors.backgroundPrimary, appBar: AppBar(backgroundColor: Colors.transparent, leading: const BackButton(color: Colors.white)), body: Center(child: Text(_error!, style: const TextStyle(color: Colors.white))));
 
     return Scaffold(
       key: _scaffoldKey,
@@ -224,6 +247,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         leading: BackButton(
           color: AppColors.accentYellow,
           onPressed: () async {
+             // حفظ عند الرجوع إذا كان أوفلاين
              if(_isOffline) await _saveDrawingsToHive();
              if(context.mounted) Navigator.pop(context);
           }
@@ -245,122 +269,20 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          PdfViewer.uri(
-            Uri.parse(_filePath!),
-            controller: _pdfController,
-            
-            // 🔥 تفعيل البث والكاش
-            preferRangeAccess: true, 
-
-            params: PdfViewerParams(
-              backgroundColor: AppColors.backgroundPrimary,
-              textSelectionParams: const PdfTextSelectionParams(enabled: false), 
-              
-              // ❌❌❌ تم حذف layoutPages لتجنب أخطاء البناء
-              // المكتبة ستستخدم التخطيط الافتراضي وهو مناسب
-              
-              scrollPhysics: const BouncingScrollPhysics(),
-
-              loadingBannerBuilder: (context, bytesDownloaded, totalBytes) {
-                return Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
-                    child: const CircularProgressIndicator(color: AppColors.accentYellow),
-                  ),
-                );
-              },
-              
-              onDocumentChanged: (document) {
-                if (mounted) setState(() => _totalPages = document?.pages.length ?? 0);
-              },
-
-              pageOverlaysBuilder: (context, pageRect, page) {
-                if (!_isOffline) return [];
-                return [
-                  Positioned.fill(
-                    child: FutureBuilder<List<DrawingLine>>(
-                      future: _getDrawingsForPage(page.pageNumber),
-                      builder: (context, snapshot) {
-                        final lines = snapshot.data ?? [];
-                        final allLines = [...lines];
-                        if (_isDrawingMode && _currentLine != null && _activePage == page.pageNumber) {
-                          allLines.add(_currentLine!);
-                        }
-                        return IgnorePointer(
-                          ignoring: !_isDrawingMode,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onPanStart: (details) {
-                              if (!_isDrawingMode) return;
-                              final renderBox = context.findRenderObject() as RenderBox;
-                              final localPos = renderBox.globalToLocal(details.globalPosition);
-                              final relativePoint = Offset(
-                                localPos.dx / pageRect.width,
-                                localPos.dy / pageRect.height,
-                              );
-                              setState(() {
-                                _activePage = page.pageNumber;
-                                double width = _penSize;
-                                int color = _penColor.value;
-                                bool isHighlighter = false;
-                                bool isEraser = false;
-
-                                if (_selectedTool == 1) { 
-                                  width = _highlightSize;
-                                  color = _highlightColor.value;
-                                  isHighlighter = true;
-                                } else if (_selectedTool == 2) { 
-                                  width = _eraserSize;
-                                  color = 0; 
-                                  isEraser = true;
-                                }
-
-                                _currentLine = DrawingLine(
-                                  points: [relativePoint],
-                                  color: color,
-                                  strokeWidth: width,
-                                  isHighlighter: isHighlighter,
-                                  isEraser: isEraser,
-                                );
-                              });
-                            },
-                            onPanUpdate: (details) {
-                              if (!_isDrawingMode || _currentLine == null) return;
-                              final renderBox = context.findRenderObject() as RenderBox;
-                              final localPos = renderBox.globalToLocal(details.globalPosition);
-                              final relativePoint = Offset(
-                                localPos.dx / pageRect.width,
-                                localPos.dy / pageRect.height,
-                              );
-                              setState(() {
-                                _currentLine!.points.add(relativePoint);
-                              });
-                            },
-                            onPanEnd: (details) {
-                              if (_currentLine != null) {
-                                setState(() {
-                                  if (_pageDrawings[page.pageNumber] == null) _pageDrawings[page.pageNumber] = [];
-                                  _pageDrawings[page.pageNumber]!.add(_currentLine!);
-                                  _currentLine = null;
-                                });
-                              }
-                            },
-                            child: CustomPaint(
-                              painter: RelativeSketchPainter(
-                                lines: allLines,
-                                pageSize: pageRect.size,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ];
-              },
+          // ✅ العرض: نستخدم PdfViewer.file للأوفلاين و PdfViewer.uri للأونلاين (مع الهيدرز)
+          _isOffline 
+          ? PdfViewer.file(
+              _filePath!,
+              controller: _pdfController,
+              params: _buildPdfParams(),
+            )
+          : PdfViewer.uri(
+              Uri.parse(_filePath!),
+              httpHeaders: _onlineHeaders, // تمرير الهيدرز هنا
+              controller: _pdfController,
+              preferRangeAccess: true, // تفعيل طلبات النطاق للأونلاين
+              params: _buildPdfParams(),
             ),
-          ),
 
           // 2. العلامة المائية
           IgnorePointer(
@@ -397,6 +319,114 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  // ✅ فصل إعدادات الـ PDF لتقليل التكرار
+  PdfViewerParams _buildPdfParams() {
+    return PdfViewerParams(
+      backgroundColor: AppColors.backgroundPrimary,
+      textSelectionParams: const PdfTextSelectionParams(enabled: false), 
+      scrollPhysics: const BouncingScrollPhysics(),
+      
+      loadingBannerBuilder: (context, bytesDownloaded, totalBytes) {
+        return Center(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
+            child: const CircularProgressIndicator(color: AppColors.accentYellow),
+          ),
+        );
+      },
+      
+      onDocumentChanged: (document) {
+        if (mounted) setState(() => _totalPages = document?.pages.length ?? 0);
+      },
+
+      pageOverlaysBuilder: (context, pageRect, page) {
+        if (!_isOffline) return [];
+        return [
+          Positioned.fill(
+            child: FutureBuilder<List<DrawingLine>>(
+              future: _getDrawingsForPage(page.pageNumber),
+              builder: (context, snapshot) {
+                final lines = snapshot.data ?? [];
+                final allLines = [...lines];
+                if (_isDrawingMode && _currentLine != null && _activePage == page.pageNumber) {
+                  allLines.add(_currentLine!);
+                }
+                return IgnorePointer(
+                  ignoring: !_isDrawingMode,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onPanStart: (details) {
+                      if (!_isDrawingMode) return;
+                      final renderBox = context.findRenderObject() as RenderBox;
+                      final localPos = renderBox.globalToLocal(details.globalPosition);
+                      final relativePoint = Offset(
+                        localPos.dx / pageRect.width,
+                        localPos.dy / pageRect.height,
+                      );
+                      setState(() {
+                        _activePage = page.pageNumber;
+                        double width = _penSize;
+                        int color = _penColor.value;
+                        bool isHighlighter = false;
+                        bool isEraser = false;
+
+                        if (_selectedTool == 1) { 
+                          width = _highlightSize;
+                          color = _highlightColor.value;
+                          isHighlighter = true;
+                        } else if (_selectedTool == 2) { 
+                          width = _eraserSize;
+                          color = 0; 
+                          isEraser = true;
+                        }
+
+                        _currentLine = DrawingLine(
+                          points: [relativePoint],
+                          color: color,
+                          strokeWidth: width,
+                          isHighlighter: isHighlighter,
+                          isEraser: isEraser,
+                        );
+                      });
+                    },
+                    onPanUpdate: (details) {
+                      if (!_isDrawingMode || _currentLine == null) return;
+                      final renderBox = context.findRenderObject() as RenderBox;
+                      final localPos = renderBox.globalToLocal(details.globalPosition);
+                      final relativePoint = Offset(
+                        localPos.dx / pageRect.width,
+                        localPos.dy / pageRect.height,
+                      );
+                      setState(() {
+                        _currentLine!.points.add(relativePoint);
+                      });
+                    },
+                    onPanEnd: (details) {
+                      if (_currentLine != null) {
+                        setState(() {
+                          if (_pageDrawings[page.pageNumber] == null) _pageDrawings[page.pageNumber] = [];
+                          _pageDrawings[page.pageNumber]!.add(_currentLine!);
+                          _currentLine = null;
+                        });
+                      }
+                    },
+                    child: CustomPaint(
+                      painter: RelativeSketchPainter(
+                        lines: allLines,
+                        pageSize: pageRect.size,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ];
+      },
     );
   }
 
