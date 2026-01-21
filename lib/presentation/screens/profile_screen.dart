@@ -21,7 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // دالة تسجيل الخروج (أو العودة لصفحة الدخول للضيف)
   Future<void> _logout() async {
     try {
-      // 1. مسح البيانات من التخزين المحلي (بما في ذلك is_guest)
+      // 1. مسح البيانات من التخزين المحلي (بما في ذلك jwt_token و is_guest)
       var authBox = await Hive.openBox('auth_box');
       await authBox.clear();
       
