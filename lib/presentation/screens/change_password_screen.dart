@@ -39,14 +39,15 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     try {
       // 2. جلب بيانات المصادقة المخزنة محلياً
       var box = await Hive.openBox('auth_box');
-      final userId = box.get('user_id');
+      // ✅ جلب التوكن والبصمة
+      final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
 
-      if (userId == null || deviceId == null) {
+      if (token == null || deviceId == null) {
         throw Exception("Authentication data not found. Please login again.");
       }
 
-      // 3. إرسال الطلب مع الـ Headers والـ App Secret
+      // 3. إرسال الطلب مع الـ Headers الصحيحة
       final res = await Dio().post(
         '$_baseUrl/api/student/change-password',
         data: {
@@ -55,7 +56,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         },
         options: Options(
           headers: {
-            'x-user-id': userId, 
+            'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
             'x-device-id': deviceId,
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
