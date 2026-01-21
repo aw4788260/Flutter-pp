@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:percent_indicator/percent_indicator.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // ✅
+import 'package:cached_network_image/cached_network_image.dart'; 
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 
@@ -21,9 +21,10 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
   bool _loading = true;
   Map<String, dynamic>? _resultData;
   
-  // لغرض الـ Image Headers
+  // متغيرات الهيدرز
   String? _userId;
   String? _deviceId;
+  String? _token; // ✅ التوكن ضروري للصور والطلبات
   final String _appSecret = const String.fromEnvironment('APP_SECRET');
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
@@ -39,12 +40,13 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
       var box = await Hive.openBox('auth_box');
       _userId = box.get('user_id');
       _deviceId = box.get('device_id');
+      _token = box.get('jwt_token'); // ✅ جلب التوكن
 
       final res = await Dio().get(
         '$_baseUrl/api/exams/get-results',
         queryParameters: {'attemptId': widget.attemptId},
         options: Options(headers: {
-          'x-user-id': _userId,
+          'Authorization': 'Bearer $_token', // ✅ إرسال التوكن
           'x-device-id': _deviceId,
           'x-app-secret': _appSecret,
         }),
@@ -56,7 +58,7 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
           _loading = false;
         });
         
-        // ✅ تخزين النتيجة محلياً
+        // تخزين النتيجة محلياً
         _cacheResultLocally(res.data);
       }
     } catch (e, stack) {
@@ -65,12 +67,10 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
     }
   }
 
-  // ✅ دالة التخزين المحلي
+  // دالة التخزين المحلي
   Future<void> _cacheResultLocally(Map<String, dynamic> data) async {
     try {
-      // فتح صندوق مخصص لنتائج الامتحانات
       var historyBox = await Hive.openBox('exams_history_box');
-      // حفظ النتيجة باستخدام attemptId كمفتاح
       await historyBox.put(widget.attemptId, data);
     } catch (e) {
       debugPrint("Failed to cache result: $e");
@@ -174,8 +174,8 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
                     ),
                     const SizedBox(height: 12),
                     
-                    // عرض الصورة إن وجدت
-                    if (imageFileId != null)
+                    // ✅ عرض الصورة إن وجدت (مع الهيدرز الصحيحة)
+                    if (imageFileId != null && imageFileId.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         height: 150,
@@ -189,12 +189,12 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
                           child: CachedNetworkImage(
                             imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
                             httpHeaders: {
-                              'x-user-id': _userId ?? '',
+                              'Authorization': 'Bearer $_token', // ✅ إضافة التوكن للهيدر
                               'x-device-id': _deviceId ?? '',
                               'x-app-secret': _appSecret,
                             },
                             placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)),
-                            errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.red),
+                            errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
                             fit: BoxFit.contain,
                           ),
                         ),
