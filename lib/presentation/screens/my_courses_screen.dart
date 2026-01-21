@@ -291,7 +291,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                     boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                   ),
-                                  // ✅ توحيد الأيقونة واللون (إلغاء Layers و الأصفر)
+                                  // ✅ توحيد الأيقونة واللون
                                   child: const Icon(
                                     LucideIcons.playCircle, 
                                     color: AppColors.accentOrange, 
@@ -326,7 +326,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                               letterSpacing: 1.5,
                                             ),
                                           ),
-                                          // ✅ إزالة العلامة المميزة للكورس الجزئي (PARTIAL badge)
                                         ],
                                       ),
                                     ],
