@@ -133,6 +133,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       String? offlinePath;
       bool fileExistsLocally = false;
 
+      // ✅ 1. التحقق من وجود الملف في قاعدة البيانات + وجوده فعلياً على الجهاز
       if (downloadItem != null && downloadItem['path'] != null) {
         offlinePath = downloadItem['path'];
         if (await File(offlinePath!).exists()) {
@@ -300,7 +301,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // ✅ الحل الرسمي: استخدام .file للأوفلاين و .uri للأونلاين (مع headers)
+          // ✅ 2. استخدام PdfViewer.file للأوفلاين و PdfViewer.uri للأونلاين (مع headers)
           if (_isOffline)
             PdfViewer.file(
               _filePath!,
@@ -310,12 +311,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           else
             PdfViewer.uri(
               Uri.parse(_filePath!),
-              headers: _onlineHeaders, // ✅ التصحيح: اسم المعامل هو headers
+              headers: _onlineHeaders, // استخدام headers الصحيحة
               controller: _pdfController,
               params: _buildPdfParams(),
             ),
 
-          // 2. العلامة المائية
+          // 3. العلامة المائية
           IgnorePointer(
             child: Center(
               child: Opacity(
@@ -353,7 +354,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ✅ فصل البارامترات لتنظيف الكود
   PdfViewerParams _buildPdfParams() {
     return PdfViewerParams(
       backgroundColor: AppColors.backgroundPrimary,
@@ -472,35 +472,47 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildToolButton(LucideIcons.penTool, 0),
-              _buildToolButton(LucideIcons.highlighter, 1),
-              _buildToolButton(LucideIcons.eraser, 2), 
-              
-              IconButton(
-                icon: const Icon(LucideIcons.undo, color: Colors.white),
-                onPressed: () {
-                   if (_pageDrawings[_activePage]?.isNotEmpty ?? false) {
-                     setState(() {
-                       _pageDrawings[_activePage]!.removeLast();
-                     });
-                   }
-                },
-              ),
-
-              Container(width: 1, height: 24, color: Colors.grey),
-              
-              if (_selectedTool != 2) ...[
-                _buildColorButton(Colors.black),
-                _buildColorButton(Colors.red),
-                _buildColorButton(Colors.blue),
-                _buildColorButton(Colors.yellow, isHighlight: true),
-                _buildColorButton(Colors.green, isHighlight: true),
-              ] else 
-                const Text("Eraser Active", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-            ],
+          // ✅ 4. إضافة SingleChildScrollView لجعل الشريط قابلاً للتمرير
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildToolButton(LucideIcons.penTool, 0),
+                const SizedBox(width: 8),
+                _buildToolButton(LucideIcons.highlighter, 1),
+                const SizedBox(width: 8),
+                _buildToolButton(LucideIcons.eraser, 2),
+                const SizedBox(width: 8),
+                
+                IconButton(
+                  icon: const Icon(LucideIcons.undo, color: Colors.white),
+                  onPressed: () {
+                     if (_pageDrawings[_activePage]?.isNotEmpty ?? false) {
+                       setState(() {
+                         _pageDrawings[_activePage]!.removeLast();
+                       });
+                     }
+                  },
+                ),
+          
+                const SizedBox(width: 8),
+                Container(width: 1, height: 24, color: Colors.grey),
+                const SizedBox(width: 8),
+                
+                if (_selectedTool != 2) ...[
+                  _buildColorButton(Colors.black),
+                  _buildColorButton(Colors.red),
+                  _buildColorButton(Colors.blue),
+                  _buildColorButton(Colors.yellow, isHighlight: true),
+                  _buildColorButton(Colors.green, isHighlight: true),
+                ] else 
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Text("Eraser Active", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           
