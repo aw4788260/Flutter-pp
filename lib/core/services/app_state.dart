@@ -1,5 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../data/models/course_model.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class AppState {
   // Singleton Pattern
@@ -69,7 +71,7 @@ class AppState {
   Future<bool> loadOfflineData() async {
     try {
       // فتح صندوق الكاش
-      var cacheBox = await Hive.openBox('app_cache');
+      var cacheBox = await StorageService.openBox('app_cache');
       
       // جلب البيانات
       final cachedData = cacheBox.get('init_data');
