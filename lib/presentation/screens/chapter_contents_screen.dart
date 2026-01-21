@@ -8,6 +8,8 @@ import '../../core/services/download_manager.dart';
 import 'video_player_screen.dart';
 import 'youtube_player_screen.dart';
 import 'pdf_viewer_screen.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class ChapterContentsScreen extends StatefulWidget {
   final Map<String, dynamic> chapter;
@@ -61,7 +63,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               _buildOptionTile(
                 icon: LucideIcons.rocket, 
                 title: "First Player",
-                subtitle: "High Performance (Recommended)", 
+                subtitle: "High Performance", 
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayWithExplode(video); 
@@ -74,7 +76,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               _buildOptionTile(
                 icon: LucideIcons.youtube,
                 title: "Second Player",
-                subtitle: "Standard YouTube Player", 
+                subtitle: "Standard Player", 
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayVideo(video, useYoutube: true);
@@ -87,7 +89,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               _buildOptionTile(
                 icon: LucideIcons.playCircle,
                 title: "Third Player",
-                subtitle: "Legacy Stream Player", 
+                subtitle: "Backup Player", 
                 onTap: () {
                   Navigator.pop(context);
                   _fetchAndPlayVideo(video, useYoutube: false);
@@ -109,7 +111,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
 
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // ✅ تحديث الهيدرز: استخدام التوكن والبصمة
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
@@ -188,7 +190,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
 
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // ✅ تحديث الهيدرز
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
@@ -278,7 +280,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
 
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // ✅ تحديث الهيدرز
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
