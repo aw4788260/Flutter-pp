@@ -29,9 +29,8 @@ dependencies:
   device_info_plus: ^12.3.0
   android_id: ^0.5.1
   wakelock_plus: ^1.4.0        # لإبقاء الشاشة تعمل
-  syncfusion_flutter_pdfviewer: ^32.1.23
-  syncfusion_flutter_pdf: ^32.1.23
   pdfrx: ^2.2.24
+  
   
   
   # ✅ التعديل 1: استخدام نسخة GitHub للحصول على دوال الاستماع (addListener)
@@ -54,6 +53,7 @@ dependencies:
   # Security & Privacy
   flutter_windowmanager_plus: ^1.0.1 # منع تصوير الشاشة
   encrypt: ^5.0.3 # التشفير (AES)
+  cryptography: ^2.9.0
   flutter_secure_storage: ^10.0.0
 
   # Networking
@@ -73,8 +73,7 @@ dependencies:
   chewie: ^1.13.0 # مشغل فيديو متقدم
   youtube_player_flutter: ^9.1.3 # مشغل يوتيوب
 
-  # PDF Viewer
-  flutter_pdfview: ^1.4.4
+  
 
   # Local Server (Offline Playback Proxy)
   shelf: ^1.4.2
