@@ -7,6 +7,8 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
 import '../../core/constants/app_colors.dart';
 import 'exam_result_screen.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class ExamViewScreen extends StatefulWidget {
   final String examId;
@@ -51,7 +53,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
 
   Future<void> _startExamAttempt() async {
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       _userId = box.get('user_id');
       _deviceId = box.get('device_id');
       _token = box.get('jwt_token'); // ✅ جلب التوكن
