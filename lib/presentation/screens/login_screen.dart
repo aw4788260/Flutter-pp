@@ -11,6 +11,8 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import 'main_wrapper.dart';
 import 'register_screen.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -89,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // 1. جلب معرف الجهاز الحقيقي
       final deviceId = await _getAndSaveDeviceId(box);
 
@@ -153,7 +155,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       final deviceId = await _getAndSaveDeviceId(box);
 
       // للضيف لا نرسل توكن، فقط معرف الجهاز
@@ -181,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     } catch (e) {
       // في حالة الفشل (أوفلاين)، ندخل كضيف فارغ
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       await box.put('is_guest', true);
       AppState().isGuest = true;
       
@@ -199,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _fetchInitData(String deviceId) async {
     try {
       // ✅ جلب التوكن المحفوظ لإرساله في الهيدر
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       String? token = box.get('jwt_token');
 
       final response = await _dio.get(
