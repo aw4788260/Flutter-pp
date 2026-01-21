@@ -3,6 +3,8 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({super.key});
@@ -24,7 +26,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
   Future<void> _fetchRequests() async {
     try {
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // ✅ جلب التوكن وبصمة الجهاز بدلاً من user_id
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
