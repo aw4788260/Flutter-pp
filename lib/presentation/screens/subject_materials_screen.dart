@@ -40,14 +40,15 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
   Future<void> _fetchContent() async {
     try {
       var box = await Hive.openBox('auth_box');
-      final userId = box.get('user_id');
-      final deviceId = box.get('device_id');
+      // ✅ جلب التوكن والبصمة
+      final String? token = box.get('jwt_token');
+      final String? deviceId = box.get('device_id');
 
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-subject-content',
         queryParameters: {'subjectId': widget.subjectId},
         options: Options(headers: {
-          'x-user-id': userId, 
+          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
@@ -180,6 +181,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         return GestureDetector(
           onTap: () {
              if (isCompleted) {
+               // محاولة الحصول على معرف المحاولة (سواء كانت الأولى أو الأخيرة)
                final attemptId = exam['last_attempt_id'] ?? exam['first_attempt_id'] ?? exam['attempt_id']; 
                
                if (attemptId != null) {
