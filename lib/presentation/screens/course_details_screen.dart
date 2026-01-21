@@ -30,13 +30,17 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
   Future<void> _fetchDetails() async {
     try {
       var box = await Hive.openBox('auth_box');
-      final userId = box.get('user_id');
+      // ✅ جلب التوكن بدلاً من user_id المباشر
+      final String? token = box.get('jwt_token');
+      final String? deviceId = box.get('device_id');
 
       final res = await Dio().get(
         '$_baseUrl/api/public/get-course-sales-details',
         queryParameters: {'courseCode': widget.courseCode},
         options: Options(headers: {
-          'x-user-id': userId,
+          // ✅ إرسال التوكن إن وجد (لأن الصفحة متاحة للضيوف)
+          if (token != null) 'Authorization': 'Bearer $token',
+          'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
@@ -60,7 +64,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     final course = _courseData!;
     final teacher = course['teacher'] ?? {};
     final String teacherName = teacher['name'] ?? "Unknown Instructor";
-    // ✅ استخراج معرف المدرس لفتح البروفايل (تأكد أن الـ API يعيد id داخل كائن teacher)
+    // ✅ استخراج معرف المدرس
     final String? teacherId = teacher['id']?.toString(); 
 
     final subjects = List<Map<String, dynamic>>.from(course['subjects'] ?? []);
@@ -135,7 +139,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       ),
                       const SizedBox(height: 12),
                       
-                      // ✅ Instructor (تم تعديل هذا الجزء ليصبح قابلاً للضغط)
+                      // ✅ Instructor Info (Clickable)
                       Row(
                         children: [
                           const Icon(LucideIcons.userCircle, size: 16, color: AppColors.textSecondary),
@@ -158,10 +162,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                             child: Text(
                               teacherName.toUpperCase(),
                               style: const TextStyle(
-                                color: AppColors.accentOrange, // تغيير اللون للإشارة للرابط
+                                color: AppColors.accentOrange,
                                 fontSize: 14, 
                                 fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.underline, // إضافة خط تحت الاسم
+                                decoration: TextDecoration.underline,
                                 decorationColor: AppColors.accentOrange,
                               ),
                             ),
