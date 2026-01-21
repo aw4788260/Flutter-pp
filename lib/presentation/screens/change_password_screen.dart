@@ -3,6 +3,8 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/storage_service.dart';
+// أو المسار المناسب حسب مكان الملف
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -38,7 +40,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
     try {
       // 2. جلب بيانات المصادقة المخزنة محلياً
-      var box = await Hive.openBox('auth_box');
+      var box = await StorageService.openBox('auth_box');
       // ✅ جلب التوكن والبصمة
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
