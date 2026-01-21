@@ -6,7 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:android_id/android_id.dart'; // ✅ مكتبة المعرف الفريد
+import 'package:android_id/android_id.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import 'main_wrapper.dart';
@@ -75,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    final identifier = _identifierController.text.trim(); // ✅ القيمة المدخلة (اسم أو هاتف)
+    final identifier = _identifierController.text.trim();
     final password = _passwordController.text.trim();
 
     if (identifier.isEmpty || password.isEmpty) {
@@ -93,11 +93,11 @@ class _LoginScreenState extends State<LoginScreen> {
       // 1. جلب معرف الجهاز الحقيقي
       final deviceId = await _getAndSaveDeviceId(box);
 
-      // 2. إرسال الطلب للباك اند المعدل
+      // 2. إرسال الطلب للباك اند
       final response = await _dio.post(
         '$_baseUrl/api/auth/login',
         data: {
-          'identifier': identifier, // ✅ إرسال identifier بدلاً من username
+          'identifier': identifier, 
           'password': password,
           'deviceId': deviceId,
         },
@@ -113,15 +113,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (response.statusCode == 200 && data['success'] == true) {
         final userMap = data['user'];
+        
+        // حفظ البيانات الأساسية
         await box.put('user_id', userMap['id'].toString());
         await box.put('username', userMap['username']);
         await box.put('first_name', userMap['firstName']);
         
-        // تأكد من مسح علامة الضيف عند تسجيل الدخول الحقيقي
+        // ✅ [هام] حفظ التوكن القادم من السيرفر
+        if (data['token'] != null) {
+          await box.put('jwt_token', data['token']);
+        }
+        
+        // مسح علامة الضيف
         await box.delete('is_guest');
         AppState().isGuest = false; 
         
-        await _fetchInitData(userMap['id'].toString(), deviceId);
+        // جلب البيانات الأولية (مع تمرير التوكن ضمناً عبر الهيدرز المعدلة)
+        await _fetchInitData(deviceId);
 
         if (mounted) {
           Navigator.pushReplacement(
@@ -140,32 +148,27 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ✅ دالة جديدة لمعالجة الدخول كضيف
+  // معالجة الدخول كضيف
   Future<void> _handleGuestLogin() async {
     setState(() => _isLoading = true);
     
     try {
       var box = await Hive.openBox('auth_box');
-      // نحتاج معرف جهاز للطلب
       final deviceId = await _getAndSaveDeviceId(box);
 
-      // نطلب البيانات العامة من السيرفر بمعرف مستخدم "0"
+      // للضيف لا نرسل توكن، فقط معرف الجهاز
       final response = await _dio.get(
         '$_baseUrl/api/public/get-app-init-data',
         options: Options(headers: {
-          'x-user-id': '0', // معرف وهمي للزائر
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
 
-      // سواء نجح الطلب أو فشل (بسبب النت)، سنسمح بالدخول
-      // لكن إذا نجح، نحدث البيانات
       if (response.statusCode == 200 && response.data['success'] == true) {
         AppState().updateFromInitData(response.data);
       }
       
-      // ✅ حفظ وضع الضيف في Hive ليبقى بعد الإغلاق
       await box.put('is_guest', true);
       AppState().isGuest = true;
 
@@ -177,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
     } catch (e) {
-      // في حالة الفشل التام (أوفلاين)، ندخل كضيف فارغ
+      // في حالة الفشل (أوفلاين)، ندخل كضيف فارغ
       var box = await Hive.openBox('auth_box');
       await box.put('is_guest', true);
       AppState().isGuest = true;
@@ -193,16 +196,21 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _fetchInitData(String userId, String deviceId) async {
+  Future<void> _fetchInitData(String deviceId) async {
     try {
+      // ✅ جلب التوكن المحفوظ لإرساله في الهيدر
+      var box = await Hive.openBox('auth_box');
+      String? token = box.get('jwt_token');
+
       final response = await _dio.get(
         '$_baseUrl/api/public/get-app-init-data',
         options: Options(headers: {
-          'x-user-id': userId, 
+          if (token != null) 'Authorization': 'Bearer $token', // ✅ إرسال التوكن
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
+      
       if (response.statusCode == 200 && response.data['success'] == true) {
         AppState().updateFromInitData(response.data);
       }
@@ -274,13 +282,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-              // ✅ تحديث التسمية لتوضيح إمكانية استخدام الهاتف
               _buildInputLabel("Username or Phone"),
               const SizedBox(height: 8),
               _buildTextField(
                 controller: _identifierController,
                 focusNode: _userFocus,
-                hint: "Enter username or 01xxxxxxxxx", // ✅ تلميح محدث
+                hint: "Enter username or 01xxxxxxxxx",
                 icon: LucideIcons.user,
               ),
               const SizedBox(height: 24),
@@ -330,7 +337,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 24),
 
-              // ✅ Guest Login Button (جديد)
+              // Guest Login Button
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
