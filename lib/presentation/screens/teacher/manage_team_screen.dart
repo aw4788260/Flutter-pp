@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/teacher_service.dart';
-import '../../../core/constants/app_colors.dart'; 
+import '../../../core/constants/app_colors.dart';
 
 class ManageTeamScreen extends StatefulWidget {
   const ManageTeamScreen({Key? key}) : super(key: key);
@@ -38,7 +38,6 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoadingTeam = false);
-        // يمكن إضافة تنبيه هنا في حال الفشل
       }
     }
   }
@@ -69,14 +68,24 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(action == 'promote' ? "ترقية الطالب" : "حذف المشرف"),
-        content: Text(confirmText),
+        backgroundColor: AppColors.backgroundSecondary, // ✅ خلفية داكنة
+        title: Text(
+          action == 'promote' ? "ترقية الطالب" : "حذف المشرف",
+          style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          confirmText,
+          style: const TextStyle(color: Colors.white70), // ✅ نص أبيض شفاف
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("إلغاء")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false), 
+            child: const Text("إلغاء", style: TextStyle(color: AppColors.textSecondary))
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: action == 'promote' ? Colors.green : Colors.red,
+              backgroundColor: action == 'promote' ? AppColors.success : AppColors.error,
               foregroundColor: Colors.white,
             ),
             child: const Text("تأكيد"),
@@ -91,7 +100,7 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
     showDialog(
       context: context, 
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator())
+      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
     );
 
     try {
@@ -110,7 +119,7 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(action == 'promote' ? "تمت الترقية ومنح الصلاحيات بنجاح" : "تم حذف المشرف بنجاح"),
-            backgroundColor: Colors.green,
+            backgroundColor: AppColors.success,
           ),
         );
       }
@@ -118,7 +127,7 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
       if (mounted) {
         Navigator.pop(context); // إغلاق اللودينج
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("حدث خطأ: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text("حدث خطأ: $e"), backgroundColor: AppColors.error),
         );
       }
     }
@@ -127,10 +136,12 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.backgroundPrimary, // ✅ خلفية رئيسية داكنة
       appBar: AppBar(
-        title: const Text("إدارة فريق العمل"),
+        title: const Text("إدارة فريق العمل", style: TextStyle(color: AppColors.textPrimary)),
+        backgroundColor: AppColors.backgroundSecondary, // ✅ هيدر داكن
         elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.accentYellow),
       ),
       body: Column(
         children: [
@@ -140,8 +151,8 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.backgroundSecondary.withOpacity(0.1), // لون خلفية خفيف
-              border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+              color: AppColors.backgroundSecondary, // ✅ خلفية القسم داكنة
+              border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05))),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,24 +164,26 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
                 const SizedBox(height: 5),
                 const Text(
                   "ابحث عن طالب لترقيته ومنحه صلاحيات كاملة تلقائياً", 
-                  style: TextStyle(fontSize: 12, color: Colors.grey)
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary)
                 ),
                 const SizedBox(height: 15),
                 TextField(
                   controller: _searchController,
+                  style: const TextStyle(color: Colors.white), // ✅ لون النص أبيض
                   decoration: InputDecoration(
                     hintText: "ابحث بالاسم أو اسم المستخدم...",
-                    prefixIcon: const Icon(Icons.person_search, color: Colors.grey),
+                    hintStyle: const TextStyle(color: AppColors.textSecondary),
+                    prefixIcon: const Icon(Icons.person_search, color: AppColors.textSecondary),
                     suffixIcon: _isSearching 
-                        ? const Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)) 
+                        ? const Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)) 
                         : (_searchController.text.isNotEmpty 
-                            ? IconButton(icon: const Icon(Icons.clear), onPressed: () {
+                            ? IconButton(icon: const Icon(Icons.clear, color: Colors.white70), onPressed: () {
                                 _searchController.clear();
                                 setState(() => _searchResults = []);
                               }) 
                             : null),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: AppColors.backgroundPrimary, // ✅ لون الحقل داكن
                     contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                   ),
@@ -186,27 +199,27 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
           if (_searchResults.isNotEmpty)
             Container(
               constraints: const BoxConstraints(maxHeight: 250),
-              color: Colors.white,
+              color: AppColors.backgroundPrimary, // ✅
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 10, 16, 5),
-                    child: Text("نتائج البحث:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                    child: Text("نتائج البحث:", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.accentYellow)),
                   ),
                   Expanded(
                     child: ListView.separated(
                       itemCount: _searchResults.length,
-                      separatorBuilder: (ctx, i) => const Divider(height: 1),
+                      separatorBuilder: (ctx, i) => Divider(height: 1, color: Colors.white.withOpacity(0.1)),
                       itemBuilder: (context, index) {
                         final student = _searchResults[index];
                         return ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: Colors.blue.shade100,
-                            child: const Icon(Icons.person_outline, color: Colors.blue),
+                            backgroundColor: AppColors.backgroundSecondary,
+                            child: const Icon(Icons.person_outline, color: AppColors.accentYellow),
                           ),
-                          title: Text(student['first_name'] ?? "No Name", style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text("@${student['username']} • ${student['phone']}"),
+                          title: Text(student['first_name'] ?? "No Name", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                          subtitle: Text("@${student['username']} • ${student['phone']}", style: const TextStyle(color: AppColors.textSecondary)),
                           trailing: ElevatedButton(
                             onPressed: () => _handleAction(
                               student['id'].toString(), 
@@ -214,7 +227,7 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
                               "سيتم ترقية الطالب '${student['first_name']}' ليصبح مشرفاً وسيتم منحه صلاحية الوصول لجميع كورساتك الحالية.\n\nهل أنت متأكد؟"
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green, 
+                              backgroundColor: AppColors.success, 
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(horizontal: 12),
                               minimumSize: const Size(60, 32)
@@ -225,7 +238,7 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
                       },
                     ),
                   ),
-                  const Divider(thickness: 5, color: Color(0xFFF0F0F0)), // فاصل سميك
+                  Divider(thickness: 5, color: Colors.white.withOpacity(0.05)), 
                 ],
               ),
             ),
@@ -237,7 +250,7 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
-                const Icon(Icons.shield_outlined, color: AppColors.textPrimary, size: 20),
+                const Icon(Icons.shield_outlined, color: AppColors.accentYellow, size: 20),
                 const SizedBox(width: 8),
                 Text(
                   "المشرفون الحاليون (${_teamMembers.length})", 
@@ -249,15 +262,15 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
 
           Expanded(
             child: _isLoadingTeam
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
                 : _teamMembers.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.group_off_outlined, size: 60, color: Colors.grey.shade300),
+                            Icon(Icons.group_off_outlined, size: 60, color: AppColors.textSecondary.withOpacity(0.3)),
                             const SizedBox(height: 10),
-                            const Text("لا يوجد مشرفين حالياً", style: TextStyle(color: Colors.grey)),
+                            const Text("لا يوجد مشرفين حالياً", style: TextStyle(color: AppColors.textSecondary)),
                           ],
                         ),
                       )
@@ -268,28 +281,32 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
                           final member = _teamMembers[index];
                           return Card(
                             margin: const EdgeInsets.only(bottom: 10),
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                            color: AppColors.backgroundSecondary, // ✅ لون الكارت
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(color: Colors.white.withOpacity(0.05))
+                            ),
                             child: ListTile(
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               leading: const CircleAvatar(
                                 radius: 25,
-                                backgroundColor: AppColors.textPrimary,
+                                backgroundColor: AppColors.backgroundPrimary,
                                 child: Icon(Icons.security, color: AppColors.accentYellow),
                               ),
                               title: Text(
                                 member['first_name'] ?? "Unknown",
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
                               ),
                               subtitle: Padding(
                                 padding: const EdgeInsets.only(top: 4.0),
                                 child: Text(
                                   "@${member['username']} • ${member['phone']}",
-                                  style: const TextStyle(fontSize: 13),
+                                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                                 ),
                               ),
                               trailing: IconButton(
-                                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                                icon: const Icon(Icons.remove_circle_outline, color: AppColors.error),
                                 tooltip: "إلغاء الإشراف",
                                 onPressed: () => _handleAction(
                                   member['id'].toString(), 
