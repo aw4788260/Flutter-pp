@@ -84,6 +84,29 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     }
   }
 
+  // ✅ دالة لتحديث الشابتر في القائمة محلياً
+  void _updateChapterList(dynamic result) {
+    if (result == null || _content == null) return;
+
+    setState(() {
+      List chapters = List.from(_content!['chapters'] ?? []);
+
+      if (result is Map && result['deleted'] == true) {
+         // حذف شابتر
+         chapters.removeWhere((c) => c['id'].toString() == result['id'].toString());
+      } else if (result is Map<String, dynamic>) {
+         // إضافة أو تحديث (بما في ذلك تحديث عدد الفيديوهات داخله)
+         int index = chapters.indexWhere((c) => c['id'].toString() == result['id'].toString());
+         if (index != -1) {
+           chapters[index] = result; // استبدال الشابتر بالنسخة المحدثة
+         } else {
+           chapters.add(result); // إضافة شابتر جديد
+         }
+      }
+      _content!['chapters'] = chapters;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
@@ -164,7 +187,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                                     parentId: widget.subjectId,
                                   ),
                                 ),
-                              ).then((val) { if(val == true) _fetchContent(); });
+                              ).then((val) => _updateChapterList(val)); // ✅ تحديث فوري للقائمة
                             } else {
                               // إضافة امتحان
                               Navigator.push(
@@ -457,7 +480,10 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   subjectTitle: widget.subjectTitle,
                 )
               ),
-            );
+            ).then((updatedChapter) {
+               // ✅ عندما يعود المستخدم من داخل الشابتر، نحدث بيانات الشابتر (مثل عدد الفيديوهات)
+               if (updatedChapter != null) _updateChapterList(updatedChapter);
+            });
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -538,7 +564,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                             parentId: widget.subjectId,
                           ),
                         ),
-                      ).then((val) { if(val == true) _fetchContent(); });
+                      ).then((val) => _updateChapterList(val)); // ✅ تحديث فوري للقائمة
                     },
                   )
                 else
