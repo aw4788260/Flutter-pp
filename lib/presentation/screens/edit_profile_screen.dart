@@ -5,7 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart'; 
 import '../../core/services/storage_service.dart';
-import '../widgets/custom_text_field.dart'; // ✅ استيراد CustomTextField
+import '../widgets/custom_text_field.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -15,16 +15,24 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
+  // الحقول الأساسية
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   late TextEditingController _usernameController;
   
-  // حقول إضافية للمعلم
+  // حقول المدرس الإضافية
   final TextEditingController _bioController = TextEditingController();
   final TextEditingController _specialtyController = TextEditingController();
 
+  // ✅ قوائم التحكم لبيانات الدفع الثلاثة
+  List<TextEditingController> _cashNumberControllers = [];
+  List<TextEditingController> _instapayNumberControllers = [];
+  List<TextEditingController> _instapayLinkControllers = [];
+
   bool _isLoading = false;
-  bool _isTeacher = false; // لتحديد هل نظهر الحقول الإضافية أم لا
+  bool _isTeacher = false;
+  
+  // تأكد من أن الرابط صحيح
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   @override
@@ -41,19 +49,55 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _phoneController = TextEditingController(text: user?['phone'] ?? "");
     _usernameController = TextEditingController(text: user?['username'] ?? "");
 
-    // التحقق من الصلاحية (معلم أم لا) وجلب بياناته الإضافية
     var box = await StorageService.openBox('auth_box');
     String? role = box.get('role');
     
     if (mounted) {
       setState(() {
         _isTeacher = role == 'teacher';
+        
         if (_isTeacher) {
           _bioController.text = box.get('bio') ?? "";
           _specialtyController.text = box.get('specialty') ?? "";
+
+          // ✅ تحميل قوائم الدفع المحفوظة محلياً (إن وجدت)
+          List<dynamic> cachedCash = box.get('cash_numbers', defaultValue: []);
+          List<dynamic> cachedInstaNums = box.get('instapay_numbers', defaultValue: []);
+          List<dynamic> cachedInstaLinks = box.get('instapay_links', defaultValue: []);
+
+          // تعبئة المتحكمات (Controllers) بالبيانات
+          for (var item in cachedCash) {
+            _cashNumberControllers.add(TextEditingController(text: item.toString()));
+          }
+          for (var item in cachedInstaNums) {
+            _instapayNumberControllers.add(TextEditingController(text: item.toString()));
+          }
+          for (var item in cachedInstaLinks) {
+            _instapayLinkControllers.add(TextEditingController(text: item.toString()));
+          }
+
+          // إضافة حقل فارغ افتراضي فقط إذا كانت القوائم فارغة تماماً
+          if (_cashNumberControllers.isEmpty) _addController(_cashNumberControllers);
+          if (_instapayNumberControllers.isEmpty) _addController(_instapayNumberControllers);
+          if (_instapayLinkControllers.isEmpty) _addController(_instapayLinkControllers);
         }
       });
     }
+  }
+
+  // ✅ دالة مساعدة لإضافة حقل جديد لأي قائمة
+  void _addController(List<TextEditingController> list) {
+    setState(() {
+      list.add(TextEditingController());
+    });
+  }
+
+  // ✅ دالة مساعدة لحذف حقل من أي قائمة
+  void _removeController(List<TextEditingController> list, int index) {
+    setState(() {
+      list[index].dispose(); // تنظيف الذاكرة
+      list.removeAt(index);
+    });
   }
 
   @override
@@ -63,6 +107,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _usernameController.dispose();
     _bioController.dispose();
     _specialtyController.dispose();
+    
+    // تنظيف قوائم المتحكمات
+    for (var c in _cashNumberControllers) c.dispose();
+    for (var c in _instapayNumberControllers) c.dispose();
+    for (var c in _instapayLinkControllers) c.dispose();
     super.dispose();
   }
 
@@ -73,21 +122,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
 
+      // ✅ استخراج النصوص من المتحكمات وتنظيفها من الفراغات
+      List<String> cashList = _cashNumberControllers
+          .map((c) => c.text.trim())
+          .where((text) => text.isNotEmpty)
+          .toList();
+
+      List<String> instaNumList = _instapayNumberControllers
+          .map((c) => c.text.trim())
+          .where((text) => text.isNotEmpty)
+          .toList();
+
+      List<String> instaLinkList = _instapayLinkControllers
+          .map((c) => c.text.trim())
+          .where((text) => text.isNotEmpty)
+          .toList();
+
       // تجهيز البيانات للإرسال
       Map<String, dynamic> dataToSend = {
-        'firstName': _nameController.text,
+        'firstName': _nameController.text, // تأكدنا من توحيد الاسم حسب الباك إند (firstName أو name)
         'phone': _phoneController.text,
         'username': _usernameController.text,
       };
 
-      // إضافة بيانات المعلم إذا وجد
       if (_isTeacher) {
         dataToSend['bio'] = _bioController.text;
         dataToSend['specialty'] = _specialtyController.text;
+        // ✅ إرسال القوائم الثلاث
+        dataToSend['cashNumbersList'] = cashList;
+        dataToSend['instapayNumbersList'] = instaNumList;
+        dataToSend['instapayLinksList'] = instaLinkList;
       }
 
-      // تحديد الـ Endpoint المناسب
-      String endpoint = _isTeacher ? '$_baseUrl/api/teacher/update-profile' : '$_baseUrl/api/student/update-profile';
+      // تحديد الرابط
+      String endpoint = _isTeacher 
+          ? '$_baseUrl/api/teacher/update-profile' 
+          : '$_baseUrl/api/student/update-profile';
 
       final res = await Dio().post(
         endpoint,
@@ -100,14 +170,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
 
       if (res.statusCode == 200 && res.data['success'] == true) {
-        // تحديث حالة التطبيق (في الذاكرة)
+        // تحديث البيانات في الذاكرة (AppState)
         if (AppState().userData != null) {
           AppState().userData!['first_name'] = _nameController.text;
           AppState().userData!['username'] = _usernameController.text;
           AppState().userData!['phone'] = _phoneController.text;
         }
         
-        // تحديث التخزين المحلي
+        // تحديث التخزين المحلي (Hive)
         await box.put('first_name', _nameController.text);
         await box.put('username', _usernameController.text);
         await box.put('phone', _phoneController.text);
@@ -115,6 +185,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         if (_isTeacher) {
           await box.put('bio', _bioController.text);
           await box.put('specialty', _specialtyController.text);
+          // ✅ حفظ القوائم محلياً
+          await box.put('cash_numbers', cashList);
+          await box.put('instapay_numbers', instaNumList);
+          await box.put('instapay_links', instaLinkList);
         }
 
         if (mounted) {
@@ -126,7 +200,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (mounted) {
         String errorMsg = "Failed to update profile";
         if(e is DioException) {
-           errorMsg = e.response?.data['message'] ?? errorMsg;
+           errorMsg = e.response?.data['message'] ?? e.response?.data['error'] ?? errorMsg;
         }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: AppColors.error));
       }
@@ -176,7 +250,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ✅ استخدام CustomTextField بدلاً من _buildInputField
                     CustomTextField(
                       label: "Full Name",
                       controller: _nameController,
@@ -201,7 +274,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       prefixIcon: LucideIcons.atSign,
                     ),
                     
-                    // 🟢 حقول إضافية للمعلم فقط
                     if (_isTeacher) ...[
                       const SizedBox(height: 20),
                       const Divider(color: Colors.white10),
@@ -225,6 +297,53 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         keyboardType: TextInputType.multiline,
                         maxLines: 3,
                       ),
+
+                      const SizedBox(height: 30),
+                      const Divider(color: Colors.white10),
+                      
+                      // ✅ قسم بيانات الدفع
+                      const SizedBox(height: 10),
+                      const Text("PAYMENT METHODS", style: TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                      const SizedBox(height: 20),
+
+                      // 1. Cash Numbers Section
+                      _buildDynamicList(
+                        title: "Cash Wallet Numbers",
+                        controllers: _cashNumberControllers,
+                        hint: "Enter Wallet Number",
+                        onAdd: () => _addController(_cashNumberControllers),
+                        onRemove: (idx) => _removeController(_cashNumberControllers, idx),
+                        icon: Icons.account_balance_wallet,
+                        isNumeric: true,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // 2. InstaPay Numbers Section
+                      _buildDynamicList(
+                        title: "InstaPay Numbers",
+                        controllers: _instapayNumberControllers,
+                        hint: "Enter InstaPay Phone Number",
+                        onAdd: () => _addController(_instapayNumberControllers),
+                        onRemove: (idx) => _removeController(_instapayNumberControllers, idx),
+                        icon: Icons.phone_iphone,
+                        isNumeric: true,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // 3. InstaPay Links/Usernames Section
+                      _buildDynamicList(
+                        title: "InstaPay Links / Usernames",
+                        controllers: _instapayLinkControllers,
+                        hint: "username@instapay or Link",
+                        onAdd: () => _addController(_instapayLinkControllers),
+                        onRemove: (idx) => _removeController(_instapayLinkControllers, idx),
+                        icon: LucideIcons.link,
+                        isNumeric: false,
+                      ),
+                      
+                      const SizedBox(height: 40),
                     ],
                   ],
                 ),
@@ -262,6 +381,71 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // ✅ ويدجت ديناميكية لبناء القوائم (Dynamic List Builder)
+  Widget _buildDynamicList({
+    required String title,
+    required List<TextEditingController> controllers,
+    required String hint,
+    required VoidCallback onAdd,
+    required Function(int) onRemove,
+    required IconData icon,
+    bool isNumeric = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+            InkWell(
+              onTap: onAdd,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: AppColors.accentOrange.withOpacity(0.2), shape: BoxShape.circle),
+                child: const Icon(Icons.add, color: AppColors.accentOrange, size: 18),
+              ),
+            )
+          ],
+        ),
+        const SizedBox(height: 10),
+        
+        // عرض قائمة الحقول
+        ...List.generate(controllers.length, (index) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: CustomTextField(
+                    label: "", // لا نحتاج لعنوان هنا
+                    controller: controllers[index],
+                    hintText: hint,
+                    prefixIcon: icon,
+                    keyboardType: isNumeric ? TextInputType.number : TextInputType.text,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // زر الحذف (يظهر دائماً حتى لو كان الحقل وحيداً، لتمكين المستخدم من تفريغ القائمة)
+                InkWell(
+                  onTap: () => onRemove(index),
+                  child: const Icon(Icons.remove_circle_outline, color: AppColors.error, size: 24),
+                ),
+              ],
+            ),
+          );
+        }),
+        
+        // رسالة صغيرة إذا كانت القائمة فارغة
+        if (controllers.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text("Click + to add a number/link", style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12, fontStyle: FontStyle.italic)),
+          ),
+      ],
     );
   }
 }
