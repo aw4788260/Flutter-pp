@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart'; // ✅ تمت إضافة مكتبة الشبكة
+import 'package:dio/dio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
+import '../../core/services/storage_service.dart';
+
+// شاشات الإعدادات العامة
 import 'edit_profile_screen.dart';
 import 'change_password_screen.dart';
-import 'my_requests_screen.dart';
 import 'dev_info_screen.dart';
 import 'login_screen.dart';
-import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
+
+// شاشات الطالب
+import 'my_requests_screen.dart';
+
+// شاشات المعلم (التي أنشأناها سابقاً)
+import 'teacher/student_requests_screen.dart';
+import 'teacher/manage_students_screen.dart';
+import 'teacher/manage_team_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,15 +29,33 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
+  bool _isTeacher = false; // لتخزين حالة المعلم
 
-  // دالة تسجيل الخروج (أو العودة لصفحة الدخول للضيف)
+  @override
+  void initState() {
+    super.initState();
+    _checkUserRole();
+  }
+
+  // ✅ التحقق من الصلاحية (هل هو معلم؟)
+  Future<void> _checkUserRole() async {
+    var box = await StorageService.openBox('auth_box');
+    String? role = box.get('role');
+    if (mounted) {
+      setState(() {
+        _isTeacher = role == 'teacher';
+      });
+    }
+  }
+
+  // دالة تسجيل الخروج
   Future<void> _logout() async {
     try {
       var authBox = await StorageService.openBox('auth_box');
       final token = authBox.get('jwt_token');
       final deviceId = authBox.get('device_id');
 
-      // ✅ 1. إرسال طلب للسيرفر لحذف التوكن من قاعدة البيانات (إن وجد)
+      // 1. إرسال طلب للسيرفر لحذف التوكن
       if (token != null && deviceId != null) {
         try {
           await Dio().post(
@@ -40,9 +66,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'x-device-id': deviceId,
                 'x-app-secret': const String.fromEnvironment('APP_SECRET'),
               },
-              // حتى لو فشل السيرفر أو كان التوكن منتهي، نكمل عملية المسح المحلي
-              validateStatus: (status) => status! < 500, 
-              sendTimeout: const Duration(seconds: 3), // مهلة قصيرة لعدم تعطيل المستخدم
+              validateStatus: (status) => status! < 500,
+              sendTimeout: const Duration(seconds: 3),
             ),
           );
         } catch (e) {
@@ -50,14 +75,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
 
-      // ✅ 2. مسح البيانات من التخزين المحلي
+      // 2. مسح البيانات محلياً
       await authBox.clear();
       
-      // ✅ 3. مسح البيانات من الذاكرة
+      // 3. مسح الذاكرة
       AppState().clear();
 
       if (mounted) {
-        // 4. التوجيه لشاشة تسجيل الدخول ومسح كل الصفحات السابقة
         Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginScreen()),
           (route) => false,
@@ -65,7 +89,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       debugPrint("Local Logout Error: $e");
-      // في أسوأ الحالات، نعيد التوجيه للدخول لضمان عدم تعليق التطبيق
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -77,11 +100,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. التحقق من حالة الضيف وجلب البيانات
     final isGuest = AppState().isGuest;
     final user = AppState().userData;
 
-    // 2. ضبط النصوص بناءً على الحالة
     final String name = isGuest ? "GUEST USER" : (user?['first_name'] ?? "User").toUpperCase();
     final String username = isGuest ? "Not Logged In" : (user?['username'] ?? "@user");
     final String firstLetter = isGuest ? "?" : (name.isNotEmpty ? name[0] : "U");
@@ -104,9 +125,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                "MANAGE YOUR ACCOUNT",
-                style: TextStyle(
+              Text(
+                _isTeacher ? "TEACHER DASHBOARD" : "MANAGE YOUR ACCOUNT",
+                style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
                   color: AppColors.accentYellow,
@@ -179,7 +200,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     
-                    // إخفاء زر التعديل إذا كان المستخدم ضيفاً
                     if (!isGuest)
                       GestureDetector(
                         onTap: () {
@@ -200,7 +220,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 32),
 
-              // --- Account Settings (Only for Registered Users) ---
+              // ========================================================
+              // 🟢 قسم المعلم (يظهر فقط للمعلم)
+              // ========================================================
+              if (_isTeacher && !isGuest) ...[
+                const Padding(
+                  padding: EdgeInsets.only(left: 8, bottom: 12),
+                  child: Text(
+                    "TEACHER CONTROLS",
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundSecondary,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.accentYellow.withOpacity(0.2)), // تمييز لون الحدود
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      // 1. طلبات الاشتراك (بدلاً من طلباتي)
+                      _buildMenuItem(
+                        context, 
+                        icon: LucideIcons.bellRing, // أيقونة مختلفة
+                        title: "Incoming Requests", 
+                        badge: "NEW", // يمكن ربطه بالعدد لاحقاً
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentRequestsScreen()))
+                      ),
+                      const Divider(height: 1, color: Colors.white10),
+                      
+                      // 2. إدارة الطلاب
+                      _buildMenuItem(
+                        context, 
+                        icon: LucideIcons.users, 
+                        title: "My Students", 
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageStudentsScreen()))
+                      ),
+                      const Divider(height: 1, color: Colors.white10),
+                      
+                      // 3. فريق العمل
+                      _buildMenuItem(
+                        context, 
+                        icon: LucideIcons.shieldCheck, 
+                        title: "Manage Team", 
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageTeamScreen()))
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+              ],
+
+              // --- Account Settings (للجميع ما عدا الضيف) ---
               if (!isGuest) ...[
                 const Padding(
                   padding: EdgeInsets.only(left: 8, bottom: 12),
@@ -221,15 +293,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => setState(() {}))),
                       const Divider(height: 1, color: Colors.white10),
                       _buildMenuItem(context, icon: LucideIcons.lock, title: "Change Password", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
-                      const Divider(height: 1, color: Colors.white10),
-                      _buildMenuItem(context, icon: LucideIcons.clipboardList, title: "My Requests", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen()))),
+                      
+                      // ⚠️ إظهار "طلباتي" فقط للطالب (لأن المعلم لديه لوحة تحكم أعلاه)
+                      if (!_isTeacher) ...[
+                        const Divider(height: 1, color: Colors.white10),
+                        _buildMenuItem(context, icon: LucideIcons.clipboardList, title: "My Requests", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen()))),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(height: 32),
               ],
 
-              // --- General Settings (For Everyone) ---
+              // --- General Settings ---
               const Padding(
                 padding: EdgeInsets.only(left: 8, bottom: 12),
                 child: Text(
@@ -257,13 +333,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 32),
 
-              // --- Action Button (Logout / Login) ---
+              // --- Logout Button ---
               GestureDetector(
                 onTap: _logout, 
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    // تغيير اللون إذا كان ضيفاً (أصفر للدخول، أحمر للخروج)
                     color: isGuest ? AppColors.accentYellow : AppColors.error.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
