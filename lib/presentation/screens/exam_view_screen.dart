@@ -13,14 +13,13 @@ class ExamViewScreen extends StatefulWidget {
   final String examId;
   final String examTitle;
   final bool isCompleted;
-  final int durationMinutes; // ✅ 1. إضافة مدة الامتحان كمتغير مطلوب
+  // ✅ تم حذف durationMinutes من هنا لأننا سنجلبه من الـ API مباشرة
 
   const ExamViewScreen({
     super.key,
     required this.examId,
     required this.examTitle,
     required this.isCompleted,
-    required this.durationMinutes, // ✅ مطلوب عند الاستدعاء
   });
 
   @override
@@ -75,7 +74,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       if (mounted && res.statusCode == 200) {
         final data = res.data;
         
-        // ✅ 2. التحقق من وضع نموذج الإجابة (إذا انتهى الوقت)
+        // ✅ 1. التحقق من وضع نموذج الإجابة (إذا انتهى الوقت)
         if (data['mode'] == 'model_answer') {
            setState(() {
              _isModelAnswerMode = true; // تفعيل وضع العرض فقط
@@ -86,12 +85,14 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
            // ⚠️ لا نبدأ المؤقت في هذا الوضع
         } else {
            // الوضع الطبيعي (بدء امتحان)
+           // ✅ 2. جلب التوقيت الصحيح من الـ API
+           int apiDuration = data['durationMinutes'] ?? 30; // القيمة الافتراضية 30 إذا لم تأتِ
+
            setState(() {
              _isModelAnswerMode = false;
              _questions = data['questions'] ?? [];
              _attemptId = data['attemptId'].toString();
-             // ✅ استخدام المدة القادمة من الصفحة السابقة بدلاً من 30 دقيقة
-             timeLeft = widget.durationMinutes * 60; 
+             timeLeft = apiDuration * 60; // تحويل الدقائق لثواني
              _loading = false;
            });
            _startTimer();
@@ -102,7 +103,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       if (mounted) {
         String msg = "Failed to start exam";
         if (e is DioException) {
-           if (e.response?.statusCode == 403) msg = e.response?.data['error'] ?? "Access Denied"; // رسالة الخطأ من السيرفر
+           if (e.response?.statusCode == 403) msg = e.response?.data['error'] ?? "Access Denied";
            if (e.response?.statusCode == 409) msg = "Exam already completed";
         }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppColors.error));
