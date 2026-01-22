@@ -6,13 +6,13 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:android_id/android_id.dart'; 
+import 'package:android_id/android_id.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import 'main_wrapper.dart';
 import 'register_screen.dart';
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
+// تأكد من أن المسارات صحيحة لمشروعك
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,7 +23,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   // نستخدم هذا المتحكم لاسم المستخدم أو رقم الهاتف
-  final _identifierController = TextEditingController(); 
+  final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
   
   final FocusNode _userFocus = FocusNode();
@@ -99,7 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final response = await _dio.post(
         '$_baseUrl/api/auth/login',
         data: {
-          'identifier': identifier, 
+          'identifier': identifier,
           'password': password,
           'deviceId': deviceId,
         },
@@ -120,15 +120,22 @@ class _LoginScreenState extends State<LoginScreen> {
         await box.put('user_id', userMap['id'].toString());
         await box.put('username', userMap['username']);
         await box.put('first_name', userMap['firstName']);
+        await box.put('phone', userMap['phone'] ?? ''); // حفظ الهاتف إن وجد
         
-        // ✅ [هام] حفظ التوكن القادم من السيرفر
+        // ✅ [هام جداً] حفظ نوع المستخدم (معلم/طالب)
+        await box.put('role', userMap['role']); // يفترض أن الباك إند يرجع حقل 'role'
+
+        // ✅ حفظ التوكن القادم من السيرفر
         if (data['token'] != null) {
           await box.put('jwt_token', data['token']);
         }
         
         // مسح علامة الضيف
         await box.delete('is_guest');
-        AppState().isGuest = false; 
+        AppState().isGuest = false;
+        
+        // تحديث حالة التطبيق بالبيانات الجديدة
+        AppState().updateUserData(userMap);
         
         // جلب البيانات الأولية (مع تمرير التوكن ضمناً عبر الهيدرز المعدلة)
         await _fetchInitData(deviceId);
@@ -189,9 +196,9 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (mounted) {
          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const MainWrapper()),
-          );
+           context,
+           MaterialPageRoute(builder: (context) => const MainWrapper()),
+         );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
