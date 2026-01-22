@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/teacher_service.dart';
-import '../../../core/services/storage_service.dart'; // ✅ إضافة: استيراد خدمة التخزين
+import '../../../core/services/storage_service.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../../core/constants/app_colors.dart';
 
@@ -36,7 +36,9 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
   File? _selectedFile;
   String? _selectedFileName;
   String? _uploadedFileUrl;
+  
   bool _isLoading = false;
+  double _uploadProgress = 0.0; // ✅ متغير لمتابعة نسبة الرفع
 
   bool get isEditing => widget.initialData != null;
 
@@ -74,10 +76,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     }
   }
 
-  // ✅ دالة لاستخراج ID الفيديو من الرابط
   String? _extractYoutubeId(String url) {
-    if (url.length == 11 && !url.contains('.')) return url; // هو أصلاً ID
-    
+    if (url.length == 11 && !url.contains('.')) return url;
     RegExp regExp = RegExp(
       r'.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*',
       caseSensitive: false,
@@ -87,17 +87,11 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     return (match != null && match.length >= 11) ? match : null;
   }
 
-  // ✅ إضافة: دالة لتحديث الكاش المحلي في Hive
   Future<void> _updateLocalCache() async {
     try {
-      // 1. جلب البيانات المحدثة بالكامل من السيرفر
       final updatedContent = await _teacherService.getMyContent();
-      
-      // 2. فتح الصندوق وتحديث البيانات
-      // ملاحظة: تأكد أن الاسم 'teacher_data' ومفتاح 'my_content' يطابق المستخدم في شاشة العرض
       var box = await StorageService.openBox('teacher_data');
       await box.put('my_content', updatedContent);
-      
       debugPrint("✅ Cache updated successfully in Hive");
     } catch (e) {
       debugPrint("⚠️ Failed to update local cache: $e");
@@ -114,15 +108,30 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _uploadProgress = 0.0; // تصفير العداد
+    });
 
     try {
       String? finalFileUrl = _uploadedFileUrl;
 
+      // 1. رفع الملف مع متابعة التقدم
       if (widget.contentType == ContentType.pdf && _selectedFile != null) {
-        finalFileUrl = await _teacherService.uploadFile(_selectedFile!);
+        finalFileUrl = await _teacherService.uploadFile(
+          _selectedFile!,
+          onProgress: (sent, total) {
+            setState(() {
+              _uploadProgress = sent / total;
+            });
+          },
+        );
       }
 
+      // بعد انتهاء الرفع، نصفر العداد ليظهر مؤشر "جاري الحفظ" العادي
+      setState(() => _uploadProgress = 0.0);
+
+      // 2. تحضير البيانات
       Map<String, dynamic> data = {
         'title': _titleController.text,
       };
@@ -145,11 +154,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
           break;
         case ContentType.video:
           data['chapter_id'] = widget.parentId;
-          
           String? videoId = _extractYoutubeId(_urlController.text);
-          if (videoId == null) {
-            throw Exception("رابط الفيديو غير صحيح");
-          }
+          if (videoId == null) throw Exception("رابط الفيديو غير صحيح");
           data['youtube_video_id'] = videoId;
           break;
         case ContentType.pdf:
@@ -167,14 +173,14 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.pdf: dbType = 'pdfs'; break;
       }
 
-      // 1. تنفيذ العملية في السيرفر
+      // 3. حفظ البيانات في السيرفر
       await _teacherService.manageContent(
         action: isEditing ? 'update' : 'create',
         type: dbType,
         data: data,
       );
 
-      // 2. ✅ تحديث الكاش المحلي فوراً
+      // 4. تحديث الكاش المحلي
       await _updateLocalCache();
 
       if (mounted) {
@@ -227,14 +233,12 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.pdf: dbType = 'pdfs'; break;
       }
 
-      // 1. حذف العنصر في السيرفر
       await _teacherService.manageContent(
         action: 'delete',
         type: dbType,
         data: {'id': widget.initialData!['id']},
       );
 
-      // 2. ✅ تحديث الكاش المحلي فوراً
       await _updateLocalCache();
 
       if (mounted) {
@@ -278,7 +282,38 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         ],
       ),
       body: _isLoading
-        ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+        ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // ✅ عرض مؤشر تقدم دائري مع النسبة المئوية إذا كان هناك رفع جاري
+                if (_uploadProgress > 0 && _uploadProgress < 1.0) ...[
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        value: _uploadProgress, 
+                        color: AppColors.accentYellow,
+                        strokeWidth: 6,
+                        backgroundColor: Colors.white10,
+                      ),
+                      Text(
+                        "${(_uploadProgress * 100).toInt()}%",
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text("Uploading File...", style: TextStyle(color: AppColors.textSecondary)),
+                ] else ...[
+                  // ✅ مؤشر تحميل عادي للعمليات الأخرى (الحفظ/الحذف)
+                  const CircularProgressIndicator(color: AppColors.accentYellow),
+                  const SizedBox(height: 16),
+                  const Text("Saving Data...", style: TextStyle(color: AppColors.textSecondary)),
+                ]
+              ],
+            ),
+          )
         : SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Form(
@@ -287,7 +322,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
 
-                  // --- الحقول المشتركة (العنوان) ---
                   CustomTextField(
                     label: "Title / Name",
                     controller: _titleController,
@@ -297,7 +331,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // ✅ الوصف يظهر فقط للكورس
                   if (widget.contentType == ContentType.course) ...[
                     CustomTextField(
                       label: "Description",
@@ -309,7 +342,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  // ✅ السعر يظهر للكورس والمادة (مشترك)
                   if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) ...[
                     CustomTextField(
                       label: "Price (EGP)",
@@ -321,7 +353,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  // --- حقول الفيديو ---
                   if (widget.contentType == ContentType.video) ...[
                     CustomTextField(
                       label: "YouTube Video Link",
@@ -334,7 +365,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                       style: TextStyle(fontSize: 11, color: AppColors.textSecondary.withOpacity(0.6))),
                   ],
 
-                  // --- حقول PDF ---
                   if (widget.contentType == ContentType.pdf) ...[
                     const SizedBox(height: 10),
                     Container(
@@ -365,7 +395,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
                   const SizedBox(height: 32),
 
-                  // زر الحفظ
                   ElevatedButton(
                     onPressed: _submit,
                     style: ElevatedButton.styleFrom(
@@ -380,7 +409,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                     ),
                   ),
 
-                  // زر حذف إضافي
                   if (isEditing) ...[
                     const SizedBox(height: 16),
                     TextButton.icon(
