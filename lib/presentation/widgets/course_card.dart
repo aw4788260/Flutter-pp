@@ -6,11 +6,15 @@ import '../../data/models/course_model.dart';
 class CourseCard extends StatelessWidget {
   final CourseModel course;
   final VoidCallback onTap;
+  final bool isTeacher; // ✅ متغير جديد لتحديد الصلاحية
+  final VoidCallback? onEdit; // ✅ دالة عند الضغط على زر التعديل
 
   const CourseCard({
     super.key,
     required this.course,
     required this.onTap,
+    this.isTeacher = false, // القيمة الافتراضية
+    this.onEdit,
   });
 
   @override
@@ -20,7 +24,7 @@ class CourseCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
-          color: AppColors.backgroundSecondary, //
+          color: AppColors.backgroundSecondary,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white.withOpacity(0.05)),
           boxShadow: [
@@ -34,7 +38,7 @@ class CourseCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. صورة الكورس (Placeholder)
+            // 1. صورة الكورس
             Container(
               height: 140,
               width: double.infinity,
@@ -44,10 +48,26 @@ class CourseCard extends StatelessWidget {
               ),
               child: Stack(
                 children: [
-                  const Center(
-                    child: Icon(LucideIcons.image, color: Colors.white10, size: 48),
-                  ),
-                  // Badge للمادة
+                  // صورة الخلفية (Placeholder أو صورة الشبكة)
+                  if (course.imageUrl != null && course.imageUrl!.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      child: Image.network(
+                        course.imageUrl!,
+                        width: double.infinity,
+                        height: 140,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => const Center(
+                          child: Icon(LucideIcons.image, color: Colors.white10, size: 48),
+                        ),
+                      ),
+                    )
+                  else
+                    const Center(
+                      child: Icon(LucideIcons.image, color: Colors.white10, size: 48),
+                    ),
+
+                  // Badge للمادة (يسار علوي)
                   Positioned(
                     top: 12,
                     left: 12,
@@ -58,7 +78,7 @@ class CourseCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        course.subject,
+                        course.subject.toUpperCase(),
                         style: const TextStyle(
                           color: AppColors.accentYellow,
                           fontSize: 10,
@@ -68,6 +88,27 @@ class CourseCard extends StatelessWidget {
                       ),
                     ),
                   ),
+
+                  // 🟢 زر التعديل (يمين علوي - يظهر للمعلم فقط)
+                  if (isTeacher)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: GestureDetector(
+                        onTap: onEdit, // استدعاء دالة التعديل
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentYellow, // لون مميز للتعديل
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 4),
+                            ],
+                          ),
+                          child: const Icon(LucideIcons.edit2, size: 16, color: Colors.black),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -111,9 +152,9 @@ class CourseCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        course.price,
+                        "${course.price} EGP", // إضافة العملة لزيادة الوضوح
                         style: const TextStyle(
-                          color: AppColors.textPrimary, 
+                          color: AppColors.textPrimary,
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
