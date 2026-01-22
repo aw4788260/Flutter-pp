@@ -34,6 +34,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
   Map<String, dynamic>? _content;
   bool _isTeacher = false;
   
+  // ⚠️ تأكد من أن الرابط صحيح ويطابق الباك إند الخاص بك
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   @override
@@ -224,14 +225,32 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
   }
 
   // --- قائمة الامتحانات ---
-  Widget _buildExamsList(List exams) {
-    if (exams.isEmpty) return _buildEmptyState(LucideIcons.fileCheck, "No exams available");
+  Widget _buildExamsList(List allExams) {
+    // ✅ [تعديل هام]: فلترة الامتحانات بناءً على وقت البداية
+    // إذا كان المعلم: يرى كل شيء
+    // إذا كان الطالب: يرى فقط الامتحانات التي حان وقتها
+    final visibleExams = allExams.where((exam) {
+       if (_isTeacher) return true; // المعلم يرى كل الامتحانات دائماً
+       
+       if (exam['start_time'] != null) {
+          final DateTime startTime = DateTime.parse(exam['start_time']).toLocal();
+          // إذا كان الوقت الحالي قبل وقت البداية -> أخفِ الامتحان
+          if (DateTime.now().isBefore(startTime)) {
+             return false; 
+          }
+       }
+       return true;
+    }).toList();
+
+    if (visibleExams.isEmpty) {
+       return _buildEmptyState(LucideIcons.fileCheck, "No exams available yet");
+    }
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      itemCount: exams.length,
+      itemCount: visibleExams.length,
       itemBuilder: (context, index) {
-        final exam = exams[index];
+        final exam = visibleExams[index];
         final bool isCompleted = exam['isCompleted'] ?? false;
 
         final Color statusColor = isCompleted ? AppColors.success : AppColors.error;
@@ -466,7 +485,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   IconButton(
                     icon: const Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
                     onPressed: () {
-                       Navigator.push(
+                        Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => ManageContentScreen(
