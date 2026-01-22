@@ -33,14 +33,15 @@ class TeacherService {
   // ==========================================================
   // 1️⃣ إدارة المحتوى (إضافة - تعديل - حذف)
   // ==========================================================
-  Future<void> manageContent({
+  // ✅ التعديل هنا: تغيير النوع إلى Future<dynamic> وإرجاع البيانات
+  Future<dynamic> manageContent({
     required String action, // 'create', 'update', 'delete'
     required String type,   // 'courses', 'subjects', 'chapters', 'videos', 'pdfs'
     required Map<String, dynamic> data,
   }) async {
     try {
       final options = await _getHeaders();
-      await _dio.post(
+      final response = await _dio.post(
         '$baseUrl/teacher/content',
         data: {
           'action': action,
@@ -49,6 +50,8 @@ class TeacherService {
         },
         options: options,
       );
+      // ✅ إرجاع البيانات لاستخدامها في التحديث المحلي
+      return response.data;
     } catch (e) {
       if (e is DioException) {
          throw Exception(e.response?.data['error'] ?? "حدث خطأ في الاتصال بالسيرفر");
@@ -161,7 +164,7 @@ class TeacherService {
   }
 
   // ==========================================================
-  // 4️⃣ إدارة فريق العمل (المشرفين) - ✅ تم إضافة الدوال المفقودة هنا
+  // 4️⃣ إدارة فريق العمل (المشرفين)
   // ==========================================================
   
   // (دالة قديمة للإضافة اليدوية - يمكن إبقاؤها أو إزالتها إذا لم تعد مستخدمة)
@@ -228,7 +231,6 @@ class TeacherService {
     final options = await _getHeaders();
     
     // ✅ التعديل الثاني: تغليف البيانات داخل { action: 'create', payload: ... }
-    // لكي يتوافق مع ما يتوقعه ملف pages/api/teacher/exams.js
     await _dio.post(
       '$baseUrl/teacher/exams',
       data: {
