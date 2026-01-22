@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
+import '../../core/services/storage_service.dart'; // 1. استدعاء خدمة التخزين للتحقق من الدور
 import 'course_details_screen.dart';
 import 'course_materials_screen.dart';
-import 'login_screen.dart'; // ✅ ضروري لتوجيه الضيف لتسجيل الدخول
+import 'login_screen.dart';
+import 'teacher/manage_content_screen.dart'; // 2. استدعاء شاشة إضافة المحتوى
 
 class MyCoursesScreen extends StatefulWidget {
   const MyCoursesScreen({super.key});
@@ -16,10 +18,28 @@ class MyCoursesScreen extends StatefulWidget {
 class _MyCoursesScreenState extends State<MyCoursesScreen> {
   String _view = 'library'; // library | market
   String _searchTerm = '';
+  bool _isTeacher = false; // متغير لتخزين هل المستخدم مدرس أم لا
+
+  @override
+  void initState() {
+    super.initState();
+    _checkUserRole(); // التحقق عند بدء الشاشة
+  }
+
+  // دالة التحقق من الصلاحية
+  Future<void> _checkUserRole() async {
+    var box = await StorageService.openBox('auth_box');
+    String? role = box.get('role');
+    if (mounted) {
+      setState(() {
+        _isTeacher = role == 'teacher';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 1. التحقق أولاً: هل المستخدم ضيف؟
+    // 1. التحقق أولاً: هل المستخدم ضيف؟
     if (AppState().isGuest) {
       // إذا كان المستخدم في وضع "المتجر"، نسمح له بالتصفح
       if (_view == 'market') {
@@ -36,14 +56,14 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     return _buildLibraryView();
   }
 
-  // ✅ 2. واجهة خاصة بالضيف عند محاولة دخول المكتبة
+  // --- 2. واجهة خاصة بالضيف عند محاولة دخول المكتبة ---
   Widget _buildGuestView() {
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: SafeArea(
         child: Column(
           children: [
-            // Header (مشابه للمكتبة للحفاظ على التناسق)
+            // Header
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
@@ -78,7 +98,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           Text(
                             "GUEST MODE",
                             style: TextStyle(
-                              color: AppColors.accentYellow, // لون مختلف للتمييز
+                              color: AppColors.accentYellow,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 2.0,
@@ -131,7 +151,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                     const SizedBox(height: 32),
                     ElevatedButton(
                       onPressed: () {
-                        // مسح حالة الضيف والعودة لشاشة الدخول
                         Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                           MaterialPageRoute(builder: (context) => const LoginScreen()),
                           (route) => false,
@@ -211,22 +230,58 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       ),
                     ],
                   ),
-                  GestureDetector(
-                    onTap: () => setState(() => _view = 'market'),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSecondary,
-                        borderRadius: BorderRadius.circular(50),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
-                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                  
+                  // الأزرار الجانبية (إضافة + المتجر)
+                  Row(
+                    children: [
+                      // 🟢 زر إضافة كورس (يظهر للمدرس فقط)
+                      if (_isTeacher) ...[
+                        GestureDetector(
+                          onTap: () {
+                            // الذهاب لشاشة إضافة الكورس
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ManageContentScreen(contentType: ContentType.course),
+                              ),
+                            ).then((value) {
+                                // إذا تم الحفظ بنجاح، قد نحتاج لتحديث القائمة (اختياري)
+                                if(value == true) setState((){});
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.accentYellow.withOpacity(0.1), // خلفية خفيفة مميزة
+                              borderRadius: BorderRadius.circular(50),
+                              border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
+                            ),
+                            child: const Icon(LucideIcons.plusSquare, color: AppColors.accentYellow, size: 22),
+                          ),
+                        ),
+                        const SizedBox(width: 12), // مسافة فاصلة بين الزرين
+                      ],
+
+                      // زر المتجر
+                      GestureDetector(
+                        onTap: () => setState(() => _view = 'market'),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSecondary,
+                            borderRadius: BorderRadius.circular(50),
+                            border: Border.all(color: Colors.white.withOpacity(0.05)),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                          ),
+                          child: const Icon(LucideIcons.shoppingCart, color: AppColors.accentYellow, size: 22),
+                        ),
                       ),
-                      child: const Icon(LucideIcons.shoppingCart, color: AppColors.accentYellow, size: 22),
-                    ),
+                    ],
                   ),
                 ],
               ),
             ),
+            
             Expanded(
               child: libraryItems.isEmpty
                   ? Center(
@@ -251,7 +306,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                         final String code = item['code'] ?? '';
                         final String id = item['id'].toString();
                         
-                        // تجهيز قائمة المواد لتمريرها للشاشة التالية لتسريع الفتح
                         List<dynamic>? subjectsToPass;
                         if (item['owned_subjects'] is List) {
                           subjectsToPass = item['owned_subjects'];
@@ -278,7 +332,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             decoration: BoxDecoration(
                               color: AppColors.backgroundSecondary,
                               borderRadius: BorderRadius.circular(24),
-                              // ✅ توحيد لون الإطار للجميع
                               border: Border.all(color: Colors.white.withOpacity(0.05)),
                               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
                             ),
@@ -291,7 +344,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                     boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                   ),
-                                  // ✅ توحيد الأيقونة واللون
                                   child: const Icon(
                                     LucideIcons.playCircle, 
                                     color: AppColors.accentOrange, 
