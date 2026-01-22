@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/teacher_service.dart';
-import '../../widgets/custom_text_field.dart';
+import '../../../core/constants/app_colors.dart'; 
 
 class ManageTeamScreen extends StatefulWidget {
   const ManageTeamScreen({Key? key}) : super(key: key);
@@ -10,141 +10,299 @@ class ManageTeamScreen extends StatefulWidget {
 }
 
 class _ManageTeamScreenState extends State<ManageTeamScreen> {
-  final _formKey = GlobalKey<FormState>();
   final TeacherService _teacherService = TeacherService();
+  final TextEditingController _searchController = TextEditingController();
 
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  List<dynamic> _teamMembers = []; // المشرفون الحاليون
+  List<dynamic> _searchResults = []; // نتائج البحث
+  bool _isLoadingTeam = true;
+  bool _isSearching = false;
 
-  bool _isLoading = false;
-  bool _isObscure = true; // لإخفاء كلمة المرور
+  @override
+  void initState() {
+    super.initState();
+    _loadTeam();
+  }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
+  // جلب المشرفين الحاليين
+  Future<void> _loadTeam() async {
+    setState(() => _isLoadingTeam = true);
     try {
-      await _teacherService.addModerator(
-        name: _nameController.text.trim(),
-        username: _usernameController.text.trim(),
-        phone: _phoneController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
-
+      final data = await _teacherService.getTeamMembers();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("تم إضافة المشرف بنجاح"), backgroundColor: Colors.green),
-        );
-        Navigator.pop(context); // الرجوع للخلف
+        setState(() {
+          _teamMembers = data;
+          _isLoadingTeam = false;
+        });
       }
     } catch (e) {
       if (mounted) {
-        // تحسين عرض الخطأ (مثل اسم المستخدم مكرر)
-        String errorMsg = e.toString();
-        if (errorMsg.contains("Username taken")) {
-          errorMsg = "اسم المستخدم هذا محجوز مسبقاً، اختر اسماً آخر.";
+        setState(() => _isLoadingTeam = false);
+        // يمكن إضافة تنبيه هنا في حال الفشل
+      }
+    }
+  }
+
+  // البحث عن طلاب لترقيتهم
+  Future<void> _searchStudents(String query) async {
+    if (query.trim().length < 3) {
+      setState(() => _searchResults = []);
+      return;
+    }
+
+    setState(() => _isSearching = true);
+    try {
+      final results = await _teacherService.searchStudentsForTeam(query.trim());
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isSearching = false);
+    }
+  }
+
+  // تنفيذ الترقية أو الحذف
+  Future<void> _handleAction(String userId, String action, String confirmText) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(action == 'promote' ? "ترقية الطالب" : "حذف المشرف"),
+        content: Text(confirmText),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("إلغاء")),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: action == 'promote' ? Colors.green : Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("تأكيد"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // إظهار مؤشر تحميل
+    showDialog(
+      context: context, 
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator())
+    );
+
+    try {
+      await _teacherService.manageTeamMember(action: action, userId: userId);
+      
+      if (mounted) {
+        Navigator.pop(context); // إغلاق اللودينج
+        
+        // تنظيف وإعادة تحميل البيانات
+        if (action == 'promote') {
+           _searchController.clear();
+           setState(() => _searchResults = []);
         }
+        await _loadTeam(); // تحديث قائمة الفريق
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("حدث خطأ: $errorMsg"), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(action == 'promote' ? "تمت الترقية ومنح الصلاحيات بنجاح" : "تم حذف المشرف بنجاح"),
+            backgroundColor: Colors.green,
+          ),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // إغلاق اللودينج
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("حدث خطأ: $e"), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("إضافة مشرف جديد")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // أيقونة توضيحية
-              const Icon(Icons.group_add, size: 60, color: Colors.blueGrey),
-              const SizedBox(height: 10),
-              const Text(
-                "أضف مساعدين لإدارة الطلبات والطلاب.\nالمشرف يملك نفس صلاحياتك ما عدا إدارة المشرفين.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 30),
-
-              // حقول الإدخال
-              // ✅ تعديل: إضافة label وتغيير prefixIcon
-              CustomTextField(
-                label: "الاسم الكامل",
-                controller: _nameController,
-                hintText: "أدخل الاسم الكامل",
-                prefixIcon: Icons.person,
-                validator: (val) => val!.length < 3 ? "الاسم قصير جداً" : null,
-              ),
-              const SizedBox(height: 15),
-              
-              // ✅ تعديل: إضافة label وتغيير prefixIcon
-              CustomTextField(
-                label: "رقم الهاتف",
-                controller: _phoneController,
-                hintText: "أدخل رقم الهاتف",
-                prefixIcon: Icons.phone,
-                keyboardType: TextInputType.phone,
-                validator: (val) => val!.length < 10 ? "رقم الهاتف غير صحيح" : null,
-              ),
-              const SizedBox(height: 15),
-
-              // ✅ تعديل: إضافة label وتغيير prefixIcon
-              CustomTextField(
-                label: "اسم المستخدم",
-                controller: _usernameController,
-                hintText: "اسم المستخدم (للدخول)",
-                prefixIcon: Icons.alternate_email,
-                validator: (val) => val!.length < 4 ? "يجب أن يكون 4 أحرف على الأقل" : null,
-              ),
-              const SizedBox(height: 15),
-
-              // حقل كلمة المرور مع زر الإظهار
-              TextFormField(
-                controller: _passwordController,
-                obscureText: _isObscure,
-                decoration: InputDecoration(
-                  labelText: "كلمة المرور",
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    icon: Icon(_isObscure ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => _isObscure = !_isObscure),
-                  ),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text("إدارة فريق العمل"),
+        elevation: 0,
+      ),
+      body: Column(
+        children: [
+          // -----------------------------------------------------
+          // 1. قسم البحث والترقية
+          // -----------------------------------------------------
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSecondary.withOpacity(0.1), // لون خلفية خفيف
+              border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "إضافة مشرف جديد", 
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary)
                 ),
-                validator: (val) => val!.length < 6 ? "كلمة المرور ضعيفة (6 أحرف على الأقل)" : null,
-              ),
-
-              const SizedBox(height: 40),
-
-              // زر الإضافة
-              _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      onPressed: _submit,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.blue[800],
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: const Text(
-                        "إضافة المشرف",
-                        style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-            ],
+                const SizedBox(height: 5),
+                const Text(
+                  "ابحث عن طالب لترقيته ومنحه صلاحيات كاملة تلقائياً", 
+                  style: TextStyle(fontSize: 12, color: Colors.grey)
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: "ابحث بالاسم أو اسم المستخدم...",
+                    prefixIcon: const Icon(Icons.person_search, color: Colors.grey),
+                    suffixIcon: _isSearching 
+                        ? const Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)) 
+                        : (_searchController.text.isNotEmpty 
+                            ? IconButton(icon: const Icon(Icons.clear), onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchResults = []);
+                              }) 
+                            : null),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  ),
+                  onChanged: (val) => _searchStudents(val),
+                ),
+              ],
+            ),
           ),
-        ),
+
+          // -----------------------------------------------------
+          // 2. قائمة نتائج البحث (تظهر فقط عند البحث)
+          // -----------------------------------------------------
+          if (_searchResults.isNotEmpty)
+            Container(
+              constraints: const BoxConstraints(maxHeight: 250),
+              color: Colors.white,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 10, 16, 5),
+                    child: Text("نتائج البحث:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                  ),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: _searchResults.length,
+                      separatorBuilder: (ctx, i) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final student = _searchResults[index];
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.blue.shade100,
+                            child: const Icon(Icons.person_outline, color: Colors.blue),
+                          ),
+                          title: Text(student['first_name'] ?? "No Name", style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text("@${student['username']} • ${student['phone']}"),
+                          trailing: ElevatedButton(
+                            onPressed: () => _handleAction(
+                              student['id'].toString(), 
+                              'promote', 
+                              "سيتم ترقية الطالب '${student['first_name']}' ليصبح مشرفاً وسيتم منحه صلاحية الوصول لجميع كورساتك الحالية.\n\nهل أنت متأكد؟"
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green, 
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              minimumSize: const Size(60, 32)
+                            ),
+                            child: const Text("ترقية"),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const Divider(thickness: 5, color: Color(0xFFF0F0F0)), // فاصل سميك
+                ],
+              ),
+            ),
+
+          // -----------------------------------------------------
+          // 3. قائمة المشرفين الحاليين
+          // -----------------------------------------------------
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.shield_outlined, color: AppColors.textPrimary, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  "المشرفون الحاليون (${_teamMembers.length})", 
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.textPrimary)
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: _isLoadingTeam
+                ? const Center(child: CircularProgressIndicator())
+                : _teamMembers.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.group_off_outlined, size: 60, color: Colors.grey.shade300),
+                            const SizedBox(height: 10),
+                            const Text("لا يوجد مشرفين حالياً", style: TextStyle(color: Colors.grey)),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(10),
+                        itemCount: _teamMembers.length,
+                        itemBuilder: (context, index) {
+                          final member = _teamMembers[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              leading: const CircleAvatar(
+                                radius: 25,
+                                backgroundColor: AppColors.textPrimary,
+                                child: Icon(Icons.security, color: AppColors.accentYellow),
+                              ),
+                              title: Text(
+                                member['first_name'] ?? "Unknown",
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  "@${member['username']} • ${member['phone']}",
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                                tooltip: "إلغاء الإشراف",
+                                onPressed: () => _handleAction(
+                                  member['id'].toString(), 
+                                  'demote', 
+                                  "سيتم سحب صلاحيات الإشراف من '${member['first_name']}' وإعادته كطالب عادي.\n\nلن يتمكن من إدارة المحتوى بعد الآن."
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
       ),
     );
   }
