@@ -8,18 +8,19 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/constants/app_colors.dart';
 import 'exam_result_screen.dart';
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
 
 class ExamViewScreen extends StatefulWidget {
   final String examId;
   final String examTitle;
   final bool isCompleted;
+  final int durationMinutes; // ✅ 1. إضافة مدة الامتحان كمتغير مطلوب
 
   const ExamViewScreen({
     super.key,
     required this.examId,
     required this.examTitle,
     required this.isCompleted,
+    required this.durationMinutes, // ✅ مطلوب عند الاستدعاء
   });
 
   @override
@@ -30,16 +31,18 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
   bool _loading = true;
   List<dynamic> _questions = [];
   
+  // متغير لتحديد ما إذا كنا في وضع "نموذج الإجابة"
+  bool _isModelAnswerMode = false;
+
   int currentIdx = 0;
-  Map<String, int> userAnswers = {}; // key: questionId, value: optionId
+  Map<String, int> userAnswers = {}; 
   int timeLeft = 0;
   Timer? _timer;
   String? _attemptId;
   
-  // متغيرات الهيدرز
   String? _userId;
   String? _deviceId;
-  String? _token; // ✅ التوكن ضروري للصور والطلبات
+  String? _token; 
   final String _appSecret = const String.fromEnvironment('APP_SECRET');
 
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
@@ -56,15 +59,14 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       var box = await StorageService.openBox('auth_box');
       _userId = box.get('user_id');
       _deviceId = box.get('device_id');
-      _token = box.get('jwt_token'); // ✅ جلب التوكن
+      _token = box.get('jwt_token');
       final name = box.get('first_name') ?? 'Student';
 
-      // 1. بدء المحاولة
       final res = await Dio().post(
         '$_baseUrl/api/exams/start-attempt',
         data: {'examId': widget.examId, 'studentName': name},
         options: Options(headers: {
-          'Authorization': 'Bearer $_token', // ✅ إرسال التوكن
+          'Authorization': 'Bearer $_token',
           'x-device-id': _deviceId,
           'x-app-secret': _appSecret,
         }),
@@ -73,24 +75,34 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       if (mounted && res.statusCode == 200) {
         final data = res.data;
         
-        // افتراض مدة 30 دقيقة إذا لم تأتِ من السيرفر (يمكن تحسينه بجلب تفاصيل الامتحان)
-        int durationMinutes = 30; 
-        
-        setState(() {
-          _questions = data['questions'] ?? [];
-          _attemptId = data['attemptId'].toString();
-          timeLeft = durationMinutes * 60;
-          _loading = false;
-        });
-        
-        _startTimer();
+        // ✅ 2. التحقق من وضع نموذج الإجابة (إذا انتهى الوقت)
+        if (data['mode'] == 'model_answer') {
+           setState(() {
+             _isModelAnswerMode = true; // تفعيل وضع العرض فقط
+             _questions = data['questions'] ?? [];
+             timeLeft = 0; // لا يوجد وقت
+             _loading = false;
+           });
+           // ⚠️ لا نبدأ المؤقت في هذا الوضع
+        } else {
+           // الوضع الطبيعي (بدء امتحان)
+           setState(() {
+             _isModelAnswerMode = false;
+             _questions = data['questions'] ?? [];
+             _attemptId = data['attemptId'].toString();
+             // ✅ استخدام المدة القادمة من الصفحة السابقة بدلاً من 30 دقيقة
+             timeLeft = widget.durationMinutes * 60; 
+             _loading = false;
+           });
+           _startTimer();
+        }
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Start Exam Failed');
       if (mounted) {
         String msg = "Failed to start exam";
         if (e is DioException) {
-           if (e.response?.statusCode == 403) msg = "Access Denied";
+           if (e.response?.statusCode == 403) msg = e.response?.data['error'] ?? "Access Denied"; // رسالة الخطأ من السيرفر
            if (e.response?.statusCode == 409) msg = "Exam already completed";
         }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppColors.error));
@@ -117,12 +129,19 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
   }
 
   String _formatTime(int seconds) {
+    if (seconds <= 0) return "0:00";
     final m = (seconds / 60).floor();
     final s = seconds % 60;
     return "$m:${s.toString().padLeft(2, '0')}";
   }
 
   Future<void> _submitExam({bool autoSubmit = false}) async {
+    // ⚠️ في وضع نموذج الإجابة، هذا الزر يعمل كزر خروج فقط
+    if (_isModelAnswerMode) {
+      Navigator.pop(context);
+      return;
+    }
+
     _timer?.cancel();
     showDialog(
       context: context, 
@@ -131,7 +150,6 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     );
 
     try {
-      // تحويل الإجابات
       Map<String, int> finalAnswers = {};
       userAnswers.forEach((k, v) => finalAnswers[k] = v);
 
@@ -139,16 +157,14 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
         '$_baseUrl/api/exams/submit-attempt',
         data: {'attemptId': _attemptId, 'answers': finalAnswers},
         options: Options(headers: {
-          'Authorization': 'Bearer $_token', // ✅ إرسال التوكن
+          'Authorization': 'Bearer $_token',
           'x-device-id': _deviceId,
           'x-app-secret': _appSecret,
         }),
       );
 
       if (mounted) {
-        Navigator.pop(context); // إغلاق اللودينج
-        
-        // التوجيه لصفحة النتيجة
+        Navigator.pop(context); 
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -189,21 +205,30 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text("Q ${currentIdx + 1}/${_questions.length}", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: timeLeft < 60 ? AppColors.error.withOpacity(0.2) : AppColors.backgroundSecondary,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: timeLeft < 60 ? AppColors.error : Colors.white10),
+                  
+                  // ✅ إخفاء المؤقت أو تغييره في وضع نموذج الإجابة
+                  if (!_isModelAnswerMode)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: timeLeft < 60 ? AppColors.error.withOpacity(0.2) : AppColors.backgroundSecondary,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: timeLeft < 60 ? AppColors.error : Colors.white10),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.clock, size: 14, color: timeLeft < 60 ? AppColors.error : AppColors.accentYellow),
+                          const SizedBox(width: 6),
+                          Text(_formatTime(timeLeft), style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, color: timeLeft < 60 ? AppColors.error : Colors.white)),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(color: AppColors.accentYellow.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                      child: const Text("MODEL ANSWER", style: TextStyle(color: AppColors.accentYellow, fontSize: 10, fontWeight: FontWeight.bold)),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.clock, size: 14, color: timeLeft < 60 ? AppColors.error : AppColors.accentYellow),
-                        const SizedBox(width: 6),
-                        Text(_formatTime(timeLeft), style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, color: timeLeft < 60 ? AppColors.error : Colors.white)),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -216,7 +241,6 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ✅ عرض الصورة مع الهيدرز الصحيحة (Authorization)
                     if (imageFileId != null && imageFileId.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(bottom: 24),
@@ -231,7 +255,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                           child: CachedNetworkImage(
                             imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
                             httpHeaders: {
-                              'Authorization': 'Bearer $_token', // ✅ إضافة التوكن
+                              'Authorization': 'Bearer $_token',
                               'x-device-id': _deviceId ?? '',
                               'x-app-secret': _appSecret,
                             },
@@ -252,20 +276,47 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                     // الخيارات
                     ...options.map((opt) {
                       final int optId = opt['id'];
-                      final bool isSelected = userAnswers[questionId] == optId;
+                      
+                      // ✅ منطق الألوان الجديد
+                      bool isSelected = false;
+                      bool isCorrectModel = false;
+
+                      if (_isModelAnswerMode) {
+                        // في وضع الإجابة النموذجية، نلون الإجابة الصحيحة بالأخضر
+                        isCorrectModel = opt['is_correct'] == true;
+                      } else {
+                        // في الوضع العادي، نلون ما اختاره الطالب
+                        isSelected = userAnswers[questionId] == optId;
+                      }
+                      
+                      // تحديد الألوان بناءً على الوضع
+                      Color bgColor = AppColors.backgroundSecondary;
+                      Color borderColor = Colors.white.withOpacity(0.05);
+
+                      if (_isModelAnswerMode && isCorrectModel) {
+                         bgColor = AppColors.success.withOpacity(0.2); // خلفية خضراء للصحيح
+                         borderColor = AppColors.success;
+                      } else if (isSelected) {
+                         bgColor = AppColors.accentYellow.withOpacity(0.1);
+                         borderColor = AppColors.accentYellow;
+                      }
                       
                       return GestureDetector(
-                        onTap: () => setState(() => userAnswers[questionId] = optId),
+                        onTap: () {
+                          // ⛔ منع التعديل في وضع نموذج الإجابة
+                          if (_isModelAnswerMode) return;
+                          setState(() => userAnswers[questionId] = optId);
+                        },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: isSelected ? AppColors.accentYellow.withOpacity(0.1) : AppColors.backgroundSecondary,
+                            color: bgColor,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: isSelected ? AppColors.accentYellow : Colors.white.withOpacity(0.05),
-                              width: isSelected ? 1.5 : 1,
+                              color: borderColor,
+                              width: (isSelected || isCorrectModel) ? 1.5 : 1,
                             ),
                           ),
                           child: Row(
@@ -274,10 +325,19 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                                 width: 24, height: 24,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: isSelected ? AppColors.accentYellow : Colors.white24, width: 2),
-                                  color: isSelected ? AppColors.accentYellow : Colors.transparent,
+                                  border: Border.all(
+                                    color: (isSelected || isCorrectModel) 
+                                        ? (_isModelAnswerMode && isCorrectModel ? AppColors.success : AppColors.accentYellow) 
+                                        : Colors.white24, 
+                                    width: 2
+                                  ),
+                                  color: (isSelected || isCorrectModel) 
+                                      ? (_isModelAnswerMode && isCorrectModel ? AppColors.success : AppColors.accentYellow) 
+                                      : Colors.transparent,
                                 ),
-                                child: isSelected ? const Icon(Icons.check, size: 16, color: AppColors.backgroundPrimary) : null,
+                                child: (isSelected || isCorrectModel) 
+                                    ? const Icon(Icons.check, size: 16, color: AppColors.backgroundPrimary) 
+                                    : null,
                               ),
                               const SizedBox(width: 16),
                               Expanded(
@@ -285,8 +345,8 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                                   opt['option_text'],
                                   style: TextStyle(
                                     fontSize: 14,
-                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                    color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
+                                    fontWeight: (isSelected || isCorrectModel) ? FontWeight.bold : FontWeight.normal,
+                                    color: (isSelected || isCorrectModel) ? AppColors.textPrimary : AppColors.textSecondary,
                                   ),
                                 ),
                               ),
@@ -320,13 +380,28 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                     child: ElevatedButton(
                       onPressed: () {
                         if (currentIdx == _questions.length - 1) {
-                          _submitExam();
+                           // إذا كان نموذج إجابة، فالزر يغلق الشاشة، وإلا يرسل الامتحان
+                           if (_isModelAnswerMode) {
+                             Navigator.pop(context);
+                           } else {
+                             _submitExam();
+                           }
                         } else {
                           setState(() => currentIdx++);
                         }
                       },
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow, foregroundColor: AppColors.backgroundPrimary, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                      child: Text(currentIdx == _questions.length - 1 ? "FINISH" : "NEXT", style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isModelAnswerMode ? Colors.grey[800] : AppColors.accentYellow, 
+                        foregroundColor: _isModelAnswerMode ? Colors.white : AppColors.backgroundPrimary, 
+                        padding: const EdgeInsets.symmetric(vertical: 16), 
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                      ),
+                      child: Text(
+                        currentIdx == _questions.length - 1 
+                            ? (_isModelAnswerMode ? "CLOSE" : "FINISH") // ✅ تغيير النص حسب الوضع
+                            : "NEXT", 
+                        style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0)
+                      ),
                     ),
                   ),
                 ],
