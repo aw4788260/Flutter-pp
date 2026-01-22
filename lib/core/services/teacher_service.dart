@@ -149,6 +149,17 @@ class TeacherService {
     );
   }
 
+  // ✅ [إضافة جديدة]: جلب محتوى المعلم (كورسات ومواد) لاستخدامه في القوائم المنسدلة
+  Future<List<dynamic>> getMyContent() async {
+    final options = await _getHeaders();
+    final response = await _dio.get(
+      '$baseUrl/teacher/students',
+      queryParameters: {'mode': 'my_content'},
+      options: options,
+    );
+    return response.data;
+  }
+
   // ==========================================================
   // 4️⃣ إدارة فريق العمل (المشرفين)
   // ==========================================================
