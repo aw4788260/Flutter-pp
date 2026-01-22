@@ -71,7 +71,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     }
   }
 
-  // دالة سحب أو منح الصلاحية
+  // دالة سحب أو منح الصلاحية (فردي)
   Future<void> _toggleAccess(String type, String itemId, bool allow) async {
     if (_studentData == null) return;
 
@@ -124,7 +124,46 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     }
   }
 
-  // ✅ النافذة الذكية لمنح الصلاحيات (مع استثناء المملوك مسبقاً)
+  // دالة المنح الجماعي
+  Future<void> _grantBulkAccess(Set<String> courses, Set<String> subjects) async {
+    if (_studentData == null) return;
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      int successCount = 0;
+
+      // منح الكورسات
+      for (var courseId in courses) {
+        await _teacherService.toggleAccess(_studentData!['id'].toString(), 'course', courseId, true);
+        successCount++;
+      }
+
+      // منح المواد
+      for (var subjectId in subjects) {
+        await _teacherService.toggleAccess(_studentData!['id'].toString(), 'subject', subjectId, true);
+        successCount++;
+      }
+
+      await _search();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("تم منح $successCount صلاحيات بنجاح"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("حدث خطأ أثناء المنح: $e"), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // ✅ النافذة الجديدة: عرض شجري مع Checkboxes
   void _showAddAccessDialog() {
     // التأكد من تحميل البيانات أولاً
     if (_myContent.isEmpty) {
@@ -146,162 +185,114 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
         .map((e) => e['id'].toString())
         .toSet();
 
-    String? selectedCourseId;
-    String? selectedSubjectId;
-    bool isFullCourse = true; // الحالة الافتراضية: كورس كامل
+    // مجموعات لتخزين الاختيارات الجديدة
+    Set<String> selectedCourses = {};
+    Set<String> selectedSubjects = {};
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
-          
-          // --- فلترة الكورسات المتاحة للإضافة ككورس كامل ---
-          final availableCoursesForFull = _myContent
-              .where((c) => !ownedCourseIds.contains(c['id'].toString()))
-              .toList();
-          
-          // --- فلترة الكورسات لاستخدامها عند اختيار "مادة" ---
-          // نعرض كل الكورسات للبحث بداخلها عن مواد، أو يمكن فلترتها أيضاً إذا كان الكورس مملوكاً بالكامل (اختياري)
-          final allMyCourses = _myContent; 
-
-          // --- العثور على الكورس المختار حالياً لجلب مواده ---
-          final selectedCourseData = _myContent.firstWhere(
-              (c) => c['id'].toString() == selectedCourseId, 
-              orElse: () => null
-          );
-          
-          // --- فلترة المواد داخل الكورس المختار (استبعاد المواد المملوكة) ---
-          final List availableSubjects = selectedCourseData != null 
-              ? (selectedCourseData['subjects'] as List)
-                  .where((s) => !ownedSubjectIds.contains(s['id'].toString()))
-                  .toList()
-              : [];
-
           return AlertDialog(
-            title: const Text("منح صلاحية جديدة"),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. اختيار النوع (كورس كامل / مادة)
-                Row(
-                  children: [
-                    Expanded(
-                      child: RadioListTile<bool>(
-                        title: const Text("كورس كامل", style: TextStyle(fontSize: 13)),
-                        value: true,
-                        groupValue: isFullCourse,
-                        onChanged: (val) => setDialogState(() { 
-                          isFullCourse = val!; 
-                          selectedCourseId = null; // إعادة تعيين الاختيار
-                          selectedSubjectId = null;
-                        }),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                    Expanded(
-                      child: RadioListTile<bool>(
-                        title: const Text("مادة محددة", style: TextStyle(fontSize: 13)),
-                        value: false,
-                        groupValue: isFullCourse,
-                        onChanged: (val) => setDialogState(() { 
-                          isFullCourse = val!;
-                          selectedCourseId = null;
-                          selectedSubjectId = null;
-                        }),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(),
-
-                // 2. القوائم المنسدلة بناءً على النوع
-                if (isFullCourse) ...[
-                  // --- وضع الكورس الكامل ---
-                  if (availableCoursesForFull.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Text("الطالب يمتلك جميع كورساتك بالفعل.", style: TextStyle(color: Colors.grey)),
-                    )
-                  else
-                    DropdownButtonFormField<String>(
-                      value: selectedCourseId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: "اختر الكورس", 
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 15)
-                      ),
-                      items: availableCoursesForFull.map<DropdownMenuItem<String>>((course) {
-                        return DropdownMenuItem(value: course['id'].toString(), child: Text(course['title']));
-                      }).toList(),
-                      onChanged: (val) => setDialogState(() => selectedCourseId = val),
-                    ),
-                ] else ...[
-                  // --- وضع المادة المحددة ---
-                  // قائمة الكورسات أولاً
-                  DropdownButtonFormField<String>(
-                    value: selectedCourseId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: "اختر الكورس (لعرض مواده)", 
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 15)
-                    ),
-                    items: allMyCourses.map<DropdownMenuItem<String>>((course) {
-                      return DropdownMenuItem(value: course['id'].toString(), child: Text(course['title']));
-                    }).toList(),
-                    onChanged: (val) {
-                      setDialogState(() {
-                        selectedCourseId = val;
-                        selectedSubjectId = null; // تصفير المادة عند تغيير الكورس
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 15),
+            title: const Text("اختر الصلاحيات لمنحها"),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _myContent.length,
+                itemBuilder: (context, index) {
+                  final course = _myContent[index];
+                  final String courseId = course['id'].toString();
                   
-                  // قائمة المواد (تظهر فقط بعد اختيار الكورس)
-                  if (selectedCourseId != null)
-                    if (availableSubjects.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text("الطالب يمتلك جميع مواد هذا الكورس.", style: TextStyle(color: Colors.grey)),
-                      )
-                    else
-                      DropdownButtonFormField<String>(
-                        value: selectedSubjectId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: "اختر المادة", 
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 15)
-                        ),
-                        items: availableSubjects.map<DropdownMenuItem<String>>((subject) {
-                          return DropdownMenuItem(value: subject['id'].toString(), child: Text(subject['title']));
-                        }).toList(),
-                        onChanged: (val) => setDialogState(() => selectedSubjectId = val),
+                  // إذا كان الطالب يمتلك الكورس بالفعل، لا نعرضه نهائياً في القائمة
+                  if (ownedCourseIds.contains(courseId)) {
+                    return const SizedBox.shrink();
+                  }
+
+                  // تصفية المواد داخل الكورس: نعرض فقط المواد التي لا يملكها الطالب
+                  final List subjects = (course['subjects'] as List? ?? [])
+                      .where((s) => !ownedSubjectIds.contains(s['id'].toString()))
+                      .toList();
+
+                  final bool isCourseSelected = selectedCourses.contains(courseId);
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    child: ExpansionTile(
+                      // الكورس الرئيسي
+                      title: Row(
+                        children: [
+                          Checkbox(
+                            value: isCourseSelected,
+                            onChanged: (val) {
+                              setDialogState(() {
+                                if (val == true) {
+                                  selectedCourses.add(courseId);
+                                  // عند اختيار الكورس، نلغي اختيار أي مواد تابعة له لتجنب التكرار
+                                  for (var s in subjects) {
+                                    selectedSubjects.remove(s['id'].toString());
+                                  }
+                                } else {
+                                  selectedCourses.remove(courseId);
+                                }
+                              });
+                            },
+                          ),
+                          Expanded(
+                            child: Text(
+                              course['title'], 
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
                       ),
-                ]
-              ],
+                      // المواد الفرعية
+                      children: subjects.map<Widget>((subject) {
+                        final String subjectId = subject['id'].toString();
+                        final bool isSubjectSelected = selectedSubjects.contains(subjectId);
+
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 40.0), // إزاحة لليمين
+                          child: CheckboxListTile(
+                            title: Text(subject['title']),
+                            // إذا تم اختيار الكورس، تظهر المادة وكأنها مختارة (أو معطلة)
+                            value: isCourseSelected ? true : isSubjectSelected,
+                            // نعطل الاختيار إذا كان الكورس الرئيسي مختاراً
+                            onChanged: isCourseSelected 
+                                ? null 
+                                : (val) {
+                                    setDialogState(() {
+                                      if (val == true) {
+                                        selectedSubjects.add(subjectId);
+                                      } else {
+                                        selectedSubjects.remove(subjectId);
+                                      }
+                                    });
+                                  },
+                            activeColor: isCourseSelected ? Colors.grey : Theme.of(context).primaryColor,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            dense: true,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("إلغاء")),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx), 
+                child: const Text("إلغاء")
+              ),
               ElevatedButton(
-                onPressed: () {
-                  if (isFullCourse) {
-                    if (selectedCourseId != null) {
-                      Navigator.pop(ctx);
-                      _toggleAccess('course', selectedCourseId!, true);
-                    }
-                  } else {
-                    if (selectedSubjectId != null) {
-                      Navigator.pop(ctx);
-                      _toggleAccess('subject', selectedSubjectId!, true);
-                    }
-                  }
-                },
-                child: const Text("منح"),
+                onPressed: (selectedCourses.isEmpty && selectedSubjects.isEmpty)
+                    ? null // تعطيل الزر إذا لم يتم اختيار شيء
+                    : () {
+                        Navigator.pop(ctx);
+                        _grantBulkAccess(selectedCourses, selectedSubjects);
+                      },
+                child: Text("منح (${selectedCourses.length + selectedSubjects.length})"),
               ),
             ],
           );
@@ -391,8 +382,8 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                         const Text("الصلاحيات الحالية:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         TextButton.icon(
                           onPressed: _showAddAccessDialog, // ✅ استدعاء النافذة الجديدة
-                          icon: const Icon(Icons.add_circle, size: 20),
-                          label: const Text("منح صلاحية"),
+                          icon: const Icon(Icons.playlist_add_check, size: 24),
+                          label: const Text("إدارة الصلاحيات"),
                         ),
                       ],
                     ),
@@ -415,12 +406,10 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                               color: isCourse ? Colors.orange : Colors.purple,
                             ),
                             title: Text(item['title'] ?? "غير معرّف"),
-                            // ✅ عرض تفاصيل إضافية (مثل اسم الكورس للمادة) إذا كانت متوفرة
                             subtitle: Text(item['subtitle'] ?? (isCourse ? "كورس كامل" : "مادة فردية")),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_forever, color: Colors.red),
                               tooltip: "سحب الصلاحية",
-                              // ✅ استدعاء دالة السحب بالبيانات الصحيحة
                               onPressed: () => _toggleAccess(
                                 item['type'], 
                                 item['id'].toString(), 
