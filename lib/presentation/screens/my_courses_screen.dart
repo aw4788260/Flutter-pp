@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../core/services/storage_service.dart'; // 1. استدعاء خدمة التخزين للتحقق من الدور
+import '../../core/services/storage_service.dart';
+import '../../data/models/course_model.dart'; // ✅ استيراد مودل الكورس
+import '../widgets/course_card.dart'; // ✅ استيراد بطاقة الكورس الموحدة
 import 'course_details_screen.dart';
 import 'course_materials_screen.dart';
 import 'login_screen.dart';
-import 'teacher/manage_content_screen.dart'; // 2. استدعاء شاشة إضافة المحتوى
+import 'teacher/manage_content_screen.dart';
 
 class MyCoursesScreen extends StatefulWidget {
   const MyCoursesScreen({super.key});
@@ -301,93 +303,68 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       itemBuilder: (context, index) {
                         final item = libraryItems[index];
                         
-                        final String title = item['title'] ?? 'Unknown';
-                        final String instructor = item['instructor'] ?? 'Instructor';
-                        // ✅ تحويل الرقم إلى نص هنا أيضاً
-final String code = item['code']?.toString() ?? '';
-                        final String id = item['id'].toString();
-                        
+                        // ✅ تحويل البيانات الخام (Map) إلى كائن CourseModel
+                        // هذا ضروري لأن CourseCard تتوقع كائناً من نوع CourseModel
+                        final course = CourseModel(
+                          id: item['id'].toString(),
+                          title: item['title'] ?? 'Unknown',
+                          code: item['code']?.toString() ?? '',
+                          instructor: item['instructor'] ?? 'Instructor',
+                          price: double.tryParse(item['price']?.toString() ?? '0') ?? 0.0,
+                          imageUrl: item['image_url'], // تأكد من أن اسم الحقل مطابق لما يأتي من الـ API
+                          description: item['description'] ?? '',
+                          subject: 'General', 
+                        );
+
+                        // تجهيز المواد الفرعية (إن وجدت)
                         List<dynamic>? subjectsToPass;
                         if (item['owned_subjects'] is List) {
                           subjectsToPass = item['owned_subjects'];
                         }
 
-                        return GestureDetector(
+                        // ✅ استخدام CourseCard بدلاً من التصميم اليدوي
+                        return CourseCard(
+                          course: course,
+                          isTeacher: _isTeacher, // تمرير حالة المعلم لإظهار زر التعديل
                           onTap: () {
+                            // الذهاب لتفاصيل الكورس
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => CourseMaterialsScreen(
-                                  courseId: id,
-                                  courseTitle: title,
-                                  courseCode: code,
-                                  instructorName: instructor, 
+                                  courseId: course.id,
+                                  courseTitle: course.title,
+                                  courseCode: course.code,
+                                  instructorName: course.instructor, 
                                   preLoadedSubjects: subjectsToPass, 
                                 ),
                               ),
                             );
                           },
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 48, height: 48,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.backgroundPrimary,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                                  ),
-                                  child: const Icon(
-                                    LucideIcons.playCircle, 
-                                    color: AppColors.accentOrange, 
-                                    size: 24
-                                  ),
+                          onEdit: () {
+                            // ✅ الانتقال لشاشة تعديل المحتوى عند الضغط على زر التعديل
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ManageContentScreen(
+                                  contentType: ContentType.course,
+                                  initialData: {
+                                    'id': course.id,
+                                    'title': course.title,
+                                    'description': course.description,
+                                    'price': course.price,
+                                    'code': course.code,
+                                    // يمكنك إضافة المزيد من الحقول هنا إذا لزم الأمر
+                                  },
                                 ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title.toUpperCase(),
-                                        style: const TextStyle(
-                                          color: AppColors.textPrimary,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: -0.5,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            instructor.toUpperCase(),
-                                            style: TextStyle(
-                                              color: AppColors.textSecondary.withOpacity(0.7),
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: 1.5,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(LucideIcons.chevronRight, color: AppColors.textSecondary.withOpacity(0.6), size: 20),
-                              ],
-                            ),
-                          ),
+                              ),
+                            ).then((value) {
+                              // إذا تم التعديل بنجاح، نقوم بتحديث الواجهة
+                              if(value == true) {
+                                setState(() {}); 
+                              }
+                            });
+                          },
                         );
                       },
                     ),
@@ -484,6 +461,8 @@ final String code = item['code']?.toString() ?? '';
                 itemBuilder: (context, index) {
                   final course = availableCourses[index];
 
+                  // هنا أيضاً نستخدم CourseCard للمتجر، ولكن بدون خاصية التعديل للمدرس لأن هذا المتجر العام
+                  // أو يمكنك تفعيلها أيضاً إذا أردت
                   return GestureDetector(
                     onTap: () {
                       Navigator.push(
