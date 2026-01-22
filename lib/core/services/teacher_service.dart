@@ -161,8 +161,10 @@ class TeacherService {
   }
 
   // ==========================================================
-  // 4️⃣ إدارة فريق العمل (المشرفين)
+  // 4️⃣ إدارة فريق العمل (المشرفين) - ✅ تم إضافة الدوال المفقودة هنا
   // ==========================================================
+  
+  // (دالة قديمة للإضافة اليدوية - يمكن إبقاؤها أو إزالتها إذا لم تعد مستخدمة)
   Future<void> addModerator({
     required String name,
     required String username,
@@ -177,6 +179,41 @@ class TeacherService {
         'username': username,
         'phone': phone,
         'password': password,
+      },
+      options: options,
+    );
+  }
+
+  // ✅ جلب أعضاء الفريق الحاليين
+  Future<List<dynamic>> getTeamMembers() async {
+    final options = await _getHeaders();
+    final response = await _dio.get(
+      '$baseUrl/teacher/team',
+      queryParameters: {'mode': 'list'},
+      options: options,
+    );
+    return response.data;
+  }
+
+  // ✅ البحث عن طلاب لترقيتهم (عام)
+  Future<List<dynamic>> searchStudentsForTeam(String query) async {
+    final options = await _getHeaders();
+    final response = await _dio.get(
+      '$baseUrl/teacher/team',
+      queryParameters: {'mode': 'search', 'query': query},
+      options: options,
+    );
+    return response.data;
+  }
+
+  // ✅ إدارة العضو (ترقية أو حذف)
+  Future<void> manageTeamMember({required String action, required String userId}) async {
+    final options = await _getHeaders();
+    await _dio.post(
+      '$baseUrl/teacher/team',
+      data: {
+        'action': action, // 'promote' or 'demote'
+        'userId': userId,
       },
       options: options,
     );
