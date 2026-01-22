@@ -128,15 +128,11 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.video:
           data['chapter_id'] = widget.parentId;
           
-          // ✅ استخراج المعرف من الرابط والتحقق منه
           String? videoId = _extractYoutubeId(_urlController.text);
           if (videoId == null) {
             throw Exception("رابط الفيديو غير صحيح");
           }
           data['youtube_video_id'] = videoId;
-          
-          // ❌ تم إزالة السطر التالي لحل خطأ قاعدة البيانات PGRST204
-          // data['is_free'] = false; 
           break;
         case ContentType.pdf:
           data['chapter_id'] = widget.parentId;
@@ -177,7 +173,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     }
   }
 
-  // ✅ دالة الحذف
   Future<void> _deleteItem() async {
     bool? confirm = await showDialog(
       context: context,
@@ -266,7 +261,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
 
-                  // --- الحقول المشتركة ---
+                  // --- الحقول المشتركة (العنوان) ---
                   CustomTextField(
                     label: "Title / Name",
                     controller: _titleController,
@@ -276,8 +271,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // --- حقول الكورس والمواد (السعر والوصف) ---
-                  if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) ...[
+                  // ✅ التعديل الأول: الوصف يظهر فقط للكورس
+                  if (widget.contentType == ContentType.course) ...[
                     CustomTextField(
                       label: "Description",
                       controller: _descController,
@@ -286,6 +281,10 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                       maxLines: 3,
                     ),
                     const SizedBox(height: 16),
+                  ],
+
+                  // ✅ التعديل الثاني: السعر يظهر للكورس والمادة (مشترك)
+                  if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) ...[
                     CustomTextField(
                       label: "Price (EGP)",
                       controller: _priceController,
@@ -293,12 +292,13 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                       prefixIcon: Icons.attach_money,
                       keyboardType: TextInputType.number,
                     ),
+                    const SizedBox(height: 16),
                   ],
 
-                  // --- حقول الفيديو (تعديل التسمية والمنطق) ---
+                  // --- حقول الفيديو ---
                   if (widget.contentType == ContentType.video) ...[
                     CustomTextField(
-                      label: "YouTube Video Link", // ✅ تم التعديل
+                      label: "YouTube Video Link",
                       controller: _urlController,
                       hintText: "https://youtu.be/...",
                       prefixIcon: Icons.video_library,
