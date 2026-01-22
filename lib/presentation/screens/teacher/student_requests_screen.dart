@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../../core/constants/app_colors.dart'; // ✅ استيراد ألوان التطبيق
+import '../../../core/constants/app_colors.dart'; 
 import '../../../core/services/teacher_service.dart';
-import '../../../core/services/storage_service.dart'; // ✅ لجلب التوكن
+import '../../../core/services/storage_service.dart'; 
 
 class StudentRequestsScreen extends StatefulWidget {
   const StudentRequestsScreen({Key? key}) : super(key: key);
@@ -27,40 +27,64 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAuthAndRequests();
+    // ✅ الحل الجذري: تشغيل دالة تحميل موحدة متسلسلة
+    _initialLoad();
   }
 
-  // تحميل التوكن والبيانات
-  Future<void> _loadAuthAndRequests() async {
-    try {
-      var box = await StorageService.openBox('auth_box');
-      setState(() {
-        _token = box.get('jwt_token');
-        _deviceId = box.get('device_id');
-      });
-      _loadRequests();
-    } catch (e) {
-      // التعامل مع حالة عدم وجود البيانات
-      _loadRequests();
-    }
-  }
-
-  Future<void> _loadRequests() async {
+  /// ✅ دالة تحميل موحدة تضمن تحميل الهوية (Device ID) قبل البيانات
+  Future<void> _initialLoad() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
+
     try {
-      final data = await _teacherService.getPendingRequests();
-      setState(() {
-        _requests = data;
-        _isLoading = false;
-      });
+      // 1. انتظار تحميل بيانات المصادقة من الذاكرة المحلية أولاً
+      var box = await StorageService.openBox('auth_box');
+      final loadedToken = box.get('jwt_token');
+      final loadedDevice = box.get('device_id');
+
+      // 2. تخزينها في المتغيرات
+      _token = loadedToken;
+      _deviceId = loadedDevice;
+
+      // طباعة للتأكد من أن القيم موجودة قبل إرسال أي طلب
+      debugPrint("Auth Loaded: DeviceID=$_deviceId");
+
+      // 3. الآن فقط نقوم بجلب الطلبات من السيرفر
+      await _loadRequestsData();
+
     } catch (e) {
-      setState(() => _isLoading = false);
+      debugPrint("Error in initial load: $e");
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("حدث خطأ: $e"), backgroundColor: AppColors.error),
+          SnackBar(content: Text("حدث خطأ في التحميل: $e"), backgroundColor: AppColors.error),
         );
       }
     }
+  }
+
+  /// دالة فرعية لجلب البيانات فقط (بدون إعادة تحميل التوكن)
+  Future<void> _loadRequestsData() async {
+    try {
+      final data = await _teacherService.getPendingRequests();
+      if (mounted) {
+        setState(() {
+          _requests = data;
+          _isLoading = false; // ✅ هنا فقط نوقف التحميل بعد جاهزية كل شيء
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        throw e; // نعيد رمي الخطأ ليمسكه الـ catch الرئيسي
+      }
+    }
+  }
+
+  /// إعادة تحميل القائمة (مثلاً بعد القبول/الرفض)
+  Future<void> _refreshRequests() async {
+     setState(() => _isLoading = true);
+     await _loadRequestsData();
   }
 
   Future<void> _handleDecision(String requestId, bool approve) async {
@@ -72,17 +96,17 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
         builder: (ctx) {
           String reason = "";
           return AlertDialog(
-            backgroundColor: AppColors.backgroundSecondary, // ✅ خلفية داكنة
+            backgroundColor: AppColors.backgroundSecondary,
             title: const Text("سبب الرفض", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
             content: TextField(
               onChanged: (val) => reason = val,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: "اكتب سبب الرفض هنا...",
-                hintStyle: TextStyle(color: AppColors.textSecondary),
+                hintStyle: const TextStyle(color: AppColors.textSecondary),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: AppColors.backgroundPrimary, // ✅ حقل الكتابة داكن
+                fillColor: AppColors.backgroundPrimary,
               ),
               maxLines: 3,
             ),
@@ -130,7 +154,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
           ),
         );
       }
-      _loadRequests();
+      _refreshRequests();
     } catch (e) {
        if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -141,6 +165,14 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
   }
 
   void _showFullImage(String url) {
+    // نتأكد للمرة الأخيرة أن البيانات موجودة
+    if (_deviceId == null || _token == null) {
+       ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("خطأ: بيانات المصادقة غير جاهزة"), backgroundColor: AppColors.error),
+       );
+       return;
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -160,7 +192,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                   // ✅ الهيدرز الضرورية لعرض الصورة
                   httpHeaders: {
                     'Authorization': 'Bearer $_token',
-                    'x-device-id': _deviceId ?? '',
+                    'x-device-id': _deviceId!, // علامة التعجب لأننا تأكدنا أنه ليس null
                     'x-app-secret': _appSecret,
                   },
                   placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
@@ -171,7 +203,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                       children: [
                          Icon(Icons.broken_image_rounded, color: AppColors.error, size: 50),
                          SizedBox(height: 8),
-                         Text("تعذر تحميل الصورة", style: TextStyle(color: AppColors.textSecondary)),
+                         Text("تعذر تحميل الصورة - تأكد من الاتصال", style: TextStyle(color: AppColors.textSecondary)),
                       ],
                     ),
                   ),
@@ -197,12 +229,12 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundPrimary, // ✅ لون الخلفية الرئيسي
+      backgroundColor: AppColors.backgroundPrimary,
       appBar: AppBar(
         title: const Text("طلبات الاشتراك المعلقة", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
-        backgroundColor: AppColors.backgroundSecondary, // ✅ لون الهيدر
+        backgroundColor: AppColors.backgroundSecondary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppColors.accentYellow), // ✅ لون الأيقونات
+        iconTheme: const IconThemeData(color: AppColors.accentYellow),
         centerTitle: true,
       ),
       body: _isLoading
@@ -214,7 +246,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                     children: [
                       Icon(Icons.inbox_rounded, size: 80, color: AppColors.textSecondary.withOpacity(0.3)),
                       const SizedBox(height: 16),
-                      Text("لا توجد طلبات معلقة حالياً", style: TextStyle(color: AppColors.textSecondary, fontSize: 18)),
+                      const Text("لا توجد طلبات معلقة حالياً", style: TextStyle(color: AppColors.textSecondary, fontSize: 18)),
                     ],
                   ),
                 )
@@ -237,20 +269,20 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
-        color: AppColors.backgroundSecondary, // ✅ لون الكارت
+        color: AppColors.backgroundSecondary,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)), // حدود خفيفة
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // ================== القسم العلوي: البيانات والصورة ==================
+            // ================== القسم العلوي ==================
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🖼️ الصورة المصغرة (Thumbnail)
+                // 🖼️ الصورة المصغرة
                 GestureDetector(
                   onTap: () {
                     if (hasImage) _showFullImage(imageUrl);
@@ -268,7 +300,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                       child: hasImage
                           ? CachedNetworkImage(
                               imageUrl: imageUrl,
-                              // ✅ الهيدرز هنا أيضاً
+                              // ✅ الهيدرز هنا أيضاً للصورة المصغرة
                               httpHeaders: {
                                 'Authorization': 'Bearer $_token',
                                 'x-device-id': _deviceId ?? '',
@@ -283,7 +315,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                // ℹ️ بيانات الطالب
+                // ℹ️ البيانات
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,7 +330,6 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                                overflow: TextOverflow.ellipsis,
                              ),
                            ),
-                           // تاريخ الطلب
                            Container(
                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                              decoration: BoxDecoration(color: AppColors.backgroundPrimary, borderRadius: BorderRadius.circular(8)),
@@ -318,16 +349,15 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
             
             Divider(height: 24, color: Colors.white.withOpacity(0.1)),
 
-            // ================== القسم الأوسط: المحتوى والسعر ==================
+            // ================== التفاصيل والسعر ==================
             Row(
               children: [
-                // المحتوى المطلوب
                 Expanded(
                   flex: 3,
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppColors.backgroundPrimary.withOpacity(0.5), // لون داكن شفاف
+                      color: AppColors.backgroundPrimary.withOpacity(0.5),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppColors.accentBlue.withOpacity(0.3))
                     ),
@@ -351,7 +381,6 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                // السعر الإجمالي
                 Expanded(
                   flex: 2,
                   child: Container(
@@ -379,7 +408,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
             
             const SizedBox(height: 20),
 
-            // ================== القسم السفلي: أزرار التحكم ==================
+            // ================== الأزرار ==================
             Row(
               children: [
                 Expanded(
@@ -418,7 +447,6 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
     );
   }
 
-  // دالة مساعدة
   Widget _buildInfoRow(IconData icon, String text) {
     return Row(
       children: [
