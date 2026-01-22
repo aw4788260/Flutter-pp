@@ -343,24 +343,50 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                 ),
               ),
 
-              // 🟢 زر الإحصائيات (للمعلم فقط) أو سهم الدخول (للطالب)
+              // 🟢 أزرار التحكم للمعلم (إحصائيات + تعديل)
               if (_isTeacher)
-                IconButton(
-                  icon: const Icon(LucideIcons.barChart2, color: AppColors.accentYellow),
-                  tooltip: "Statistics",
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ExamStatsScreen(
-                          examId: exam['id'].toString(),
-                          examTitle: exam['title'] ?? "Exam",
-                        ),
-                      ),
-                    );
-                  },
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // زر التعديل (Edit)
+                    IconButton(
+                      icon: const Icon(LucideIcons.edit, color: AppColors.accentOrange, size: 20),
+                      tooltip: "تعديل الامتحان",
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CreateExamScreen(
+                              subjectId: widget.subjectId,
+                              examId: exam['id'].toString(), // ✅ تمرير معرف الامتحان للتعديل
+                            ),
+                          ),
+                        ).then((val) { 
+                          // تحديث القائمة إذا تم الحفظ
+                          if (val == true) _fetchContent(); 
+                        });
+                      },
+                    ),
+                    // زر الإحصائيات (Stats)
+                    IconButton(
+                      icon: const Icon(LucideIcons.barChart2, color: AppColors.accentYellow, size: 20),
+                      tooltip: "Statistics",
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ExamStatsScreen(
+                              examId: exam['id'].toString(),
+                              examTitle: exam['title'] ?? "Exam",
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 )
               else
+                // للطالب: سهم الدخول فقط
                 IconButton(
                   icon: Icon(LucideIcons.chevronRight, size: 20, color: statusColor.withOpacity(0.5)),
                   onPressed: () => _openExam(exam, isCompleted, isExpired),
