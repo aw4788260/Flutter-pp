@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/teacher_service.dart';
+import '../../../core/services/storage_service.dart'; // ✅ إضافة: استيراد خدمة التخزين
 import '../../widgets/custom_text_field.dart';
 import '../../../core/constants/app_colors.dart';
 
@@ -86,6 +87,23 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     return (match != null && match.length >= 11) ? match : null;
   }
 
+  // ✅ إضافة: دالة لتحديث الكاش المحلي في Hive
+  Future<void> _updateLocalCache() async {
+    try {
+      // 1. جلب البيانات المحدثة بالكامل من السيرفر
+      final updatedContent = await _teacherService.getMyContent();
+      
+      // 2. فتح الصندوق وتحديث البيانات
+      // ملاحظة: تأكد أن الاسم 'teacher_data' ومفتاح 'my_content' يطابق المستخدم في شاشة العرض
+      var box = await StorageService.openBox('teacher_data');
+      await box.put('my_content', updatedContent);
+      
+      debugPrint("✅ Cache updated successfully in Hive");
+    } catch (e) {
+      debugPrint("⚠️ Failed to update local cache: $e");
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -149,11 +167,15 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.pdf: dbType = 'pdfs'; break;
       }
 
+      // 1. تنفيذ العملية في السيرفر
       await _teacherService.manageContent(
         action: isEditing ? 'update' : 'create',
         type: dbType,
         data: data,
       );
+
+      // 2. ✅ تحديث الكاش المحلي فوراً
+      await _updateLocalCache();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -205,11 +227,15 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.pdf: dbType = 'pdfs'; break;
       }
 
+      // 1. حذف العنصر في السيرفر
       await _teacherService.manageContent(
         action: 'delete',
         type: dbType,
         data: {'id': widget.initialData!['id']},
       );
+
+      // 2. ✅ تحديث الكاش المحلي فوراً
+      await _updateLocalCache();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted Successfully"), backgroundColor: AppColors.success));
@@ -271,7 +297,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // ✅ التعديل الأول: الوصف يظهر فقط للكورس
+                  // ✅ الوصف يظهر فقط للكورس
                   if (widget.contentType == ContentType.course) ...[
                     CustomTextField(
                       label: "Description",
@@ -283,7 +309,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  // ✅ التعديل الثاني: السعر يظهر للكورس والمادة (مشترك)
+                  // ✅ السعر يظهر للكورس والمادة (مشترك)
                   if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) ...[
                     CustomTextField(
                       label: "Price (EGP)",
