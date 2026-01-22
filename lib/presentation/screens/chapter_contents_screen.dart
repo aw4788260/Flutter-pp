@@ -52,16 +52,45 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // دالة لتحديث محتوى الشابتر من السيرفر بعد التعديل
+  // ✅ دالة لتحديث محتوى الشابتر من الكاش المحلي بعد التعديل
   Future<void> _refreshContent() async {
-    // يمكنك هنا استدعاء API لجلب تفاصيل الشابتر، أو الاعتماد على العودة من الشاشة السابقة وتحديث الـ UI
-    // للتبسيط، سنفترض أن الشاشة السابقة (SubjectMaterials) هي من ستقوم بالتحديث عند العودة،
-    // لكن إذا أردت تحديثاً فورياً هنا، ستحتاج endpoint لجلب الشابتر.
-    // حالياً سنعتمد على التحديث اليدوي إذا قام المستخدم بالعودة والدخول مجدداً،
-    // أو نمرر دالة callback.
-    // الحل الأفضل: إعادة طلب محتوى المادة (Subject) بالكامل لكننا لا نملك ID المادة هنا مباشرة إلا في الـ widget.
-    // لذا، سنقوم بإعادة بناء الواجهة فقط معتمدين على أن manage_content قد أرسل البيانات للسيرفر.
-    setState(() {}); 
+    try {
+      // 1. فتح الصندوق الذي يحتوي على أحدث البيانات (التي حفظتها شاشة الإضافة)
+      var box = await StorageService.openBox('teacher_data');
+      List<dynamic> allContent = box.get('my_content', defaultValue: []);
+
+      // 2. البحث عن الفصل الحالي داخل البيانات المحدثة
+      Map<String, dynamic>? updatedChapter;
+
+      // حلقة بحث للعثور على الشابتر المطابق للـ ID الحالي داخل الهيكل (كورسات -> مواد -> فصول)
+      outerLoop:
+      for (var course in allContent) {
+        var subjects = (course['subjects'] as List? ?? []);
+        for (var subject in subjects) {
+          var chapters = (subject['chapters'] as List? ?? []);
+          for (var chapter in chapters) {
+            if (chapter['id'].toString() == widget.chapter['id'].toString()) {
+              updatedChapter = Map<String, dynamic>.from(chapter);
+              break outerLoop;
+            }
+          }
+        }
+      }
+
+      // 3. تحديث الواجهة إذا وجدنا بيانات جديدة
+      if (updatedChapter != null) {
+        if (mounted) {
+          setState(() {
+            _currentChapter = updatedChapter!;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("تم تحديث المحتوى"), backgroundColor: AppColors.success, duration: Duration(milliseconds: 800)),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Error refreshing content: $e");
+    }
   }
 
   // ===========================================================================
@@ -472,6 +501,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ استخدام _currentChapter لضمان عرض البيانات المحدثة
     final videos = (_currentChapter['videos'] as List? ?? []).cast<Map<String, dynamic>>();
     final pdfs = (_currentChapter['pdfs'] as List? ?? []).cast<Map<String, dynamic>>();
 
@@ -550,7 +580,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                     parentId: widget.chapter['id'].toString(), // ID الشابتر
                                   ),
                                 ),
-                              ).then((val) { if(val == true) _refreshContent(); });
+                              ).then((val) { 
+                                // ✅ هنا يتم استدعاء التحديث الفوري
+                                if(val == true) _refreshContent(); 
+                              });
                             },
                             child: Container(
                               padding: const EdgeInsets.all(10),
