@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/teacher_service.dart';
 import '../../widgets/custom_text_field.dart';
-import '../../../core/constants/app_colors.dart'; 
+import '../../../core/constants/app_colors.dart';
 
 enum ContentType { course, subject, chapter, video, pdf }
 
 class ManageContentScreen extends StatefulWidget {
   final ContentType contentType;
-  final String? parentId; 
-  final Map<String, dynamic>? initialData; 
+  final String? parentId;
+  final Map<String, dynamic>? initialData;
 
   const ManageContentScreen({
     Key? key,
@@ -26,15 +26,15 @@ class ManageContentScreen extends StatefulWidget {
 class _ManageContentScreenState extends State<ManageContentScreen> {
   final _formKey = GlobalKey<FormState>();
   final TeacherService _teacherService = TeacherService();
-  
+
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _descController = TextEditingController(); 
-  final TextEditingController _priceController = TextEditingController(); 
-  final TextEditingController _urlController = TextEditingController(); 
-  
+  final TextEditingController _descController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController();
+  final TextEditingController _urlController = TextEditingController();
+
   File? _selectedFile;
   String? _selectedFileName;
-  String? _uploadedFileUrl; 
+  String? _uploadedFileUrl;
   bool _isLoading = false;
 
   bool get isEditing => widget.initialData != null;
@@ -46,9 +46,9 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       _titleController.text = widget.initialData!['title'] ?? '';
       _descController.text = widget.initialData!['description'] ?? '';
       _priceController.text = widget.initialData!['price']?.toString() ?? '';
-      
+
       if (widget.contentType == ContentType.video) {
-         _urlController.text = widget.initialData!['youtube_video_id'] ?? ''; 
+        _urlController.text = widget.initialData!['youtube_video_id'] ?? '';
       }
       if (widget.contentType == ContentType.pdf) {
         _uploadedFileUrl = widget.initialData!['file_url'];
@@ -73,14 +73,27 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     }
   }
 
+  // ✅ دالة لاستخراج ID الفيديو من الرابط
+  String? _extractYoutubeId(String url) {
+    if (url.length == 11 && !url.contains('.')) return url; // هو أصلاً ID
+    
+    RegExp regExp = RegExp(
+      r'.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*',
+      caseSensitive: false,
+      multiLine: false,
+    );
+    final match = regExp.firstMatch(url)?.group(1);
+    return (match != null && match.length >= 11) ? match : null;
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (widget.contentType == ContentType.pdf && !isEditing && _selectedFile == null) {
-       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Please select a PDF file"), backgroundColor: AppColors.error),
-       );
-       return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a PDF file"), backgroundColor: AppColors.error),
+      );
+      return;
     }
 
     setState(() => _isLoading = true);
@@ -107,17 +120,23 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
           break;
         case ContentType.subject:
           data['course_id'] = widget.parentId;
-          // ✅ [تعديل 1]: إضافة السعر عند حفظ المادة
           data['price'] = double.tryParse(_priceController.text) ?? 0;
-          // data['description'] = _descController.text; // اختياري إذا أردت حفظ الوصف للمادة
           break;
         case ContentType.chapter:
           data['subject_id'] = widget.parentId;
           break;
         case ContentType.video:
           data['chapter_id'] = widget.parentId;
-          data['youtube_video_id'] = _urlController.text;
-          data['is_free'] = false; 
+          
+          // ✅ استخراج المعرف من الرابط والتحقق منه
+          String? videoId = _extractYoutubeId(_urlController.text);
+          if (videoId == null) {
+            throw Exception("رابط الفيديو غير صحيح");
+          }
+          data['youtube_video_id'] = videoId;
+          
+          // ❌ تم إزالة السطر التالي لحل خطأ قاعدة البيانات PGRST204
+          // data['is_free'] = false; 
           break;
         case ContentType.pdf:
           data['chapter_id'] = widget.parentId;
@@ -144,7 +163,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(isEditing ? "Updated Successfully" : "Created Successfully"), backgroundColor: AppColors.success),
         );
-        Navigator.pop(context, true); 
+        Navigator.pop(context, true);
       }
 
     } catch (e) {
@@ -160,7 +179,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
   // ✅ دالة الحذف
   Future<void> _deleteItem() async {
-    // تأكيد الحذف
     bool? confirm = await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -192,7 +210,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.pdf: dbType = 'pdfs'; break;
       }
 
-      // استدعاء الحذف
       await _teacherService.manageContent(
         action: 'delete',
         type: dbType,
@@ -201,7 +218,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted Successfully"), backgroundColor: AppColors.success));
-        Navigator.pop(context, true); 
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
@@ -231,7 +248,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         title: Text(titleText, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
         leading: const BackButton(color: AppColors.accentYellow),
         actions: [
-          // زر الحذف
           if (isEditing)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: AppColors.error),
@@ -240,7 +256,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
             ),
         ],
       ),
-      body: _isLoading 
+      body: _isLoading
         ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
         : SingleChildScrollView(
             padding: const EdgeInsets.all(24),
@@ -249,23 +265,21 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  
+
                   // --- الحقول المشتركة ---
-                  // ✅ تم تعديل المعاملات لتطابق CustomTextField الجديد
                   CustomTextField(
-                    label: "Title / Name", // ✅
+                    label: "Title / Name",
                     controller: _titleController,
-                    hintText: "Enter title here", // ✅
-                    prefixIcon: Icons.title, // ✅
+                    hintText: "Enter title here",
+                    prefixIcon: Icons.title,
                     validator: (val) => val!.isEmpty ? "Required" : null,
                   ),
                   const SizedBox(height: 16),
 
                   // --- حقول الكورس والمواد (السعر والوصف) ---
-                  // ✅ [تعديل 2]: إظهار الحقول للمواد (Subject) أيضاً
                   if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) ...[
                     CustomTextField(
-                      label: "Description", // ✅
+                      label: "Description",
                       controller: _descController,
                       hintText: "Enter description",
                       prefixIcon: Icons.description,
@@ -273,7 +287,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                     ),
                     const SizedBox(height: 16),
                     CustomTextField(
-                      label: "Price (EGP)", // ✅
+                      label: "Price (EGP)",
                       controller: _priceController,
                       hintText: "0.0",
                       prefixIcon: Icons.attach_money,
@@ -281,50 +295,50 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                     ),
                   ],
 
-                  // --- حقول الفيديو ---
+                  // --- حقول الفيديو (تعديل التسمية والمنطق) ---
                   if (widget.contentType == ContentType.video) ...[
                     CustomTextField(
-                      label: "YouTube Video ID", // ✅
+                      label: "YouTube Video Link", // ✅ تم التعديل
                       controller: _urlController,
-                      hintText: "e.g., xyz123",
+                      hintText: "https://youtu.be/...",
                       prefixIcon: Icons.video_library,
                     ),
                     const SizedBox(height: 8),
-                    Text("Example: for youtube.com/watch?v=xyz123, enter xyz123", 
+                    Text("Paste the full YouTube link or just the ID",
                       style: TextStyle(fontSize: 11, color: AppColors.textSecondary.withOpacity(0.6))),
                   ],
 
                   // --- حقول PDF ---
                   if (widget.contentType == ContentType.pdf) ...[
-                     const SizedBox(height: 10),
-                     Container(
-                       padding: const EdgeInsets.all(12),
-                       decoration: BoxDecoration(
-                         color: AppColors.backgroundSecondary,
-                         borderRadius: BorderRadius.circular(12),
-                         border: Border.all(color: Colors.white10),
-                       ),
-                       child: ListTile(
-                         contentPadding: EdgeInsets.zero,
-                         leading: const Icon(Icons.picture_as_pdf, color: AppColors.accentOrange, size: 30),
-                         title: Text(
-                           _selectedFileName ?? "No file selected",
-                           style: TextStyle(
-                             color: _selectedFileName == null ? Colors.grey : Colors.white,
-                             fontWeight: _selectedFileName == null ? FontWeight.normal : FontWeight.bold,
-                             fontSize: 14
-                           ),
-                         ),
-                         subtitle: const Text("Tap to select PDF", style: TextStyle(color: Colors.grey, fontSize: 11)),
-                         trailing: const Icon(Icons.upload_file, color: AppColors.accentYellow),
-                         onTap: _pickPdfFile,
-                       ),
-                     ),
-                     const SizedBox(height: 10),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundSecondary,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.picture_as_pdf, color: AppColors.accentOrange, size: 30),
+                        title: Text(
+                          _selectedFileName ?? "No file selected",
+                          style: TextStyle(
+                            color: _selectedFileName == null ? Colors.grey : Colors.white,
+                            fontWeight: _selectedFileName == null ? FontWeight.normal : FontWeight.bold,
+                            fontSize: 14
+                          ),
+                        ),
+                        subtitle: const Text("Tap to select PDF", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                        trailing: const Icon(Icons.upload_file, color: AppColors.accentYellow),
+                        onTap: _pickPdfFile,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                   ],
 
                   const SizedBox(height: 32),
-                  
+
                   // زر الحفظ
                   ElevatedButton(
                     onPressed: _submit,
@@ -339,7 +353,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
                     ),
                   ),
-                  
+
                   // زر حذف إضافي
                   if (isEditing) ...[
                     const SizedBox(height: 16),
