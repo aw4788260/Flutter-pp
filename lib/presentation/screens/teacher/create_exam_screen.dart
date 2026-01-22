@@ -118,8 +118,9 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
         'subjectId': widget.subjectId,
         'duration': int.parse(_durationController.text),
         'randomize': _randomizeQuestions,
-        'activation_date': _startDate!.toIso8601String(),
-        'closing_date': _endDate!.toIso8601String(),
+        // ✅ [تعديل هام]: تغيير المفاتيح لتطابق قاعدة البيانات (start_time, end_time)
+        'start_time': _startDate!.toIso8601String(), 
+        'end_time': _endDate!.toIso8601String(),
         'questions': processedQuestions,
       };
 
@@ -159,7 +160,6 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   // --- البيانات الأساسية ---
-                  // ✅ تم التعديل: إضافة label وتحديث hintText
                   CustomTextField(
                     label: "عنوان الامتحان",
                     controller: _titleController,
@@ -169,7 +169,6 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                   ),
                   const SizedBox(height: 15),
                   
-                  // ✅ تم التعديل: إضافة label وتحديث hintText
                   CustomTextField(
                     label: "المدة (دقائق)",
                     controller: _durationController,
