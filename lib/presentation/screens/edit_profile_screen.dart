@@ -5,7 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart'; 
 import '../../core/services/storage_service.dart';
-import '../../widgets/custom_text_field.dart'; // ✅ استيراد CustomTextField
+import '../widgets/custom_text_field.dart'; // ✅ استيراد CustomTextField
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
