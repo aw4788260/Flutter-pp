@@ -4,7 +4,7 @@ import '../services/storage_service.dart';
 
 class TeacherService {
   final Dio _dio = Dio();
-  // ⚠️ رابط السيرفر الخاص بك
+  // ⚠️ تأكد من أن هذا الرابط صحيح ويعمل
   final String baseUrl = "https://courses.aw478260.dpdns.org/api";
   
   // يفضل تعريف Secret التطبيق هنا أو جلبه من البيئة لضمان المرور من حماية السيرفر
