@@ -7,6 +7,9 @@ class AppColors {
 
   static const Color accentYellow = Color(0xFFE1AD01); // text-accent-yellow
   static const Color accentOrange = Color(0xFFD35400); // text-accent-orange
+  
+  // ✅ تم إضافة اللون الأزرق المفقود
+  static const Color accentBlue = Color(0xFF3B82F6); 
 
   static const Color textPrimary = Color(0xFFE2E8F0);   // text-primary
   static const Color textSecondary = Color(0xFF94A3B8); // text-secondary
