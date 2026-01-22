@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/teacher_service.dart';
-import '../../widgets/custom_text_field.dart'; // تأكد من وجود هذا الودجت أو استبدله بـ TextFormField
+import '../../widgets/custom_text_field.dart';
 
 class ManageTeamScreen extends StatefulWidget {
   const ManageTeamScreen({Key? key}) : super(key: key);
@@ -78,24 +78,30 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
               const SizedBox(height: 30),
 
               // حقول الإدخال
+              // ✅ تعديل: إضافة label وتغيير prefixIcon
               CustomTextField(
+                label: "الاسم الكامل",
                 controller: _nameController,
-                hintText: "الاسم الكامل",
+                hintText: "أدخل الاسم الكامل",
                 prefixIcon: Icons.person,
                 validator: (val) => val!.length < 3 ? "الاسم قصير جداً" : null,
               ),
               const SizedBox(height: 15),
               
+              // ✅ تعديل: إضافة label وتغيير prefixIcon
               CustomTextField(
+                label: "رقم الهاتف",
                 controller: _phoneController,
-                hintText: "رقم الهاتف",
+                hintText: "أدخل رقم الهاتف",
                 prefixIcon: Icons.phone,
                 keyboardType: TextInputType.phone,
                 validator: (val) => val!.length < 10 ? "رقم الهاتف غير صحيح" : null,
               ),
               const SizedBox(height: 15),
 
+              // ✅ تعديل: إضافة label وتغيير prefixIcon
               CustomTextField(
+                label: "اسم المستخدم",
                 controller: _usernameController,
                 hintText: "اسم المستخدم (للدخول)",
                 prefixIcon: Icons.alternate_email,
