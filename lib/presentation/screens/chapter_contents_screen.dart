@@ -9,7 +9,7 @@ import '../../core/services/storage_service.dart';
 import 'video_player_screen.dart';
 import 'youtube_player_screen.dart';
 import 'pdf_viewer_screen.dart';
-import 'teacher/manage_content_screen.dart'; // ✅ لاستخدامه في الإضافة والتعديل
+import 'teacher/manage_content_screen.dart';
 
 class ChapterContentsScreen extends StatefulWidget {
   final Map<String, dynamic> chapter;
@@ -31,7 +31,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   String activeTab = 'videos';
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
   bool _isTeacher = false;
-  // لتحديث المحتوى محلياً بعد الإضافة/التعديل
   late Map<String, dynamic> _currentChapter;
 
   @override
@@ -41,7 +40,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     _checkUserRole();
   }
 
-  // ✅ التحقق من الصلاحية
   Future<void> _checkUserRole() async {
     var box = await StorageService.openBox('auth_box');
     String? role = box.get('role');
@@ -52,44 +50,39 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // ✅ دالة لتحديث محتوى الشابتر من الكاش المحلي بعد التعديل
-  Future<void> _refreshContent() async {
-    try {
-      // 1. فتح الصندوق الذي يحتوي على أحدث البيانات (التي حفظتها شاشة الإضافة)
-      var box = await StorageService.openBox('teacher_data');
-      List<dynamic> allContent = box.get('my_content', defaultValue: []);
+  // ✅ دالة معالجة البيانات الراجعة من شاشة الإضافة/التعديل/الحذف
+  void _handleReturnData(dynamic result, ContentType type) {
+    if (result == null) return;
 
-      // 2. البحث عن الفصل الحالي داخل البيانات المحدثة
-      Map<String, dynamic>? updatedChapter;
-
-      // حلقة بحث للعثور على الشابتر المطابق للـ ID الحالي داخل الهيكل (كورسات -> مواد -> فصول)
-      outerLoop:
-      for (var course in allContent) {
-        var subjects = (course['subjects'] as List? ?? []);
-        for (var subject in subjects) {
-          var chapters = (subject['chapters'] as List? ?? []);
-          for (var chapter in chapters) {
-            if (chapter['id'].toString() == widget.chapter['id'].toString()) {
-              updatedChapter = Map<String, dynamic>.from(chapter);
-              break outerLoop;
-            }
-          }
-        }
-      }
-
-      // 3. تحديث الواجهة إذا وجدنا بيانات جديدة
-      if (updatedChapter != null) {
-        if (mounted) {
-          setState(() {
-            _currentChapter = updatedChapter!;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("تم تحديث المحتوى"), backgroundColor: AppColors.success, duration: Duration(milliseconds: 800)),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint("Error refreshing content: $e");
+    if (result is Map && result['deleted'] == true) {
+       // حالة الحذف: إزالة العنصر من القائمة
+       setState(() {
+         if (type == ContentType.video) {
+           List videos = List.from(_currentChapter['videos'] ?? []);
+           videos.removeWhere((v) => v['id'].toString() == result['id'].toString());
+           _currentChapter['videos'] = videos;
+         } else {
+           List pdfs = List.from(_currentChapter['pdfs'] ?? []);
+           pdfs.removeWhere((p) => p['id'].toString() == result['id'].toString());
+           _currentChapter['pdfs'] = pdfs;
+         }
+       });
+    } else if (result is Map<String, dynamic>) {
+       // حالة الإضافة أو التعديل
+       setState(() {
+         String key = type == ContentType.video ? 'videos' : 'pdfs';
+         List items = List.from(_currentChapter[key] ?? []);
+         
+         // التحقق مما إذا كان العنصر موجوداً (تعديل) أم جديداً (إضافة)
+         int existingIndex = items.indexWhere((item) => item['id'].toString() == result['id'].toString());
+         
+         if (existingIndex != -1) {
+           items[existingIndex] = result;
+         } else {
+           items.add(result);
+         }
+         _currentChapter[key] = items;
+       });
     }
   }
 
@@ -501,136 +494,142 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ استخدام _currentChapter لضمان عرض البيانات المحدثة
     final videos = (_currentChapter['videos'] as List? ?? []).cast<Map<String, dynamic>>();
     final pdfs = (_currentChapter['pdfs'] as List? ?? []).cast<Map<String, dynamic>>();
 
-    return Scaffold(
-      backgroundColor: AppColors.backgroundPrimary,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Container(
-              color: AppColors.backgroundPrimary.withOpacity(0.95),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            GestureDetector(
-                              onTap: () => Navigator.pop(context),
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.backgroundSecondary,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: Colors.white.withOpacity(0.05)),
-                                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                                ),
-                                child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  widget.chapter['title'].toString().toUpperCase(),
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textPrimary,
-                                    overflow: TextOverflow.ellipsis,
-                                    letterSpacing: -0.5,
-                                  ),
-                                  maxLines: 1,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  "${widget.courseTitle} > ${widget.subjectTitle}",
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.accentYellow.withOpacity(0.8),
-                                    letterSpacing: 1.0,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-
-                        // 🟢 زر الإضافة (يظهر للمعلم فقط)
-                        if (_isTeacher)
-                          GestureDetector(
-                            onTap: () {
-                              ContentType type = activeTab == 'videos' ? ContentType.video : ContentType.pdf;
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ManageContentScreen(
-                                    contentType: type,
-                                    parentId: widget.chapter['id'].toString(), // ID الشابتر
-                                  ),
-                                ),
-                              ).then((val) { 
-                                // ✅ هنا يتم استدعاء التحديث الفوري
-                                if(val == true) _refreshContent(); 
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: AppColors.accentYellow.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(50),
-                                border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
-                              ),
-                              child: Icon(
-                                activeTab == 'videos' ? LucideIcons.video : LucideIcons.filePlus, 
-                                color: AppColors.accentYellow, size: 22
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  
-                  // Tabs
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSecondary,
-                        borderRadius: BorderRadius.circular(50),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
-                      ),
+    // ✅ تغليف Scaffold بـ WillPopScope لإرجاع الشابتر المحدث عند العودة للشاشة السابقة
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, _currentChapter);
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.backgroundPrimary,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Header
+              Container(
+                color: AppColors.backgroundPrimary.withOpacity(0.95),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(24.0),
                       child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildTab("Videos", 'videos'),
-                          _buildTab("PDFs", 'pdfs'),
+                          Row(
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  // عند الضغط على زر الرجوع العلوي، نرجع البيانات أيضاً
+                                  Navigator.pop(context, _currentChapter);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.backgroundSecondary,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                                  ),
+                                  child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.chapter['title'].toString().toUpperCase(),
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textPrimary,
+                                      overflow: TextOverflow.ellipsis,
+                                      letterSpacing: -0.5,
+                                    ),
+                                    maxLines: 1,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    "${widget.courseTitle} > ${widget.subjectTitle}",
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.accentYellow.withOpacity(0.8),
+                                      letterSpacing: 1.0,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+
+                          // 🟢 زر الإضافة (يظهر للمعلم فقط)
+                          if (_isTeacher)
+                            GestureDetector(
+                              onTap: () {
+                                ContentType type = activeTab == 'videos' ? ContentType.video : ContentType.pdf;
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ManageContentScreen(
+                                      contentType: type,
+                                      parentId: widget.chapter['id'].toString(), // ID الشابتر
+                                    ),
+                                  ),
+                                ).then((val) => _handleReturnData(val, type)); // ✅ تحديث فوري باستخدام الدالة الجديدة
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accentYellow.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(50),
+                                  border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
+                                ),
+                                child: Icon(
+                                  activeTab == 'videos' ? LucideIcons.video : LucideIcons.filePlus, 
+                                  color: AppColors.accentYellow, size: 22
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
-                  ),
-                ],
+                    
+                    // Tabs
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(50),
+                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        ),
+                        child: Row(
+                          children: [
+                            _buildTab("Videos", 'videos'),
+                            _buildTab("PDFs", 'pdfs'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // Content List
-            Expanded(
-              child: activeTab == 'videos'
-                  ? _buildVideosList(videos)
-                  : _buildPdfsList(pdfs),
-            ),
-          ],
+              // Content List
+              Expanded(
+                child: activeTab == 'videos'
+                    ? _buildVideosList(videos)
+                    : _buildPdfsList(pdfs),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -731,7 +730,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                 parentId: widget.chapter['id'].toString(),
                               ),
                             ),
-                          ).then((val) { if(val == true) _refreshContent(); });
+                          ).then((val) => _handleReturnData(val, ContentType.video)); // ✅ تحديث فوري
                         },
                       ),
                   ],
@@ -845,7 +844,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                 parentId: widget.chapter['id'].toString(),
                               ),
                             ),
-                          ).then((val) { if(val == true) _refreshContent(); });
+                          ).then((val) => _handleReturnData(val, ContentType.pdf)); // ✅ تحديث فوري
                         },
                       ),
                   ],
