@@ -303,7 +303,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                         
                         final String title = item['title'] ?? 'Unknown';
                         final String instructor = item['instructor'] ?? 'Instructor';
-                        final String code = item['code'] ?? '';
+                        // ✅ تحويل الرقم إلى نص هنا أيضاً
+final String code = item['code']?.toString() ?? '';
                         final String id = item['id'].toString();
                         
                         List<dynamic>? subjectsToPass;
