@@ -38,7 +38,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
   String? _uploadedFileUrl;
   
   bool _isLoading = false;
-  double _uploadProgress = 0.0; // ✅ متغير لمتابعة نسبة الرفع
+  double _uploadProgress = 0.0;
 
   bool get isEditing => widget.initialData != null;
 
@@ -54,7 +54,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         _urlController.text = widget.initialData!['youtube_video_id'] ?? '';
       }
       if (widget.contentType == ContentType.pdf) {
-        _uploadedFileUrl = widget.initialData!['file_url'];
+        // ✅ تصحيح: قراءة المسار من file_path (اسم العمود في الداتابيز)
+        _uploadedFileUrl = widget.initialData!['file_path'] ?? widget.initialData!['file_url'];
         if (_uploadedFileUrl != null) {
           _selectedFileName = "Current PDF File";
         }
@@ -110,7 +111,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
     setState(() {
       _isLoading = true;
-      _uploadProgress = 0.0; // تصفير العداد
+      _uploadProgress = 0.0;
     });
 
     try {
@@ -128,7 +129,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         );
       }
 
-      // بعد انتهاء الرفع، نصفر العداد ليظهر مؤشر "جاري الحفظ" العادي
       setState(() => _uploadProgress = 0.0);
 
       // 2. تحضير البيانات
@@ -160,7 +160,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
           break;
         case ContentType.pdf:
           data['chapter_id'] = widget.parentId;
-          if (finalFileUrl != null) data['file_url'] = finalFileUrl;
+          // ✅ التعديل الأهم: استخدام file_path بدلاً من file_url
+          if (finalFileUrl != null) data['file_path'] = finalFileUrl;
           break;
       }
 
@@ -173,7 +174,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.pdf: dbType = 'pdfs'; break;
       }
 
-      // 3. حفظ البيانات في السيرفر
+      // 3. الحفظ في السيرفر
       await _teacherService.manageContent(
         action: isEditing ? 'update' : 'create',
         type: dbType,
@@ -286,7 +287,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // ✅ عرض مؤشر تقدم دائري مع النسبة المئوية إذا كان هناك رفع جاري
                 if (_uploadProgress > 0 && _uploadProgress < 1.0) ...[
                   Stack(
                     alignment: Alignment.center,
@@ -306,7 +306,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                   const SizedBox(height: 16),
                   const Text("Uploading File...", style: TextStyle(color: AppColors.textSecondary)),
                 ] else ...[
-                  // ✅ مؤشر تحميل عادي للعمليات الأخرى (الحفظ/الحذف)
                   const CircularProgressIndicator(color: AppColors.accentYellow),
                   const SizedBox(height: 16),
                   const Text("Saving Data...", style: TextStyle(color: AppColors.textSecondary)),
