@@ -30,7 +30,7 @@ dependencies:
   android_id: ^0.5.1
   wakelock_plus: ^1.4.0        # لإبقاء الشاشة تعمل
   pdfrx: ^2.2.24
-  
+  file_picker: ^10.3.8
   
   
   # ✅ التعديل 1: استخدام نسخة GitHub للحصول على دوال الاستماع (addListener)
