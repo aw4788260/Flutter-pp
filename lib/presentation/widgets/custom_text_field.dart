@@ -3,22 +3,24 @@ import '../../core/constants/app_colors.dart';
 
 class CustomTextField extends StatefulWidget {
   final String label;
-  final String hintText; // ✅ تم تعديل الاسم من hint إلى hintText ليطابق الاستدعاء
-  final IconData icon;
+  final String hintText; // ✅ تم التعديل من hint إلى hintText
+  final IconData prefixIcon; // ✅ تم التعديل من icon إلى prefixIcon
   final bool isPassword;
   final TextEditingController controller;
   final int maxLines; // ✅ تمت الإضافة
   final TextInputType keyboardType; // ✅ تمت الإضافة
+  final String? Function(String?)? validator; // ✅ تمت الإضافة لدعم التحقق في النماذج
 
   const CustomTextField({
     super.key,
     required this.label,
-    required this.hintText, // ✅ مطلوب الآن باسم hintText
-    required this.icon,
+    required this.hintText,
+    required this.prefixIcon,
     this.isPassword = false,
     required this.controller,
-    this.maxLines = 1, // ✅ قيمة افتراضية
-    this.keyboardType = TextInputType.text, // ✅ قيمة افتراضية
+    this.maxLines = 1,
+    this.keyboardType = TextInputType.text,
+    this.validator,
   });
 
   @override
@@ -58,23 +60,31 @@ class _CustomTextFieldState extends State<CustomTextField> {
                   : Colors.white.withOpacity(0.05),
             ),
           ),
-          child: TextField(
+          // ✅ استخدام TextFormField بدلاً من TextField لدعم validator
+          child: TextFormField(
             controller: widget.controller,
             obscureText: widget.isPassword,
-            maxLines: widget.maxLines, // ✅ ربط عدد الأسطر
-            keyboardType: widget.keyboardType, // ✅ ربط نوع لوحة المفاتيح
+            maxLines: widget.maxLines,
+            keyboardType: widget.keyboardType,
+            validator: widget.validator, // تفعيل التحقق
             style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
             cursorColor: AppColors.accentYellow,
+            
             onTap: () => setState(() => _isFocused = true),
-            onTapOutside: (_) => setState(() => _isFocused = false),
+            onTapOutside: (_) {
+              setState(() => _isFocused = false);
+              FocusScope.of(context).unfocus(); // إغلاق الكيبورد عند الضغط خارج الحقل
+            },
+            
             decoration: InputDecoration(
-              hintText: widget.hintText, // ✅ استخدام المتغير المعدل
+              hintText: widget.hintText,
               hintStyle: const TextStyle(color: AppColors.textSecondary),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
               prefixIcon: Icon(
-                widget.icon,
+                widget.prefixIcon,
                 size: 18,
+                // تغيير لون الأيقونة عند التركيز أو الكتابة
                 color: widget.controller.text.isNotEmpty || _isFocused
                     ? AppColors.accentYellow 
                     : AppColors.textSecondary,
