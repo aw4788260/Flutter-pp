@@ -159,16 +159,21 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   // --- البيانات الأساسية ---
+                  // ✅ تم التعديل: إضافة label وتحديث hintText
                   CustomTextField(
+                    label: "عنوان الامتحان",
                     controller: _titleController,
-                    hintText: "عنوان الامتحان (مثال: امتحان شامل الفصل الأول)",
+                    hintText: "مثال: امتحان شامل الفصل الأول",
                     prefixIcon: Icons.quiz,
                     validator: (val) => val!.isEmpty ? "مطلوب" : null,
                   ),
                   const SizedBox(height: 15),
+                  
+                  // ✅ تم التعديل: إضافة label وتحديث hintText
                   CustomTextField(
+                    label: "المدة (دقائق)",
                     controller: _durationController,
-                    hintText: "مدة الامتحان (بالدقائق)",
+                    hintText: "أدخل مدة الامتحان",
                     prefixIcon: Icons.timer,
                     keyboardType: TextInputType.number,
                     validator: (val) => val!.isEmpty ? "مطلوب" : null,
