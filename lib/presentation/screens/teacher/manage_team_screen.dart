@@ -44,8 +44,14 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
 
   // البحث عن طلاب لترقيتهم
   Future<void> _searchStudents(String query) async {
+    // ✅ إضافة تنبيه للمستخدم إذا كان النص قصيراً جداً عند الضغط على زر البحث
     if (query.trim().length < 3) {
       setState(() => _searchResults = []);
+      if (query.trim().isNotEmpty) {
+         ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("يرجى إدخال 3 أحرف على الأقل للبحث"), backgroundColor: AppColors.accentOrange),
+        );
+      }
       return;
     }
 
@@ -170,24 +176,40 @@ class _ManageTeamScreenState extends State<ManageTeamScreen> {
                 TextField(
                   controller: _searchController,
                   style: const TextStyle(color: Colors.white), // ✅ لون النص أبيض
+                  textInputAction: TextInputAction.search, // ✅ تغيير زر الكيبورد لزر بحث
+                  onSubmitted: (val) => _searchStudents(val), // ✅ البحث عند الضغط على Enter في الكيبورد
+                  onChanged: (val) {
+                    setState(() {}); // ✅ تحديث الواجهة فقط لإظهار/إخفاء زر الحذف، دون تنفيذ البحث
+                  },
                   decoration: InputDecoration(
                     hintText: "ابحث بالاسم أو اسم المستخدم...",
                     hintStyle: const TextStyle(color: AppColors.textSecondary),
                     prefixIcon: const Icon(Icons.person_search, color: AppColors.textSecondary),
                     suffixIcon: _isSearching 
                         ? const Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)) 
-                        : (_searchController.text.isNotEmpty 
-                            ? IconButton(icon: const Icon(Icons.clear, color: Colors.white70), onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchResults = []);
-                              }) 
-                            : null),
+                        : Row( // ✅ استخدام Row لإضافة زر البحث وزر الحذف
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_searchController.text.isNotEmpty)
+                                IconButton(
+                                  icon: const Icon(Icons.clear, color: Colors.white70),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() => _searchResults = []);
+                                  }
+                                ),
+                              // ✅ زر البحث اليدوي
+                              IconButton(
+                                icon: const Icon(Icons.search, color: AppColors.accentYellow),
+                                onPressed: () => _searchStudents(_searchController.text),
+                              ),
+                            ],
+                          ),
                     filled: true,
                     fillColor: AppColors.backgroundPrimary, // ✅ لون الحقل داكن
                     contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                   ),
-                  onChanged: (val) => _searchStudents(val),
                 ),
               ],
             ),
