@@ -4,11 +4,14 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
 import '../../core/constants/app_colors.dart';
+import '../../core/services/app_state.dart';
+import '../../core/services/storage_service.dart';
 import 'chapter_contents_screen.dart';
 import 'exam_view_screen.dart';
 import 'exam_result_screen.dart'; 
-import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
+import 'teacher/manage_content_screen.dart'; // للشباتر
+import 'teacher/create_exam_screen.dart'; // للامتحانات
+import 'teacher/exam_stats_screen.dart'; // للإحصائيات
 
 class SubjectMaterialsScreen extends StatefulWidget {
   final String subjectId;
@@ -29,6 +32,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _content;
+  bool _isTeacher = false;
   
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
@@ -36,13 +40,24 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
   void initState() {
     super.initState();
     FirebaseCrashlytics.instance.log("Opened Subject: ${widget.subjectTitle} (${widget.subjectId})");
+    _checkUserRole();
     _fetchContent();
+  }
+
+  // ✅ التحقق من الصلاحية
+  Future<void> _checkUserRole() async {
+    var box = await StorageService.openBox('auth_box');
+    String? role = box.get('role');
+    if (mounted) {
+      setState(() {
+        _isTeacher = role == 'teacher';
+      });
+    }
   }
 
   Future<void> _fetchContent() async {
     try {
       var box = await StorageService.openBox('auth_box');
-      // ✅ جلب التوكن والبصمة
       final String? token = box.get('jwt_token');
       final String? deviceId = box.get('device_id');
 
@@ -50,7 +65,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         '$_baseUrl/api/secure/get-subject-content',
         queryParameters: {'subjectId': widget.subjectId},
         options: Options(headers: {
-          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'Authorization': 'Bearer $token',
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
@@ -81,55 +96,97 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
+            // --- Header ---
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
                 children: [
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween, // لتوزيع الأزرار
                     children: [
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.backgroundSecondary,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white.withOpacity(0.05)),
-                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.backgroundSecondary,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                              ),
+                              child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                            ),
                           ),
-                          child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.subjectTitle.toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
-                                overflow: TextOverflow.ellipsis,
-                                letterSpacing: -0.5,
+                          const SizedBox(width: 16),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.subjectTitle.toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textPrimary,
+                                  overflow: TextOverflow.ellipsis,
+                                  letterSpacing: -0.5,
+                                ),
+                                maxLines: 1,
                               ),
-                              maxLines: 1,
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              "SUBJECT CONTENTS",
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.accentYellow,
-                                letterSpacing: 2.0,
+                              const SizedBox(height: 4),
+                              const Text(
+                                "SUBJECT CONTENTS",
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.accentYellow,
+                                  letterSpacing: 2.0,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                        ],
                       ),
+
+                      // 🟢 زر إضافة محتوى (شابتر أو امتحان) حسب التبويب النشط - للمعلم فقط
+                      if (_isTeacher)
+                        GestureDetector(
+                          onTap: () {
+                            if (_activeTab == 'chapters') {
+                              // إضافة شابتر
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ManageContentScreen(
+                                    contentType: ContentType.chapter,
+                                    parentId: widget.subjectId,
+                                  ),
+                                ),
+                              ).then((val) { if(val == true) _fetchContent(); });
+                            } else {
+                              // إضافة امتحان
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CreateExamScreen(subjectId: widget.subjectId),
+                                ),
+                              ).then((_) => _fetchContent()); // تحديث عند العودة
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.accentYellow.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(50),
+                              border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
+                            ),
+                            child: Icon(
+                              _activeTab == 'chapters' ? LucideIcons.folderPlus : LucideIcons.filePlus, 
+                              color: AppColors.accentYellow, size: 22
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -180,49 +237,20 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         final Color statusColor = isCompleted ? AppColors.success : AppColors.error;
         final String statusText = isCompleted ? "COMPLETED" : "UNSOLVED";
 
-        return GestureDetector(
-          onTap: () {
-             if (isCompleted) {
-               // محاولة الحصول على معرف المحاولة (سواء كانت الأولى أو الأخيرة)
-               final attemptId = exam['last_attempt_id'] ?? exam['first_attempt_id'] ?? exam['attempt_id']; 
-               
-               if (attemptId != null) {
-                 Navigator.push(
-                   context,
-                   MaterialPageRoute(
-                     builder: (_) => ExamResultScreen(
-                       attemptId: attemptId.toString(),
-                       examTitle: exam['title'] ?? 'Exam Result',
-                     ),
-                   ),
-                 );
-               } else {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(content: Text("Error: Cannot load result (No Attempt ID found)."), backgroundColor: AppColors.error)
-                 );
-               }
-             } else {
-               Navigator.push(
-                 context,
-                 MaterialPageRoute(builder: (_) => ExamViewScreen(
-                   examId: exam['id'].toString(),
-                   examTitle: exam['title'] ?? 'Exam',
-                   isCompleted: isCompleted,
-                 )),
-               );
-             }
-          },
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundSecondary,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: statusColor.withOpacity(0.3), width: 1),
-            ),
-            child: Row(
-              children: [
-                Container(
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSecondary,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: statusColor.withOpacity(0.3), width: 1),
+          ),
+          child: Row(
+            children: [
+              // الأيقونة
+              GestureDetector(
+                onTap: () => _openExam(exam, isCompleted),
+                child: Container(
                   width: 48, height: 48,
                   decoration: BoxDecoration(
                     color: AppColors.backgroundPrimary,
@@ -235,8 +263,13 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     size: 20
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
+              ),
+              const SizedBox(width: 16),
+              
+              // التفاصيل
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _openExam(exam, isCompleted),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -276,13 +309,65 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     ],
                   ),
                 ),
-                Icon(LucideIcons.chevronRight, size: 20, color: statusColor.withOpacity(0.5)),
-              ],
-            ),
+              ),
+
+              // 🟢 زر الإحصائيات (للمعلم فقط) أو سهم الدخول (للطالب)
+              if (_isTeacher)
+                IconButton(
+                  icon: const Icon(LucideIcons.barChart2, color: AppColors.accentYellow),
+                  tooltip: "Statistics",
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ExamStatsScreen(
+                          examId: exam['id'].toString(),
+                          examTitle: exam['title'] ?? "Exam",
+                        ),
+                      ),
+                    );
+                  },
+                )
+              else
+                IconButton(
+                  icon: Icon(LucideIcons.chevronRight, size: 20, color: statusColor.withOpacity(0.5)),
+                  onPressed: () => _openExam(exam, isCompleted),
+                ),
+            ],
           ),
         );
       },
     );
+  }
+
+  void _openExam(Map exam, bool isCompleted) {
+    if (isCompleted) {
+      final attemptId = exam['last_attempt_id'] ?? exam['first_attempt_id'] ?? exam['attempt_id']; 
+      if (attemptId != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ExamResultScreen(
+              attemptId: attemptId.toString(),
+              examTitle: exam['title'] ?? 'Exam Result',
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Error: Cannot load result."), backgroundColor: AppColors.error)
+        );
+      }
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ExamViewScreen(
+          examId: exam['id'].toString(),
+          examTitle: exam['title'] ?? 'Exam',
+          isCompleted: isCompleted,
+        )),
+      );
+    }
   }
 
   Widget _buildChaptersList(List chapters) {
@@ -298,7 +383,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
 
         return GestureDetector(
           onTap: () {
-            // ✅ قراءة اسم الكورس من الاستجابة (أصبح متاحاً الآن بعد تعديل الـ API)
             final String courseTitle = _content?['course_title'] ?? 'Unknown Course';
             
             Navigator.push(
@@ -306,7 +390,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
               MaterialPageRoute(
                 builder: (_) => ChapterContentsScreen(
                   chapter: Map<String, dynamic>.from(chapter),
-                  // ✅ تمرير الهيكل الشجري الكامل للشاشة التالية
                   courseTitle: courseTitle,
                   subjectTitle: widget.subjectTitle,
                 )
@@ -378,7 +461,25 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     ],
                   ),
                 ),
-                const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
+                // 🟢 زر تعديل الشابتر للمعلم
+                if (_isTeacher)
+                  IconButton(
+                    icon: const Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
+                    onPressed: () {
+                       Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ManageContentScreen(
+                            contentType: ContentType.chapter,
+                            initialData: chapter,
+                            parentId: widget.subjectId,
+                          ),
+                        ),
+                      ).then((val) { if(val == true) _fetchContent(); });
+                    },
+                  )
+                else
+                  const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
               ],
             ),
           ),
