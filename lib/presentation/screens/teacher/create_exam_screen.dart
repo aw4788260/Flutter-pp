@@ -1,13 +1,16 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:dio/dio.dart'; // ✅ لاستخدام Dio في جلب التفاصيل
 import '../../../core/services/teacher_service.dart';
+import '../../../core/services/storage_service.dart'; // ✅ لجلب التوكن
 import '../../widgets/custom_text_field.dart';
 
 class CreateExamScreen extends StatefulWidget {
-  final String subjectId; // معرف المادة التي سيضاف لها الامتحان
+  final String subjectId; // معرف المادة
+  final String? examId;   // ✅ معرف الامتحان (اختياري - للتعديل)
 
-  const CreateExamScreen({Key? key, required this.subjectId}) : super(key: key);
+  const CreateExamScreen({Key? key, required this.subjectId, this.examId}) : super(key: key);
 
   @override
   State<CreateExamScreen> createState() => _CreateExamScreenState();
@@ -21,20 +24,107 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _durationController = TextEditingController();
   
-  bool _randomizeQuestions = true; // هل الأسئلة عشوائية؟
-  DateTime? _startDate; // تاريخ التفعيل
-  DateTime? _endDate;   // تاريخ الإغلاق
+  bool _randomizeQuestions = true; 
+  DateTime? _startDate; 
+  DateTime? _endDate;   
   
   List<QuestionModel> _questions = [];
   bool _isSubmitting = false;
+  bool _isLoadingDetails = false; // حالة تحميل بيانات الامتحان عند التعديل
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.examId != null) {
+      _loadExamDetails(); // ✅ استدعاء دالة جلب البيانات في حالة التعديل
+    }
+  }
+
+  // --- جلب تفاصيل الامتحان للتعديل ---
+  Future<void> _loadExamDetails() async {
+    setState(() => _isLoadingDetails = true);
+    try {
+      var box = await StorageService.openBox('auth_box');
+      String? token = box.get('jwt_token');
+      String? deviceId = box.get('device_id');
+
+      // ✅ استخدام API المعلم لجلب التفاصيل (بما في ذلك الإجابات الصحيحة)
+      final response = await Dio().get(
+        'https://courses.aw478260.dpdns.org/api/teacher/get-exam-details',
+        queryParameters: {'examId': widget.examId},
+        options: Options(headers: {
+          'Authorization': 'Bearer $token',
+          'x-device-id': deviceId,
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
+      );
+
+      final data = response.data;
+      
+      setState(() {
+        _titleController.text = data['title'] ?? '';
+        _durationController.text = (data['duration_minutes'] ?? 0).toString();
+        _randomizeQuestions = data['randomize_questions'] ?? true;
+        
+        if (data['start_time'] != null) {
+          _startDate = DateTime.parse(data['start_time']).toLocal();
+        }
+        if (data['end_time'] != null) {
+          _endDate = DateTime.parse(data['end_time']).toLocal();
+        }
+
+        // تحويل الأسئلة القادمة من الـ API إلى QuestionModel
+        if (data['questions'] != null) {
+          _questions = (data['questions'] as List).map((q) {
+            int correctIndex = 0;
+            List<String> options = [];
+            
+            if (q['options'] != null) {
+              // فرز الخيارات حسب الترتيب لضمان اتساق الـ Index
+              var sortedOptions = List.from(q['options']);
+              sortedOptions.sort((a, b) => (a['sort_order'] ?? 0).compareTo(b['sort_order'] ?? 0));
+
+              for (int i = 0; i < sortedOptions.length; i++) {
+                var opt = sortedOptions[i];
+                options.add(opt['option_text']);
+                if (opt['is_correct'] == true) {
+                  correctIndex = i;
+                }
+              }
+            }
+
+            return QuestionModel(
+              text: q['question_text'],
+              options: options,
+              correctOptionIndex: correctIndex,
+              imageUrl: q['image_file_id'], // استخدام معرف الصورة كرابط
+            );
+          }).toList();
+        }
+      });
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("فشل تحميل بيانات الامتحان: $e"), backgroundColor: Colors.red));
+        Navigator.pop(context);
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingDetails = false);
+    }
+  }
 
   // --- دوال اختيار الوقت والتاريخ ---
   Future<void> _pickDateTime(bool isStart) async {
     final now = DateTime.now();
+    // عند التعديل، نبدأ من تاريخ محفوظ سابقاً أو اليوم
+    final initialDate = isStart 
+        ? (_startDate ?? now) 
+        : (_endDate ?? now);
+
     final date = await showDatePicker(
       context: context,
-      initialDate: now,
-      firstDate: now,
+      initialDate: initialDate,
+      firstDate: DateTime(2023), // السماح بتواريخ قديمة للتعديل
       lastDate: now.add(const Duration(days: 365)),
     );
     
@@ -42,7 +132,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
 
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.now(),
+      initialTime: TimeOfDay.fromDateTime(initialDate),
     );
 
     if (time == null) return;
@@ -93,13 +183,13 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      // 1. رفع الصور الخاصة بالأسئلة (إن وجدت)
+      // 1. رفع الصور الخاصة بالأسئلة (الجديدة فقط)
       List<Map<String, dynamic>> processedQuestions = [];
       
       for (var q in _questions) {
-        String? imageUrl = q.imageUrl;
+        String? imageUrl = q.imageUrl; // الاحتفاظ بالرابط القديم
         
-        // إذا كان هناك ملف صورة لم يُرفع بعد
+        // إذا قام المستخدم باختيار ملف صورة جديد، نرفعه
         if (q.imageFile != null) {
           imageUrl = await _teacherService.uploadFile(q.imageFile!);
         }
@@ -108,7 +198,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
           'text': q.text,
           'options': q.options,
           'correctIndex': q.correctOptionIndex,
-          'image': imageUrl, // نرسل الرابط للباك إند
+          'image': imageUrl, 
         });
       }
 
@@ -118,18 +208,27 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
         'subjectId': widget.subjectId,
         'duration': int.parse(_durationController.text),
         'randomize': _randomizeQuestions,
-        // ✅ [تعديل هام]: تغيير المفاتيح لتطابق قاعدة البيانات (start_time, end_time)
         'start_time': _startDate!.toIso8601String(), 
         'end_time': _endDate!.toIso8601String(),
         'questions': processedQuestions,
       };
 
-      // 3. الإرسال للسيرفر
+      // ✅ إضافة معرف الامتحان في حالة التعديل
+      if (widget.examId != null) {
+        examData['examId'] = widget.examId!;
+      }
+
+      // 3. الإرسال للسيرفر (نستخدم createExam التي تدعم التحديث الآن في الباك إند)
       await _teacherService.createExam(examData);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("تم إنشاء الامتحان بنجاح"), backgroundColor: Colors.green));
-        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.examId != null ? "تم تحديث الامتحان بنجاح" : "تم إنشاء الامتحان بنجاح"), 
+            backgroundColor: Colors.green
+          )
+        );
+        Navigator.pop(context, true); // إرجاع true لتحديث القائمة
       }
 
     } catch (e) {
@@ -143,15 +242,24 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // عرض مؤشر التحميل عند جلب التفاصيل
+    if (_isLoadingDetails) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text("إنشاء امتحان جديد")),
+      appBar: AppBar(
+        title: Text(widget.examId != null ? "تعديل الامتحان" : "إنشاء امتحان جديد"),
+      ),
       body: _isSubmitting
           ? const Center(child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 20),
-                Text("جاري رفع الصور وحفظ الامتحان...")
+                Text("جاري رفع الصور وحفظ البيانات...")
               ],
             ))
           : Form(
@@ -236,7 +344,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                           child: ListTile(
                             leading: CircleAvatar(child: Text("${index + 1}")),
                             title: Text(q.text, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(q.imageFile != null ? "يحتوي على صورة" : "نص فقط"),
+                            subtitle: Text(q.imageFile != null ? "صورة جديدة" : (q.imageUrl != null ? "صورة محفوظة" : "نص فقط")),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () => setState(() => _questions.removeAt(index)),
@@ -254,7 +362,10 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       backgroundColor: Colors.blue[800],
                     ),
-                    child: const Text("حفظ ونشر الامتحان", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      widget.examId != null ? "حفظ التعديلات" : "حفظ ونشر الامتحان", 
+                      style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)
+                    ),
                   ),
                 ],
               ),
@@ -326,7 +437,7 @@ class _QuestionDialogState extends State<QuestionDialog> {
 
   Future<void> _pickImage() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.image, // نقبل الصور فقط هنا
+      type: FileType.image, 
     );
 
     if (result != null) {
@@ -339,10 +450,8 @@ class _QuestionDialogState extends State<QuestionDialog> {
   void _save() {
     if (!_qFormKey.currentState!.validate()) return;
 
-    // التحقق من أن الخيارات ممتلئة
     List<String> options = _optionControllers.map((c) => c.text.trim()).toList();
     if (options.any((o) => o.isEmpty)) {
-      // تنبيه بسيط
       return; 
     }
 
@@ -351,7 +460,7 @@ class _QuestionDialogState extends State<QuestionDialog> {
       options: options,
       correctOptionIndex: _correctIndex,
       imageFile: _selectedImage,
-      imageUrl: _existingImageUrl,
+      imageUrl: _existingImageUrl, // نحتفظ بالصورة القديمة إذا لم يتم اختيار جديدة
     );
 
     widget.onSave(newQuestion);
@@ -384,19 +493,28 @@ class _QuestionDialogState extends State<QuestionDialog> {
                   children: [
                     Expanded(
                       child: Text(
-                        _selectedImage != null ? "تم اختيار صورة" : (_existingImageUrl != null ? "صورة محفوظة" : "لا توجد صورة"),
-                        style: const TextStyle(color: Colors.grey),
+                        _selectedImage != null 
+                            ? "تم اختيار صورة جديدة" 
+                            : (_existingImageUrl != null ? "صورة محفوظة مسبقاً" : "لا توجد صورة"),
+                        style: TextStyle(
+                          color: _selectedImage != null ? Colors.green : Colors.grey,
+                          fontWeight: _selectedImage != null ? FontWeight.bold : FontWeight.normal
+                        ),
                       ),
                     ),
-                    TextButton.icon(
+                    IconButton(
                       onPressed: _pickImage,
                       icon: const Icon(Icons.image),
-                      label: const Text("رفع صورة"),
+                      tooltip: "رفع/تغيير صورة",
                     ),
-                    if (_selectedImage != null)
+                    if (_selectedImage != null || _existingImageUrl != null)
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.red),
-                        onPressed: () => setState(() => _selectedImage = null),
+                        tooltip: "حذف الصورة",
+                        onPressed: () => setState(() {
+                          _selectedImage = null;
+                          _existingImageUrl = null; // حذف الصورة القديمة والجديدة
+                        }),
                       )
                   ],
                 ),
