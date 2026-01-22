@@ -4,9 +4,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import 'checkout_screen.dart';
-import 'teacher_profile_screen.dart'; // ✅ تم إضافة الاستيراد
+import 'teacher_profile_screen.dart'; 
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
 
 class CourseDetailsScreen extends StatefulWidget {
   final String courseCode;
@@ -22,17 +21,29 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
   List<String> _selectedSubjectIds = [];
   bool _isFullCourse = false;
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
+  
+  bool _isTeacher = false; // ✅ متغير لحفظ الدور
 
   @override
   void initState() {
     super.initState();
+    _checkUserRole(); // ✅ التحقق من الدور
     _fetchDetails();
+  }
+
+  Future<void> _checkUserRole() async {
+    var box = await StorageService.openBox('auth_box');
+    String? role = box.get('role');
+    if (mounted) {
+      setState(() {
+        _isTeacher = role == 'teacher';
+      });
+    }
   }
 
   Future<void> _fetchDetails() async {
     try {
       var box = await StorageService.openBox('auth_box');
-      // ✅ جلب التوكن بدلاً من user_id المباشر
       final String? token = box.get('jwt_token');
       final String? deviceId = box.get('device_id');
 
@@ -40,7 +51,6 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         '$_baseUrl/api/public/get-course-sales-details',
         queryParameters: {'courseCode': widget.courseCode},
         options: Options(headers: {
-          // ✅ إرسال التوكن إن وجد (لأن الصفحة متاحة للضيوف)
           if (token != null) 'Authorization': 'Bearer $token',
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
@@ -66,22 +76,18 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     final course = _courseData!;
     final teacher = course['teacher'] ?? {};
     final String teacherName = teacher['name'] ?? "Unknown Instructor";
-    // ✅ استخراج معرف المدرس
     final String? teacherId = teacher['id']?.toString(); 
 
     final subjects = List<Map<String, dynamic>>.from(course['subjects'] ?? []);
     final double fullPrice = (course['price'] ?? 0).toDouble();
 
-    // التحقق مما إذا كانت جميع المواد مملوكة
     bool allSubjectsOwned = false;
     if (subjects.isNotEmpty) {
       allSubjectsOwned = subjects.every((s) => s['isOwned'] == true);
     }
 
-    // اعتبار الكورس مملوكاً إذا تم شراؤه كحزمة أو تم شراء جميع مواده
     bool isCourseOwned = (course['isOwned'] ?? false) || allSubjectsOwned;
 
-    // حساب السعر الإجمالي
     double currentPrice = _isFullCourse 
         ? fullPrice 
         : subjects.where((s) => _selectedSubjectIds.contains(s['id'].toString())).fold(0, (sum, s) => sum + (s['price'] ?? 0));
@@ -139,40 +145,72 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           letterSpacing: -0.5,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 20),
                       
-                      // ✅ Instructor Info (Clickable)
-                      Row(
-                        children: [
-                          const Icon(LucideIcons.userCircle, size: 16, color: AppColors.textSecondary),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: () {
-                              if (teacherId != null && teacherId.isNotEmpty) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => TeacherProfileScreen(teacherId: teacherId),
-                                  ),
-                                );
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text("Instructor profile not available")),
-                                );
-                              }
-                            },
-                            child: Text(
-                              teacherName.toUpperCase(),
-                              style: const TextStyle(
-                                color: AppColors.accentOrange,
-                                fontSize: 14, 
-                                fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.underline,
-                                decorationColor: AppColors.accentOrange,
+                      // ✅ تصميم جديد وأنيق لبطاقة المدرس (New Elegant Instructor Card)
+                      GestureDetector(
+                        onTap: () {
+                          if (teacherId != null && teacherId.isNotEmpty) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TeacherProfileScreen(teacherId: teacherId),
                               ),
-                            ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Instructor profile not available")),
+                            );
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSecondary,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white.withOpacity(0.05)),
                           ),
-                        ],
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min, // تأخذ حجم المحتوى فقط
+                            children: [
+                              Container(
+                                width: 40, height: 40,
+                                decoration: BoxDecoration(
+                                  color: AppColors.backgroundPrimary,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppColors.accentOrange.withOpacity(0.5)),
+                                ),
+                                child: const Icon(LucideIcons.user, color: AppColors.accentOrange, size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "INSTRUCTOR",
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    teacherName,
+                                    style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 16),
+                              const Icon(LucideIcons.chevronRight, size: 16, color: AppColors.textSecondary),
+                            ],
+                          ),
+                        ),
                       ),
                       
                       const SizedBox(height: 32),
@@ -182,122 +220,153 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       ),
                       
                       const SizedBox(height: 40),
-                      const Text("PURCHASE OPTIONS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 2.0)),
-                      const SizedBox(height: 20),
 
-                      // 1. Full Course Option
-                      if (!isCourseOwned) 
-                        GestureDetector(
-                          onTap: () => setState(() { _isFullCourse = !_isFullCourse; _selectedSubjectIds.clear(); }),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: _isFullCourse ? AppColors.accentYellow : Colors.white.withOpacity(0.05),
-                                width: _isFullCourse ? 2 : 1,
-                              ),
-                              boxShadow: _isFullCourse ? [BoxShadow(color: AppColors.accentYellow.withOpacity(0.2), blurRadius: 15)] : [],
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text("FULL COURSE ACCESS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                                    const SizedBox(height: 4),
-                                    Text("Access all subjects & exams", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
-                                  ],
-                                ),
-                                Text("$fullPrice EGP", style: const TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.w900, fontSize: 18)),
-                              ],
-                            ),
-                          ),
-                        )
-                      else 
+                      // ✅ إذا كان المستخدم مدرساً: إخفاء خيارات الشراء وعرض رسالة
+                      if (_isTeacher) 
                         Container(
                           padding: const EdgeInsets.all(24),
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: AppColors.success.withOpacity(0.1),
+                            color: AppColors.backgroundSecondary,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: AppColors.success.withOpacity(0.5)),
+                            border: Border.all(color: Colors.white.withOpacity(0.1)),
                           ),
                           child: Column(
                             children: const [
-                              Icon(LucideIcons.checkCircle, color: AppColors.success, size: 32),
+                              Icon(LucideIcons.lock, color: AppColors.textSecondary, size: 32),
+                              SizedBox(height: 12),
+                              Text(
+                                "TEACHER ACCOUNT",
+                                style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                              ),
                               SizedBox(height: 8),
-                              Text("COURSE OWNED", style: TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                              Text(
+                                "Teachers cannot purchase courses.",
+                                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                textAlign: TextAlign.center,
+                              ),
                             ],
                           ),
-                        ),
+                        )
+                      else ...[
+                        // الكود الأصلي لخيارات الشراء (يظهر فقط للطلاب)
+                        const Text("PURCHASE OPTIONS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 2.0)),
+                        const SizedBox(height: 20),
 
-                      if (subjects.isNotEmpty) ...[
-                        const SizedBox(height: 32),
-                        const Text("INDIVIDUAL SUBJECTS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0)),
-                        const SizedBox(height: 16),
-                        
-                        // 2. Individual Subjects List
-                        ...subjects.map((sub) {
-                          bool isOwned = sub['isOwned'] ?? false;
-                          bool isSelected = _selectedSubjectIds.contains(sub['id'].toString());
-                          
-                          return GestureDetector(
-                            onTap: (isOwned || isCourseOwned) ? null : () {
-                              setState(() {
-                                _isFullCourse = false;
-                                if (isSelected) {
-                                  _selectedSubjectIds.remove(sub['id'].toString());
-                                } else {
-                                  _selectedSubjectIds.add(sub['id'].toString());
-                                }
-                              });
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                        // 1. Full Course Option
+                        if (!isCourseOwned) 
+                          GestureDetector(
+                            onTap: () => setState(() { _isFullCourse = !_isFullCourse; _selectedSubjectIds.clear(); }),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.all(24),
                               decoration: BoxDecoration(
-                                color: AppColors.backgroundSecondary.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(16),
+                                color: AppColors.backgroundSecondary,
+                                borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: isSelected ? AppColors.accentOrange : Colors.transparent,
+                                  color: _isFullCourse ? AppColors.accentYellow : Colors.white.withOpacity(0.05),
+                                  width: _isFullCourse ? 2 : 1,
                                 ),
+                                boxShadow: _isFullCourse ? [BoxShadow(color: AppColors.accentYellow.withOpacity(0.2), blurRadius: 15)] : [],
                               ),
                               child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  if (!isOwned && !isCourseOwned)
-                                    Container(
-                                      margin: const EdgeInsets.only(right: 16),
-                                      width: 20, height: 20,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: isSelected ? AppColors.accentOrange : Colors.white24, width: 2),
-                                        color: isSelected ? AppColors.accentOrange : Colors.transparent,
-                                      ),
-                                    ),
-                                  Expanded(
-                                    child: Text(
-                                      sub['title'],
-                                      style: TextStyle(
-                                        color: (isOwned || isCourseOwned) ? AppColors.textSecondary : Colors.white,
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                        decoration: (isOwned || isCourseOwned) ? TextDecoration.lineThrough : null,
-                                      ),
-                                    ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text("FULL COURSE ACCESS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                      const SizedBox(height: 4),
+                                      Text("Access all subjects & exams", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
+                                    ],
                                   ),
-                                  if (isOwned || isCourseOwned)
-                                    const Text("OWNED", style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold))
-                                  else
-                                    Text("${sub['price']} EGP", style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  Text("$fullPrice EGP", style: const TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.w900, fontSize: 18)),
                                 ],
                               ),
                             ),
-                          );
-                        }),
-                      ],
+                          )
+                        else 
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: AppColors.success.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: AppColors.success.withOpacity(0.5)),
+                            ),
+                            child: Column(
+                              children: const [
+                                Icon(LucideIcons.checkCircle, color: AppColors.success, size: 32),
+                                SizedBox(height: 8),
+                                Text("COURSE OWNED", style: TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                              ],
+                            ),
+                          ),
+
+                        if (subjects.isNotEmpty) ...[
+                          const SizedBox(height: 32),
+                          const Text("INDIVIDUAL SUBJECTS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0)),
+                          const SizedBox(height: 16),
+                          
+                          // 2. Individual Subjects List
+                          ...subjects.map((sub) {
+                            bool isOwned = sub['isOwned'] ?? false;
+                            bool isSelected = _selectedSubjectIds.contains(sub['id'].toString());
+                            
+                            return GestureDetector(
+                              onTap: (isOwned || isCourseOwned) ? null : () {
+                                setState(() {
+                                  _isFullCourse = false;
+                                  if (isSelected) {
+                                    _selectedSubjectIds.remove(sub['id'].toString());
+                                  } else {
+                                    _selectedSubjectIds.add(sub['id'].toString());
+                                  }
+                                });
+                              },
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                                decoration: BoxDecoration(
+                                  color: AppColors.backgroundSecondary.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: isSelected ? AppColors.accentOrange : Colors.transparent,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    if (!isOwned && !isCourseOwned)
+                                      Container(
+                                        margin: const EdgeInsets.only(right: 16),
+                                        width: 20, height: 20,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: isSelected ? AppColors.accentOrange : Colors.white24, width: 2),
+                                          color: isSelected ? AppColors.accentOrange : Colors.transparent,
+                                        ),
+                                      ),
+                                    Expanded(
+                                      child: Text(
+                                        sub['title'],
+                                        style: TextStyle(
+                                          color: (isOwned || isCourseOwned) ? AppColors.textSecondary : Colors.white,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                          decoration: (isOwned || isCourseOwned) ? TextDecoration.lineThrough : null,
+                                        ),
+                                      ),
+                                    ),
+                                    if (isOwned || isCourseOwned)
+                                      const Text("OWNED", style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold))
+                                    else
+                                      Text("${sub['price']} EGP", style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      ], // نهاية الشرط (else)
                     ],
                   ),
                 ),
@@ -306,7 +375,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           ),
 
           // --- Bottom Checkout Bar ---
-          if (currentPrice > 0)
+          // ✅ إخفاء الشريط السفلي تماماً إذا كان المستخدم مدرساً
+          if (currentPrice > 0 && !_isTeacher)
             Positioned(
               bottom: 0, left: 0, right: 0,
               child: Container(
