@@ -4,16 +4,16 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import 'subject_materials_screen.dart';
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
+import 'subject_materials_screen.dart';
+import 'teacher/manage_content_screen.dart'; // تأكد من المسار الصحيح
 
 class CourseMaterialsScreen extends StatefulWidget {
   final String courseId;
   final String courseCode;
   final String courseTitle;
-  final String? instructorName; // ✅ استقبال اسم المدرس
-  final List<dynamic>? preLoadedSubjects; // ✅ استقبال المواد المحملة مسبقاً
+  final String? instructorName;
+  final List<dynamic>? preLoadedSubjects;
 
   const CourseMaterialsScreen({
     super.key,
@@ -32,24 +32,37 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
   bool _loading = true;
   List<dynamic> _ownedSubjects = [];
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
+  bool _isTeacher = false;
 
   @override
   void initState() {
     super.initState();
-    // ✅ 1. استخدام البيانات الممررة (إذا وجدت) لتسريع الفتح وتقليل طلبات السيرفر
+    _checkUserRole();
+    
+    // 1. استخدام البيانات الممررة (إذا وجدت) لتسريع الفتح
     if (widget.preLoadedSubjects != null && widget.preLoadedSubjects!.isNotEmpty) {
       _ownedSubjects = widget.preLoadedSubjects!;
       _loading = false;
     } else {
-      // ✅ 2. وإلا نقوم بجلبها من السيرفر (للحالات النادرة)
+      // 2. وإلا نقوم بجلبها من السيرفر
       _fetchSubjects();
+    }
+  }
+
+  // ✅ التحقق من الصلاحية (هل هو معلم؟)
+  Future<void> _checkUserRole() async {
+    var box = await StorageService.openBox('auth_box');
+    String? role = box.get('role');
+    if (mounted) {
+      setState(() {
+        _isTeacher = role == 'teacher';
+      });
     }
   }
 
   Future<void> _fetchSubjects() async {
     try {
       var box = await StorageService.openBox('auth_box');
-      // ✅ جلب التوكن والبصمة
       final String? token = box.get('jwt_token');
       final String? deviceId = box.get('device_id');
 
@@ -57,7 +70,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
         '$_baseUrl/api/public/get-course-sales-details',
         queryParameters: {'courseCode': widget.courseCode},
         options: Options(headers: {
-          if (token != null) 'Authorization': 'Bearer $token', // ✅ إرسال التوكن
+          if (token != null) 'Authorization': 'Bearer $token',
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
@@ -70,8 +83,10 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
         bool ownsCourse = AppState().ownsCourse(widget.courseId);
 
         setState(() {
-          // فلترة المواد التي يملكها الطالب فقط
+          // في حالة المعلم، قد يرغب برؤية كل المواد، لكن هنا سنلتزم بالمنطق الحالي
+          // أو يمكنك عرض الكل للمعلم: if (_isTeacher) return true;
           _ownedSubjects = allSubjects.where((sub) {
+            if (_isTeacher) return true; // ✅ المعلم يرى كل المواد
             bool ownsSubject = AppState().ownsSubject(sub['id'].toString());
             return ownsCourse || ownsSubject;
           }).toList();
@@ -85,79 +100,105 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ استخدام اسم المدرس الممرر من الصفحة السابقة (Init Data)
     final String displayInstructor = widget.instructorName ?? "Instructor";
 
-    // -------------------------------------------------------------------------
-    // ✅ منطق الاستجابة لحجم الشاشة (Responsive Layout)
-    // -------------------------------------------------------------------------
+    // --- Responsive Logic ---
     final double screenWidth = MediaQuery.of(context).size.width;
-    int crossAxisCount = 2; // الافتراضي للموبايل
+    int crossAxisCount = 2; 
 
     if (screenWidth > 900) {
-      crossAxisCount = 4; // تابلت أفقي عريض
+      crossAxisCount = 4;
     } else if (screenWidth > 600) {
-      crossAxisCount = 3; // تابلت رأسي أو موبايل كبير جداً
+      crossAxisCount = 3;
     }
-    // -------------------------------------------------------------------------
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: SafeArea(
         child: Column(
           children: [
-            // ✅ Header
+            // --- Header ---
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSecondary,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                  Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSecondary,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white.withOpacity(0.05)),
+                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                          ),
+                          child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                        ),
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.courseTitle.toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.courseTitle.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                              letterSpacing: -0.5,
+                            ),
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            letterSpacing: -0.5,
                           ),
-                          maxLines: 1,
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          "CHOOSE SUBJECT",
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.accentYellow,
-                            letterSpacing: 2.0,
+                          const SizedBox(height: 4),
+                          const Text(
+                            "CHOOSE SUBJECT",
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.accentYellow,
+                              letterSpacing: 2.0,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                   ),
+
+                  // 🟢 زر إضافة مادة (يظهر للمعلم فقط)
+                  if (_isTeacher)
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ManageContentScreen(
+                              contentType: ContentType.subject,
+                              parentId: widget.courseId, // تمرير ID الكورس كأب للمادة
+                            ),
+                          ),
+                        ).then((value) {
+                          if(value == true) _fetchSubjects(); // تحديث القائمة بعد الإضافة
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.accentYellow.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(50),
+                          border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
+                        ),
+                        child: const Icon(LucideIcons.plus, color: AppColors.accentYellow, size: 22),
+                      ),
+                    ),
                 ],
               ),
             ),
 
-            // ✅ Content Area
+            // --- Content Area ---
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
@@ -183,7 +224,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                       : GridView.builder(
                           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount, // ✅ استخدام العدد الديناميكي
+                            crossAxisCount: crossAxisCount,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                             childAspectRatio: 1.0,
@@ -228,7 +269,29 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                                             boxShadow: [BoxShadow(color: AppColors.accentOrange, blurRadius: 4)],
                                           ),
                                         ),
-                                        const Icon(LucideIcons.playCircle, size: 20, color: AppColors.accentOrange),
+                                        
+                                        // 🟢 أيقونة التعديل (للمعلم) أو أيقونة التشغيل (للطالب)
+                                        if (_isTeacher)
+                                          GestureDetector(
+                                            onTap: () {
+                                               // فتح شاشة التعديل للمادة
+                                               Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) => ManageContentScreen(
+                                                    contentType: ContentType.subject,
+                                                    initialData: subject,
+                                                    parentId: widget.courseId,
+                                                  ),
+                                                ),
+                                              ).then((val) {
+                                                if(val == true) _fetchSubjects();
+                                              });
+                                            },
+                                            child: const Icon(LucideIcons.edit2, size: 20, color: AppColors.accentYellow),
+                                          )
+                                        else
+                                          const Icon(LucideIcons.playCircle, size: 20, color: AppColors.accentOrange),
                                       ],
                                     ),
 
@@ -254,7 +317,6 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              // ✅ عرض اسم المدرس هنا بشكل صحيح
                                               Text(
                                                 displayInstructor.toUpperCase(),
                                                 style: TextStyle(
