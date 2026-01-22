@@ -5,11 +5,11 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/download_manager.dart';
+import '../../core/services/storage_service.dart';
 import 'video_player_screen.dart';
 import 'youtube_player_screen.dart';
 import 'pdf_viewer_screen.dart';
-import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
+import 'teacher/manage_content_screen.dart'; // ✅ لاستخدامه في الإضافة والتعديل
 
 class ChapterContentsScreen extends StatefulWidget {
   final Map<String, dynamic> chapter;
@@ -30,6 +30,39 @@ class ChapterContentsScreen extends StatefulWidget {
 class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   String activeTab = 'videos';
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
+  bool _isTeacher = false;
+  // لتحديث المحتوى محلياً بعد الإضافة/التعديل
+  late Map<String, dynamic> _currentChapter;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentChapter = widget.chapter;
+    _checkUserRole();
+  }
+
+  // ✅ التحقق من الصلاحية
+  Future<void> _checkUserRole() async {
+    var box = await StorageService.openBox('auth_box');
+    String? role = box.get('role');
+    if (mounted) {
+      setState(() {
+        _isTeacher = role == 'teacher';
+      });
+    }
+  }
+
+  // دالة لتحديث محتوى الشابتر من السيرفر بعد التعديل
+  Future<void> _refreshContent() async {
+    // يمكنك هنا استدعاء API لجلب تفاصيل الشابتر، أو الاعتماد على العودة من الشاشة السابقة وتحديث الـ UI
+    // للتبسيط، سنفترض أن الشاشة السابقة (SubjectMaterials) هي من ستقوم بالتحديث عند العودة،
+    // لكن إذا أردت تحديثاً فورياً هنا، ستحتاج endpoint لجلب الشابتر.
+    // حالياً سنعتمد على التحديث اليدوي إذا قام المستخدم بالعودة والدخول مجدداً،
+    // أو نمرر دالة callback.
+    // الحل الأفضل: إعادة طلب محتوى المادة (Subject) بالكامل لكننا لا نملك ID المادة هنا مباشرة إلا في الـ widget.
+    // لذا، سنقوم بإعادة بناء الواجهة فقط معتمدين على أن manage_content قد أرسل البيانات للسيرفر.
+    setState(() {}); 
+  }
 
   // ===========================================================================
   // 1. منطق المشاهدة (Watch Logic) واختيار المشغل
@@ -59,7 +92,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               ),
               const SizedBox(height: 24),
               
-              // ✅ الخيار الأول: المشغل المباشر (الأقوى)
               _buildOptionTile(
                 icon: LucideIcons.rocket, 
                 title: "First Player",
@@ -72,7 +104,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
               const SizedBox(height: 16),
 
-              // ✅ الخيار الثاني: يوتيوب
               _buildOptionTile(
                 icon: LucideIcons.youtube,
                 title: "Second Player",
@@ -85,7 +116,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               
               const SizedBox(height: 16),
 
-              // ✅ الخيار الثالث: المشغل القديم
               _buildOptionTile(
                 icon: LucideIcons.playCircle,
                 title: "Third Player",
@@ -102,7 +132,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // الدالة القديمة (للخيارين الثاني والثالث)
   Future<void> _fetchAndPlayVideo(Map<String, dynamic> video, {required bool useYoutube}) async {
     showDialog(
       context: context,
@@ -112,7 +141,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
     try {
       var box = await StorageService.openBox('auth_box');
-      // ✅ تحديث الهيدرز: استخدام التوكن والبصمة
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
       
@@ -120,7 +148,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         '$_baseUrl/api/secure/get-video-id',
         queryParameters: {'lessonId': video['id'].toString()},
         options: Options(headers: {
-          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'Authorization': 'Bearer $token',
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
@@ -180,7 +208,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // الدالة الجديدة للخيار الأول (الأقوى - دمج الصوت والصورة)
   Future<void> _fetchAndPlayWithExplode(Map<String, dynamic> video) async {
     FirebaseCrashlytics.instance.log("🚀 Starting Direct Play (Explode) for: ${video['title']}");
     showDialog(
@@ -191,7 +218,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
     try {
       var box = await StorageService.openBox('auth_box');
-      // ✅ تحديث الهيدرز
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
       
@@ -199,7 +225,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         '$_baseUrl/api/secure/get-stream-proxy', 
         queryParameters: {'lessonId': video['id'].toString()},
         options: Options(headers: {
-          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'Authorization': 'Bearer $token',
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
@@ -281,7 +307,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
     try {
       var box = await StorageService.openBox('auth_box');
-      // ✅ تحديث الهيدرز
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
       
@@ -289,7 +314,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         '$_baseUrl/api/secure/get-stream-proxy', 
         queryParameters: {'lessonId': videoId},
         options: Options(headers: {
-          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'Authorization': 'Bearer $token',
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
@@ -419,7 +444,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     );
   }
 
-  // ✅ منطق تحميل PDF
   void _startPdfDownload(String pdfId, String pdfTitle) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Started...")));
       FirebaseCrashlytics.instance.log("⬇️ Starting PDF download: $pdfTitle");
@@ -448,8 +472,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final videos = (widget.chapter['videos'] as List? ?? []).cast<Map<String, dynamic>>();
-    final pdfs = (widget.chapter['pdfs'] as List? ?? []).cast<Map<String, dynamic>>();
+    final videos = (_currentChapter['videos'] as List? ?? []).cast<Map<String, dynamic>>();
+    final pdfs = (_currentChapter['pdfs'] as List? ?? []).cast<Map<String, dynamic>>();
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -464,51 +488,83 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                   Padding(
                     padding: const EdgeInsets.all(24.0),
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.backgroundSecondary,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                                ),
+                                child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                              ),
                             ),
-                            child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.chapter['title'].toString().toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textPrimary,
+                            const SizedBox(width: 16),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.chapter['title'].toString().toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary,
+                                    overflow: TextOverflow.ellipsis,
+                                    letterSpacing: -0.5,
+                                  ),
+                                  maxLines: 1,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "${widget.courseTitle} > ${widget.subjectTitle}",
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.accentYellow.withOpacity(0.8),
+                                    letterSpacing: 1.0,
+                                  ),
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  letterSpacing: -0.5,
                                 ),
-                                maxLines: 1,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                "${widget.courseTitle} > ${widget.subjectTitle}",
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.accentYellow.withOpacity(0.8),
-                                  letterSpacing: 1.0,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
+                          ],
                         ),
+
+                        // 🟢 زر الإضافة (يظهر للمعلم فقط)
+                        if (_isTeacher)
+                          GestureDetector(
+                            onTap: () {
+                              ContentType type = activeTab == 'videos' ? ContentType.video : ContentType.pdf;
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ManageContentScreen(
+                                    contentType: type,
+                                    parentId: widget.chapter['id'].toString(), // ID الشابتر
+                                  ),
+                                ),
+                              ).then((val) { if(val == true) _refreshContent(); });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppColors.accentYellow.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(50),
+                                border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
+                              ),
+                              child: Icon(
+                                activeTab == 'videos' ? LucideIcons.video : LucideIcons.filePlus, 
+                                color: AppColors.accentYellow, size: 22
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -627,6 +683,24 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         ],
                       ),
                     ),
+                    
+                    // 🟢 زر التعديل (للمعلم فقط)
+                    if (_isTeacher)
+                      IconButton(
+                        icon: const Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
+                        onPressed: () {
+                           Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ManageContentScreen(
+                                contentType: ContentType.video,
+                                initialData: video,
+                                parentId: widget.chapter['id'].toString(),
+                              ),
+                            ),
+                          ).then((val) { if(val == true) _refreshContent(); });
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -723,6 +797,24 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         ],
                       ),
                     ),
+                    
+                    // 🟢 زر التعديل (للمعلم فقط)
+                    if (_isTeacher)
+                      IconButton(
+                        icon: const Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
+                        onPressed: () {
+                           Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ManageContentScreen(
+                                contentType: ContentType.pdf,
+                                initialData: pdf,
+                                parentId: widget.chapter['id'].toString(),
+                              ),
+                            ),
+                          ).then((val) { if(val == true) _refreshContent(); });
+                        },
+                      ),
                   ],
                 ),
               ),
