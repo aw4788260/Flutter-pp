@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart'; 
 import '../../core/services/storage_service.dart';
+import '../../widgets/custom_text_field.dart'; // ✅ استيراد CustomTextField
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -85,9 +86,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         dataToSend['specialty'] = _specialtyController.text;
       }
 
-      // تحديد الـ Endpoint المناسب (للمعلم endpoint خاص إذا لزم الأمر، أو نستخدم العام)
-      // سنستخدم update-profile العام ونفترض أن الباك إند يتعامل مع الحقول الإضافية بذكاء
-      // أو يمكن استخدام endpoint مخصص للمعلم: /api/teacher/update-profile
+      // تحديد الـ Endpoint المناسب
       String endpoint = _isTeacher ? '$_baseUrl/api/teacher/update-profile' : '$_baseUrl/api/student/update-profile';
 
       final res = await Dio().post(
@@ -177,11 +176,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildInputField("Full Name", _nameController, LucideIcons.user),
+                    // ✅ استخدام CustomTextField بدلاً من _buildInputField
+                    CustomTextField(
+                      label: "Full Name",
+                      controller: _nameController,
+                      hintText: "Enter your full name",
+                      prefixIcon: LucideIcons.user,
+                    ),
                     const SizedBox(height: 20),
-                    _buildInputField("Phone Number", _phoneController, LucideIcons.phone, TextInputType.phone),
+                    
+                    CustomTextField(
+                      label: "Phone Number",
+                      controller: _phoneController,
+                      hintText: "01xxxxxxxxx",
+                      prefixIcon: LucideIcons.phone,
+                      keyboardType: TextInputType.phone,
+                    ),
                     const SizedBox(height: 20),
-                    _buildInputField("Username", _usernameController, LucideIcons.atSign),
+                    
+                    CustomTextField(
+                      label: "Username",
+                      controller: _usernameController,
+                      hintText: "Choose a username",
+                      prefixIcon: LucideIcons.atSign,
+                    ),
                     
                     // 🟢 حقول إضافية للمعلم فقط
                     if (_isTeacher) ...[
@@ -190,9 +208,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       const SizedBox(height: 10),
                       const Text("TEACHER INFO", style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                       const SizedBox(height: 15),
-                      _buildInputField("Specialty / Job Title", _specialtyController, LucideIcons.briefcase),
+                      
+                      CustomTextField(
+                        label: "Specialty / Job Title",
+                        controller: _specialtyController,
+                        hintText: "e.g. Physics Teacher",
+                        prefixIcon: LucideIcons.briefcase,
+                      ),
                       const SizedBox(height: 20),
-                      _buildInputField("Bio / About Me", _bioController, LucideIcons.fileText, TextInputType.multiline, maxLines: 3),
+                      
+                      CustomTextField(
+                        label: "Bio / About Me",
+                        controller: _bioController,
+                        hintText: "Tell students about yourself...",
+                        prefixIcon: LucideIcons.fileText,
+                        keyboardType: TextInputType.multiline,
+                        maxLines: 3,
+                      ),
                     ],
                   ],
                 ),
@@ -230,43 +262,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildInputField(String label, TextEditingController controller, IconData icon, [TextInputType type = TextInputType.text, int maxLines = 1]) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(
-            label.toUpperCase(),
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 1.5),
-          ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSecondary,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
-          ),
-          child: TextField(
-            controller: controller,
-            keyboardType: type,
-            maxLines: maxLines,
-            style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
-            decoration: InputDecoration(
-              prefixIcon: maxLines == 1 ? Icon(icon, size: 18, color: AppColors.textSecondary) : Padding(padding: const EdgeInsets.only(bottom: 40), child: Icon(icon, size: 18, color: AppColors.textSecondary)),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: AppColors.accentYellow, width: 1),
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
