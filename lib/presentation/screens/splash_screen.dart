@@ -6,17 +6,16 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:path_provider/path_provider.dart'; 
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../main.dart'; 
+import '../../core/services/storage_service.dart';
+import '../../core/utils/security_manager.dart'; // تأكد من المسار الصحيح
 import 'login_screen.dart';
 import 'main_wrapper.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_conditions_screen.dart';
-import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -168,7 +167,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
       await Hive.initFlutter();
       var box = await StorageService.openBox('auth_box');
-await StorageService.openBox('downloads_box');
+      await StorageService.openBox('downloads_box');
       
       if (SecurityManager.instance.isBlocked) return;
 
@@ -262,7 +261,7 @@ await StorageService.openBox('downloads_box');
         '$_baseUrl/api/public/get-app-init-data',
         options: Options(
           headers: {
-            if (token != null) 'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+            if (token != null) 'Authorization': 'Bearer $token',
             'x-device-id': deviceId,
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
@@ -273,6 +272,11 @@ await StorageService.openBox('downloads_box');
       if (response.statusCode == 200 && response.data['success'] == true) {
         await box.put('cached_init_data', response.data);
         AppState().updateFromInitData(response.data);
+
+        // ✅ حفظ/تحديث نوع المستخدم (معلم/طالب) إذا كان موجوداً في الرد
+        if (response.data['user'] != null && response.data['user']['role'] != null) {
+           await box.put('role', response.data['user']['role']);
+        }
 
         bool isLoggedIn = response.data['isLoggedIn'] ?? false;
 
