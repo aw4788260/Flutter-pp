@@ -110,7 +110,8 @@ class CourseModel {
       title: json['course_title'] ?? '',
       instructorName: json['instructor_name'] ?? 'Instructor',
       teacherId: json['teacher_id']?.toString() ?? '', // ✅ قراءة المعرف من الـ API
-      code: json['code'] ?? '',
+      // ✅ تحويل القيمة إلى نص سواء كانت رقم أو نص لتجنب الخطأ
+code: json['code']?.toString() ?? '',
       fullPrice: (json['price'] ?? 0).toDouble(),
       description: json['description'],
       subjects: [],
