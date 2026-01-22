@@ -107,6 +107,9 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
           break;
         case ContentType.subject:
           data['course_id'] = widget.parentId;
+          // ✅ [تعديل 1]: إضافة السعر عند حفظ المادة
+          data['price'] = double.tryParse(_priceController.text) ?? 0;
+          // data['description'] = _descController.text; // اختياري إذا أردت حفظ الوصف للمادة
           break;
         case ContentType.chapter:
           data['subject_id'] = widget.parentId;
@@ -258,8 +261,9 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // --- حقول الكورس ---
-                  if (widget.contentType == ContentType.course) ...[
+                  // --- حقول الكورس والمواد (السعر والوصف) ---
+                  // ✅ [تعديل 2]: إظهار الحقول للمواد (Subject) أيضاً
+                  if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) ...[
                     CustomTextField(
                       label: "Description", // ✅
                       controller: _descController,
