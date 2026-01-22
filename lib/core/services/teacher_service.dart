@@ -6,18 +6,28 @@ class TeacherService {
   final Dio _dio = Dio();
   // ⚠️ رابط السيرفر الخاص بك
   final String baseUrl = "https://courses.aw478260.dpdns.org/api";
+  
+  // يفضل تعريف Secret التطبيق هنا أو جلبه من البيئة لضمان المرور من حماية السيرفر
+  final String _appSecret = const String.fromEnvironment('APP_SECRET');
 
-  // 🔒 دالة تجهيز الهيدر (Token + Device ID)
-  Future<Options> _getHeaders() async {
+  // 🔒 دالة تجهيز الهيدر (Token + Device ID + App Secret)
+  // تم إضافة معامل isUpload لضبط Content-Type بشكل صحيح
+  Future<Options> _getHeaders({bool isUpload = false}) async {
     var box = await StorageService.openBox('auth_box');
     String? token = box.get('jwt_token');
     String? deviceId = box.get('device_id');
 
-    return Options(headers: {
+    final headers = {
       'Authorization': 'Bearer $token',
       'x-device-id': deviceId,
-      'Content-Type': 'application/json',
-    });
+      'x-app-secret': _appSecret, // ✅ هام جداً للمرور من فحص المصدر
+    };
+
+    if (!isUpload) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    return Options(headers: headers);
   }
 
   // ==========================================================
@@ -52,8 +62,9 @@ class TeacherService {
   // ==========================================================
   Future<String> uploadFile(File file) async {
     try {
-      var box = await StorageService.openBox('auth_box');
-      String? token = box.get('jwt_token');
+      // ✅ التعديل الأول: استخدام _getHeaders مع isUpload: true
+      // هذا يضمن إرسال x-device-id و x-app-secret مع طلب الرفع
+      final options = await _getHeaders(isUpload: true);
 
       String fileName = file.path.split('/').last;
       
@@ -64,10 +75,7 @@ class TeacherService {
       final response = await _dio.post(
         '$baseUrl/teacher/upload',
         data: formData,
-        options: Options(headers: {
-          'Authorization': 'Bearer $token',
-          // Dio سيقوم بضبط Content-Type تلقائياً للـ Multipart
-        }),
+        options: options, // ✅ الآن الهيدرز صحيحة وتحتوي على device_id
       );
       
       if (response.statusCode == 200 && response.data['success'] == true) {
@@ -170,9 +178,15 @@ class TeacherService {
   // إنشاء امتحان جديد
   Future<void> createExam(Map<String, dynamic> examData) async {
     final options = await _getHeaders();
+    
+    // ✅ التعديل الثاني: تغليف البيانات داخل { action: 'create', payload: ... }
+    // لكي يتوافق مع ما يتوقعه ملف pages/api/teacher/exams.js
     await _dio.post(
       '$baseUrl/teacher/exams',
-      data: examData,
+      data: {
+        'action': 'create',
+        'payload': examData
+      },
       options: options,
     );
   }
