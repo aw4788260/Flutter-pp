@@ -3,18 +3,22 @@ import '../../core/constants/app_colors.dart';
 
 class CustomTextField extends StatefulWidget {
   final String label;
-  final String hint;
+  final String hintText; // ✅ تم تعديل الاسم من hint إلى hintText ليطابق الاستدعاء
   final IconData icon;
   final bool isPassword;
   final TextEditingController controller;
+  final int maxLines; // ✅ تمت الإضافة
+  final TextInputType keyboardType; // ✅ تمت الإضافة
 
   const CustomTextField({
     super.key,
     required this.label,
-    required this.hint,
+    required this.hintText, // ✅ مطلوب الآن باسم hintText
     required this.icon,
     this.isPassword = false,
     required this.controller,
+    this.maxLines = 1, // ✅ قيمة افتراضية
+    this.keyboardType = TextInputType.text, // ✅ قيمة افتراضية
   });
 
   @override
@@ -29,7 +33,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Label (MATCH: text-[10px] font-bold uppercase tracking-widest text-accent-yellow)
+        // Label
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(
@@ -46,36 +50,37 @@ class _CustomTextFieldState extends State<CustomTextField> {
         // Input Container
         Container(
           decoration: BoxDecoration(
-            color: AppColors.backgroundSecondary, // bg-background-secondary
-            borderRadius: BorderRadius.circular(16), // rounded-m3-lg
+            color: AppColors.backgroundSecondary,
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: _isFocused 
                   ? AppColors.accentYellow.withOpacity(0.5) 
-                  : Colors.white.withOpacity(0.05), // border-white/5
+                  : Colors.white.withOpacity(0.05),
             ),
           ),
           child: TextField(
             controller: widget.controller,
             obscureText: widget.isPassword,
+            maxLines: widget.maxLines, // ✅ ربط عدد الأسطر
+            keyboardType: widget.keyboardType, // ✅ ربط نوع لوحة المفاتيح
             style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
             cursorColor: AppColors.accentYellow,
             onTap: () => setState(() => _isFocused = true),
             onTapOutside: (_) => setState(() => _isFocused = false),
             decoration: InputDecoration(
-              hintText: widget.hint,
+              hintText: widget.hintText, // ✅ استخدام المتغير المعدل
               hintStyle: const TextStyle(color: AppColors.textSecondary),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
               prefixIcon: Icon(
                 widget.icon,
                 size: 18,
-                // MATCH: Icon color change on focus
                 color: widget.controller.text.isNotEmpty || _isFocused
                     ? AppColors.accentYellow 
                     : AppColors.textSecondary,
               ),
             ),
-            onChanged: (val) => setState(() {}), // لتحديث لون الأيقونة عند الكتابة
+            onChanged: (val) => setState(() {}),
           ),
         ),
       ],
