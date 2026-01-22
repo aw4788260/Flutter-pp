@@ -11,7 +11,6 @@ class TeacherService {
   final String _appSecret = const String.fromEnvironment('APP_SECRET');
 
   // 🔒 دالة تجهيز الهيدر (Token + Device ID + App Secret)
-  // تم إضافة معامل isUpload لضبط Content-Type بشكل صحيح
   Future<Options> _getHeaders({bool isUpload = false}) async {
     var box = await StorageService.openBox('auth_box');
     String? token = box.get('jwt_token');
@@ -20,7 +19,7 @@ class TeacherService {
     final Map<String, dynamic> headers = {
       'Authorization': 'Bearer $token',
       'x-device-id': deviceId,
-      'x-app-secret': _appSecret, // ✅ هام جداً للمرور من فحص المصدر
+      'x-app-secret': _appSecret, 
     };
 
     if (!isUpload) {
@@ -33,7 +32,6 @@ class TeacherService {
   // ==========================================================
   // 1️⃣ إدارة المحتوى (إضافة - تعديل - حذف)
   // ==========================================================
-  // ✅ التعديل هنا: تغيير النوع إلى Future<dynamic> وإرجاع البيانات
   Future<dynamic> manageContent({
     required String action, // 'create', 'update', 'delete'
     required String type,   // 'courses', 'subjects', 'chapters', 'videos', 'pdfs'
@@ -50,7 +48,6 @@ class TeacherService {
         },
         options: options,
       );
-      // ✅ إرجاع البيانات لاستخدامها في التحديث المحلي
       return response.data;
     } catch (e) {
       if (e is DioException) {
@@ -61,15 +58,11 @@ class TeacherService {
   }
 
   // ==========================================================
-  // 2️⃣ رفع الملفات (صور أسئلة أو ملفات PDF)
+  // 2️⃣ رفع الملفات
   // ==========================================================
-  // ✅ تم التعديل: إضافة معامل اختياري onProgress لمتابعة الرفع
   Future<String> uploadFile(File file, {Function(int sent, int total)? onProgress}) async {
     try {
-      // ✅ التعديل الأول: استخدام _getHeaders مع isUpload: true
-      // هذا يضمن إرسال x-device-id و x-app-secret مع طلب الرفع
       final options = await _getHeaders(isUpload: true);
-
       String fileName = file.path.split('/').last;
       
       FormData formData = FormData.fromMap({
@@ -79,9 +72,8 @@ class TeacherService {
       final response = await _dio.post(
         '$baseUrl/teacher/upload',
         data: formData,
-        options: options, // ✅ الآن الهيدرز صحيحة وتحتوي على device_id
+        options: options,
         onSendProgress: (sent, total) {
-          // ✅ استدعاء دالة التقدم إذا تم تمريرها
           if (onProgress != null && total != -1) {
             onProgress(sent, total);
           }
@@ -130,7 +122,7 @@ class TeacherService {
     );
   }
 
-  // البحث عن طالب برقم الهاتف أو الكود
+  // البحث عن طالب
   Future<Map<String, dynamic>> searchStudent(String query) async {
     final options = await _getHeaders();
     final response = await _dio.get(
@@ -138,10 +130,10 @@ class TeacherService {
       queryParameters: {'mode': 'search', 'query': query},
       options: options,
     );
-    return response.data; // يرجع {student: {}, access: []}
+    return response.data;
   }
 
-  // منح أو سحب صلاحية من طالب
+  // منح أو سحب صلاحية
   Future<void> toggleAccess(String studentId, String type, String itemId, bool allow) async {
     final options = await _getHeaders();
     await _dio.post(
@@ -150,7 +142,7 @@ class TeacherService {
         'action': 'manage_access',
         'payload': {
           'studentId': studentId,
-          'type': type, // 'course' أو 'subject'
+          'type': type, 
           'itemId': itemId,
           'allow': allow
         }
@@ -159,7 +151,7 @@ class TeacherService {
     );
   }
 
-  // ✅ [إضافة جديدة]: جلب محتوى المعلم (كورسات ومواد) لاستخدامه في القوائم المنسدلة
+  // جلب محتوى المعلم
   Future<List<dynamic>> getMyContent() async {
     final options = await _getHeaders();
     final response = await _dio.get(
@@ -171,30 +163,10 @@ class TeacherService {
   }
 
   // ==========================================================
-  // 4️⃣ إدارة فريق العمل (المشرفين)
+  // 4️⃣ إدارة فريق العمل
   // ==========================================================
   
-  // (دالة قديمة للإضافة اليدوية - يمكن إبقاؤها أو إزالتها إذا لم تعد مستخدمة)
-  Future<void> addModerator({
-    required String name,
-    required String username,
-    required String phone,
-    required String password,
-  }) async {
-    final options = await _getHeaders();
-    await _dio.post(
-      '$baseUrl/teacher/team',
-      data: {
-        'name': name,
-        'username': username,
-        'phone': phone,
-        'password': password,
-      },
-      options: options,
-    );
-  }
-
-  // ✅ جلب أعضاء الفريق الحاليين
+  // جلب أعضاء الفريق
   Future<List<dynamic>> getTeamMembers() async {
     final options = await _getHeaders();
     final response = await _dio.get(
@@ -205,7 +177,7 @@ class TeacherService {
     return response.data;
   }
 
-  // ✅ البحث عن طلاب لترقيتهم (عام)
+  // البحث عن طلاب لترقيتهم
   Future<List<dynamic>> searchStudentsForTeam(String query) async {
     final options = await _getHeaders();
     final response = await _dio.get(
@@ -216,7 +188,7 @@ class TeacherService {
     return response.data;
   }
 
-  // ✅ إدارة العضو (ترقية أو حذف)
+  // إدارة العضو
   Future<void> manageTeamMember({required String action, required String userId}) async {
     final options = await _getHeaders();
     await _dio.post(
@@ -230,22 +202,36 @@ class TeacherService {
   }
 
   // ==========================================================
-  // 5️⃣ الامتحانات (إنشاء وعرض إحصائيات)
+  // 5️⃣ الامتحانات (إنشاء - تعديل - إحصائيات)
   // ==========================================================
   
-  // إنشاء امتحان جديد
+  // ✅ [تعديل هام]: إنشاء أو تحديث امتحان
+  // هذه الدالة الآن ذكية: إذا احتوت البيانات على examId سترسل update، وإلا سترسل create
   Future<void> createExam(Map<String, dynamic> examData) async {
     final options = await _getHeaders();
     
-    // ✅ التعديل الثاني: تغليف البيانات داخل { action: 'create', payload: ... }
+    // تحديد نوع العملية بناءً على وجود المعرف
+    String action = examData.containsKey('examId') ? 'update' : 'create';
+
     await _dio.post(
       '$baseUrl/teacher/exams',
       data: {
-        'action': 'create',
+        'action': action, // ✅ يتم تحديده ديناميكياً
         'payload': examData
       },
       options: options,
     );
+  }
+
+  // ✅ [إضافة جديدة]: جلب تفاصيل الامتحان للمعلم (لغرض التعديل)
+  Future<Map<String, dynamic>> getExamDetails(String examId) async {
+    final options = await _getHeaders();
+    final response = await _dio.get(
+      '$baseUrl/teacher/get-exam-details', // تأكد أن هذا الـ API موجود في الباك إند
+      queryParameters: {'examId': examId},
+      options: options,
+    );
+    return response.data;
   }
 
   // جلب إحصائيات امتحان معين
