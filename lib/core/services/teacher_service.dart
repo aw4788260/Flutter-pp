@@ -1,0 +1,190 @@
+import 'dart:io';
+import 'package:dio/dio.dart';
+import '../services/storage_service.dart';
+
+class TeacherService {
+  final Dio _dio = Dio();
+  // ⚠️ رابط السيرفر الخاص بك
+  final String baseUrl = "https://courses.aw478260.dpdns.org/api";
+
+  // 🔒 دالة تجهيز الهيدر (Token + Device ID)
+  Future<Options> _getHeaders() async {
+    var box = await StorageService.openBox('auth_box');
+    String? token = box.get('jwt_token');
+    String? deviceId = box.get('device_id');
+
+    return Options(headers: {
+      'Authorization': 'Bearer $token',
+      'x-device-id': deviceId,
+      'Content-Type': 'application/json',
+    });
+  }
+
+  // ==========================================================
+  // 1️⃣ إدارة المحتوى (إضافة - تعديل - حذف)
+  // ==========================================================
+  Future<void> manageContent({
+    required String action, // 'create', 'update', 'delete'
+    required String type,   // 'courses', 'subjects', 'chapters', 'videos', 'pdfs'
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      final options = await _getHeaders();
+      await _dio.post(
+        '$baseUrl/teacher/content',
+        data: {
+          'action': action,
+          'type': type,
+          'data': data
+        },
+        options: options,
+      );
+    } catch (e) {
+      if (e is DioException) {
+         throw Exception(e.response?.data['error'] ?? "حدث خطأ في الاتصال بالسيرفر");
+      }
+      throw Exception("فشل تنفيذ العملية: $e");
+    }
+  }
+
+  // ==========================================================
+  // 2️⃣ رفع الملفات (صور أسئلة أو ملفات PDF)
+  // ==========================================================
+  Future<String> uploadFile(File file) async {
+    try {
+      var box = await StorageService.openBox('auth_box');
+      String? token = box.get('jwt_token');
+
+      String fileName = file.path.split('/').last;
+      
+      FormData formData = FormData.fromMap({
+        "file": await MultipartFile.fromFile(file.path, filename: fileName),
+      });
+
+      final response = await _dio.post(
+        '$baseUrl/teacher/upload',
+        data: formData,
+        options: Options(headers: {
+          'Authorization': 'Bearer $token',
+          // Dio سيقوم بضبط Content-Type تلقائياً للـ Multipart
+        }),
+      );
+      
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        return response.data['url'];
+      } else {
+        throw Exception("فشل رفع الملف");
+      }
+    } catch (e) {
+      throw Exception("خطأ أثناء الرفع: $e");
+    }
+  }
+
+  // ==========================================================
+  // 3️⃣ إدارة الطلبات والطلاب
+  // ==========================================================
+  
+  // جلب الطلبات المعلقة
+  Future<List<dynamic>> getPendingRequests() async {
+    final options = await _getHeaders();
+    final response = await _dio.get(
+      '$baseUrl/teacher/students',
+      queryParameters: {'mode': 'requests'},
+      options: options,
+    );
+    return response.data;
+  }
+
+  // قبول أو رفض طلب اشتراك
+  Future<void> handleRequest(String requestId, bool approve, {String? reason}) async {
+    final options = await _getHeaders();
+    await _dio.post(
+      '$baseUrl/teacher/students',
+      data: {
+        'action': 'handle_request',
+        'payload': {
+          'requestId': requestId,
+          'decision': approve ? 'approve' : 'reject',
+          'rejectionReason': reason
+        }
+      },
+      options: options,
+    );
+  }
+
+  // البحث عن طالب برقم الهاتف أو الكود
+  Future<Map<String, dynamic>> searchStudent(String query) async {
+    final options = await _getHeaders();
+    final response = await _dio.get(
+      '$baseUrl/teacher/students',
+      queryParameters: {'mode': 'search', 'query': query},
+      options: options,
+    );
+    return response.data; // يرجع {student: {}, access: []}
+  }
+
+  // منح أو سحب صلاحية من طالب
+  Future<void> toggleAccess(String studentId, String type, String itemId, bool allow) async {
+    final options = await _getHeaders();
+    await _dio.post(
+      '$baseUrl/teacher/students',
+      data: {
+        'action': 'manage_access',
+        'payload': {
+          'studentId': studentId,
+          'type': type, // 'course' أو 'subject'
+          'itemId': itemId,
+          'allow': allow
+        }
+      },
+      options: options,
+    );
+  }
+
+  // ==========================================================
+  // 4️⃣ إدارة فريق العمل (المشرفين)
+  // ==========================================================
+  Future<void> addModerator({
+    required String name,
+    required String username,
+    required String phone,
+    required String password,
+  }) async {
+    final options = await _getHeaders();
+    await _dio.post(
+      '$baseUrl/teacher/team',
+      data: {
+        'name': name,
+        'username': username,
+        'phone': phone,
+        'password': password,
+      },
+      options: options,
+    );
+  }
+
+  // ==========================================================
+  // 5️⃣ الامتحانات (إنشاء وعرض إحصائيات)
+  // ==========================================================
+  
+  // إنشاء امتحان جديد
+  Future<void> createExam(Map<String, dynamic> examData) async {
+    final options = await _getHeaders();
+    await _dio.post(
+      '$baseUrl/teacher/exams',
+      data: examData,
+      options: options,
+    );
+  }
+
+  // جلب إحصائيات امتحان معين
+  Future<Map<String, dynamic>> getExamStats(String examId) async {
+    final options = await _getHeaders();
+    final response = await _dio.get(
+      '$baseUrl/teacher/exams',
+      queryParameters: {'examId': examId},
+      options: options,
+    );
+    return response.data;
+  }
+}
