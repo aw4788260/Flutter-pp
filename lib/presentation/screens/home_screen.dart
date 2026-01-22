@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
+import '../../core/services/storage_service.dart'; // ✅ لاستخدام التخزين والتحقق من الدور
 import 'course_details_screen.dart';
 import 'my_requests_screen.dart';
-import 'teacher_profile_screen.dart'; // ✅ تم تفعيل الاستيراد للتنقل لصفحة المدرس
+import 'teacher_profile_screen.dart';
+import 'teacher/student_requests_screen.dart'; // ✅ شاشة طلبات الطلاب للمعلم
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,6 +25,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // جلب البيانات من مدير الحالة المركزي
   final _allCourses = AppState().allCourses;
   final _user = AppState().userData;
+  
+  bool _isTeacher = false; // ✅ متغير لتخزين صلاحية المستخدم
 
   final List<String> _encouragements = [
     "Knowledge is the key to unlocking your true potential.",
@@ -35,6 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _checkUserRole(); // ✅ التحقق من الدور عند بدء الشاشة
+    
     // إعداد مؤقت السلايدر للنص التشجيعي
     _timer = Timer.periodic(const Duration(seconds: 8), (Timer timer) {
       if (_currentSlide < _encouragements.length - 1) {
@@ -51,6 +57,17 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     });
+  }
+
+  // ✅ دالة التحقق من دور المستخدم
+  Future<void> _checkUserRole() async {
+    var box = await StorageService.openBox('auth_box');
+    String? role = box.get('role');
+    if (mounted) {
+      setState(() {
+        _isTeacher = role == 'teacher';
+      });
+    }
   }
 
   @override
@@ -110,13 +127,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                       
-                      // زر الطلبات السابقة
+                      // زر الطلبات (متغير حسب الدور)
                       GestureDetector(
                         onTap: () {
-                           Navigator.push(
-                            context, 
-                            MaterialPageRoute(builder: (_) => const MyRequestsScreen())
-                          );
+                           if (_isTeacher) {
+                             // ✅ للمدرس: الذهاب لصفحة طلبات الطلاب
+                             Navigator.push(
+                              context, 
+                              MaterialPageRoute(builder: (_) => const StudentRequestsScreen())
+                            );
+                           } else {
+                             // ✅ للطالب: الذهاب لصفحة طلباتي
+                             Navigator.push(
+                              context, 
+                              MaterialPageRoute(builder: (_) => const MyRequestsScreen())
+                            );
+                           }
                         },
                         child: Stack(
                           children: [
@@ -128,7 +154,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 border: Border.all(color: Colors.white.withOpacity(0.05)),
                                 boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                               ),
-                              child: const Icon(LucideIcons.clipboardList, color: AppColors.accentYellow, size: 22),
+                              child: Icon(
+                                _isTeacher ? LucideIcons.inbox : LucideIcons.clipboardList, // ✅ تغيير الأيقونة اختيارياً
+                                color: AppColors.accentYellow, 
+                                size: 22
+                              ),
                             ),
                             Positioned(
                               top: 10,
@@ -353,7 +383,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                   const SizedBox(height: 8),
 
-                                  // ✅ Teacher info (CLICKABLE)
+                                  // Teacher info (CLICKABLE)
                                   GestureDetector(
                                     onTap: () {
                                       if (course.teacherId.isNotEmpty) {
