@@ -17,7 +17,7 @@ class TeacherService {
     String? token = box.get('jwt_token');
     String? deviceId = box.get('device_id');
 
-    final headers = {
+    final Map<String, dynamic> headers = {
       'Authorization': 'Bearer $token',
       'x-device-id': deviceId,
       'x-app-secret': _appSecret, // ✅ هام جداً للمرور من فحص المصدر
