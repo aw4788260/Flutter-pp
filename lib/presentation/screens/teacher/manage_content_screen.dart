@@ -1,16 +1,16 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart'; // ⚠️ تم استبدال image_picker بـ file_picker
+import 'package:file_picker/file_picker.dart';
 import '../../../core/services/teacher_service.dart';
 import '../../widgets/custom_text_field.dart';
+import '../../../core/constants/app_colors.dart'; // تأكد من استدعاء ملف الألوان
 
-// أنواع المحتوى الممكن إدارتها
 enum ContentType { course, subject, chapter, video, pdf }
 
 class ManageContentScreen extends StatefulWidget {
   final ContentType contentType;
-  final String? parentId; // ID الأب (مثلاً ID الكورس عند إضافة مادة)
-  final Map<String, dynamic>? initialData; // بيانات للتعديل (لو null يبقى إضافة جديد)
+  final String? parentId; 
+  final Map<String, dynamic>? initialData; 
 
   const ManageContentScreen({
     Key? key,
@@ -27,16 +27,14 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
   final _formKey = GlobalKey<FormState>();
   final TeacherService _teacherService = TeacherService();
   
-  // حقول البيانات
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _descController = TextEditingController(); // للكورسات
-  final TextEditingController _priceController = TextEditingController(); // للكورسات
-  final TextEditingController _urlController = TextEditingController(); // للفيديو
+  final TextEditingController _descController = TextEditingController(); 
+  final TextEditingController _priceController = TextEditingController(); 
+  final TextEditingController _urlController = TextEditingController(); 
   
-  // متغيرات الملفات (للـ PDF فقط)
   File? _selectedFile;
   String? _selectedFileName;
-  String? _uploadedFileUrl; // لتخزين رابط الملف الموجود سابقاً أو بعد الرفع
+  String? _uploadedFileUrl; 
   bool _isLoading = false;
 
   bool get isEditing => widget.initialData != null;
@@ -44,27 +42,23 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
   @override
   void initState() {
     super.initState();
-    // ملء البيانات في حالة التعديل
     if (isEditing) {
       _titleController.text = widget.initialData!['title'] ?? '';
       _descController.text = widget.initialData!['description'] ?? '';
       _priceController.text = widget.initialData!['price']?.toString() ?? '';
       
-      // للفيديو
       if (widget.contentType == ContentType.video) {
          _urlController.text = widget.initialData!['youtube_video_id'] ?? ''; 
       }
-      // للـ PDF
       if (widget.contentType == ContentType.pdf) {
         _uploadedFileUrl = widget.initialData!['file_url'];
         if (_uploadedFileUrl != null) {
-          _selectedFileName = "ملف PDF الحالي";
+          _selectedFileName = "Current PDF File";
         }
       }
     }
   }
 
-  // دالة اختيار ملف PDF فقط
   Future<void> _pickPdfFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -79,14 +73,12 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     }
   }
 
-  // دالة الإرسال والحفظ
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // التحقق من اختيار ملف في حالة الـ PDF الجديد
     if (widget.contentType == ContentType.pdf && !isEditing && _selectedFile == null) {
        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("يرجى اختيار ملف PDF"), backgroundColor: Colors.red),
+          const SnackBar(content: Text("Please select a PDF file"), backgroundColor: AppColors.error),
        );
        return;
     }
@@ -96,12 +88,10 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     try {
       String? finalFileUrl = _uploadedFileUrl;
 
-      // 1. رفع الملف الجديد إذا تم اختياره (فقط للـ PDF)
       if (widget.contentType == ContentType.pdf && _selectedFile != null) {
         finalFileUrl = await _teacherService.uploadFile(_selectedFile!);
       }
 
-      // 2. تجهيز البيانات حسب النوع
       Map<String, dynamic> data = {
         'title': _titleController.text,
       };
@@ -110,35 +100,28 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         data['id'] = widget.initialData!['id'];
       }
 
-      // إضافة الحقول الخاصة بكل نوع
       switch (widget.contentType) {
         case ContentType.course:
           data['description'] = _descController.text;
           data['price'] = double.tryParse(_priceController.text) ?? 0;
-          // ⚠️ تم إزالة image_url من هنا
           break;
-          
         case ContentType.subject:
           data['course_id'] = widget.parentId;
           break;
-          
         case ContentType.chapter:
           data['subject_id'] = widget.parentId;
           break;
-          
         case ContentType.video:
           data['chapter_id'] = widget.parentId;
           data['youtube_video_id'] = _urlController.text;
           data['is_free'] = false; 
           break;
-          
         case ContentType.pdf:
           data['chapter_id'] = widget.parentId;
           if (finalFileUrl != null) data['file_url'] = finalFileUrl;
           break;
       }
 
-      // 3. تحديد نوع الجدول في قاعدة البيانات
       String dbType = '';
       switch (widget.contentType) {
         case ContentType.course: dbType = 'courses'; break;
@@ -148,7 +131,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.pdf: dbType = 'pdfs'; break;
       }
 
-      // 4. إرسال للباك إند
       await _teacherService.manageContent(
         action: isEditing ? 'update' : 'create',
         type: dbType,
@@ -157,16 +139,70 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(isEditing ? "تم التعديل بنجاح" : "تمت الإضافة بنجاح"), backgroundColor: Colors.green),
+          SnackBar(content: Text(isEditing ? "Updated Successfully" : "Created Successfully"), backgroundColor: AppColors.success),
         );
-        Navigator.pop(context, true); // الرجوع وتحديث الصفحة السابقة
+        Navigator.pop(context, true); 
       }
 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("حدث خطأ: ${e.toString().replaceAll('Exception:', '')}"), backgroundColor: Colors.red),
+          SnackBar(content: Text("Error: ${e.toString().replaceAll('Exception:', '')}"), backgroundColor: AppColors.error),
         );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ✅ دالة الحذف الجديدة
+  Future<void> _deleteItem() async {
+    // تأكيد الحذف
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.backgroundSecondary,
+        title: const Text("Confirm Delete", style: TextStyle(color: Colors.white)),
+        content: const Text("Are you sure you want to delete this item? This cannot be undone.", style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text("Delete", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      String dbType = '';
+      switch (widget.contentType) {
+        case ContentType.course: dbType = 'courses'; break;
+        case ContentType.subject: dbType = 'subjects'; break;
+        case ContentType.chapter: dbType = 'chapters'; break;
+        case ContentType.video: dbType = 'videos'; break;
+        case ContentType.pdf: dbType = 'pdfs'; break;
+      }
+
+      // استدعاء الحذف
+      await _teacherService.manageContent(
+        action: 'delete',
+        type: dbType,
+        data: {'id': widget.initialData!['id']},
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted Successfully"), backgroundColor: AppColors.success));
+        Navigator.pop(context, true); // العودة مع تحديث
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Delete Failed: $e"), backgroundColor: AppColors.error));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -177,48 +213,61 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
   Widget build(BuildContext context) {
     String titleText = '';
     switch (widget.contentType) {
-      case ContentType.course: titleText = isEditing ? "تعديل الكورس" : "إضافة كورس جديد"; break;
-      case ContentType.subject: titleText = isEditing ? "تعديل المادة" : "إضافة مادة جديدة"; break;
-      case ContentType.chapter: titleText = isEditing ? "تعديل الفصل" : "إضافة فصل جديد"; break;
-      case ContentType.video: titleText = isEditing ? "تعديل الفيديو" : "إضافة فيديو جديد"; break;
-      case ContentType.pdf: titleText = isEditing ? "تعديل الملف" : "إضافة ملف PDF"; break;
+      case ContentType.course: titleText = isEditing ? "Edit Course" : "New Course"; break;
+      case ContentType.subject: titleText = isEditing ? "Edit Subject" : "New Subject"; break;
+      case ContentType.chapter: titleText = isEditing ? "Edit Chapter" : "New Chapter"; break;
+      case ContentType.video: titleText = isEditing ? "Edit Video" : "New Video"; break;
+      case ContentType.pdf: titleText = isEditing ? "Edit PDF" : "New PDF"; break;
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(titleText)),
+      backgroundColor: AppColors.backgroundPrimary,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text(titleText, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+        leading: const BackButton(color: AppColors.accentYellow),
+        actions: [
+          // ✅ زر الحذف في الشريط العلوي (يظهر فقط عند التعديل)
+          if (isEditing)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: AppColors.error),
+              tooltip: "Delete",
+              onPressed: _isLoading ? null : _deleteItem,
+            ),
+        ],
+      ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
         : SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(24),
             child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   
-                  // ⚠️ تم إزالة قسم اختيار صورة الكورس من هنا تماماً
-
                   // --- الحقول المشتركة ---
                   CustomTextField(
                     controller: _titleController,
-                    hintText: "العنوان / الاسم",
+                    hintText: "Title / Name",
                     prefixIcon: Icons.title,
-                    validator: (val) => val!.isEmpty ? "هذا الحقل مطلوب" : null,
+                    validator: (val) => val!.isEmpty ? "Required" : null,
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 16),
 
                   // --- حقول الكورس ---
                   if (widget.contentType == ContentType.course) ...[
                     CustomTextField(
                       controller: _descController,
-                      hintText: "وصف الكورس",
+                      hintText: "Description",
                       prefixIcon: Icons.description,
                       maxLines: 3,
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 16),
                     CustomTextField(
                       controller: _priceController,
-                      hintText: "السعر (EGP)",
+                      hintText: "Price (EGP)",
                       prefixIcon: Icons.attach_money,
                       keyboardType: TextInputType.number,
                     ),
@@ -228,56 +277,69 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                   if (widget.contentType == ContentType.video) ...[
                     CustomTextField(
                       controller: _urlController,
-                      hintText: "رابط يوتيوب (ID)",
+                      hintText: "YouTube Video ID",
                       prefixIcon: Icons.video_library,
                     ),
-                    const SizedBox(height: 5),
-                    const Text("مثال: إذا كان الرابط youtube.com/watch?v=xyz123 ضع فقط xyz123", 
-                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 8),
+                    Text("Example: for youtube.com/watch?v=xyz123, enter xyz123", 
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary.withOpacity(0.6))),
                   ],
 
-                  // --- حقول PDF (تظهر فقط عند اختيار PDF) ---
+                  // --- حقول PDF ---
                   if (widget.contentType == ContentType.pdf) ...[
                      const SizedBox(height: 10),
-                     ListTile(
-                       contentPadding: EdgeInsets.zero,
-                       leading: const Icon(Icons.picture_as_pdf, color: Colors.red, size: 30),
-                       title: Text(
-                         _selectedFileName ?? "لم يتم اختيار ملف بعد",
-                         style: TextStyle(
-                           color: _selectedFileName == null ? Colors.grey : Colors.black,
-                           fontWeight: _selectedFileName == null ? FontWeight.normal : FontWeight.bold
-                         ),
+                     Container(
+                       padding: const EdgeInsets.all(12),
+                       decoration: BoxDecoration(
+                         color: AppColors.backgroundSecondary,
+                         borderRadius: BorderRadius.circular(12),
+                         border: Border.all(color: Colors.white10),
                        ),
-                       subtitle: const Text("اضغط لاختيار ملف PDF من جهازك"),
-                       trailing: ElevatedButton.icon(
-                         onPressed: _pickPdfFile,
-                         icon: const Icon(Icons.upload_file),
-                         label: const Text("اختيار ملف"),
-                         style: ElevatedButton.styleFrom(
-                           backgroundColor: Colors.blue[50],
-                           foregroundColor: Colors.blue,
-                           elevation: 0
+                       child: ListTile(
+                         contentPadding: EdgeInsets.zero,
+                         leading: const Icon(Icons.picture_as_pdf, color: AppColors.accentOrange, size: 30),
+                         title: Text(
+                           _selectedFileName ?? "No file selected",
+                           style: TextStyle(
+                             color: _selectedFileName == null ? Colors.grey : Colors.white,
+                             fontWeight: _selectedFileName == null ? FontWeight.normal : FontWeight.bold,
+                             fontSize: 14
+                           ),
                          ),
+                         subtitle: const Text("Tap to select PDF", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                         trailing: const Icon(Icons.upload_file, color: AppColors.accentYellow),
+                         onTap: _pickPdfFile,
                        ),
-                       onTap: _pickPdfFile,
                      ),
-                     const Divider(),
+                     const SizedBox(height: 10),
                   ],
 
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 32),
+                  
+                  // زر الحفظ
                   ElevatedButton(
                     onPressed: _submit,
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      backgroundColor: Colors.blue[800],
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: AppColors.accentYellow,
+                      foregroundColor: AppColors.backgroundPrimary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
                     child: Text(
-                      isEditing ? "حفظ التعديلات" : "إضافة",
-                      style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+                      isEditing ? "SAVE CHANGES" : "CREATE",
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
                     ),
                   ),
+                  
+                  // زر حذف إضافي في الأسفل (اختياري، لزيادة الوضوح)
+                  if (isEditing) ...[
+                    const SizedBox(height: 16),
+                    TextButton.icon(
+                      onPressed: _deleteItem,
+                      icon: const Icon(Icons.delete, color: AppColors.error),
+                      label: const Text("DELETE PERMANENTLY", style: TextStyle(color: AppColors.error)),
+                    ),
+                  ],
                 ],
               ),
             ),
