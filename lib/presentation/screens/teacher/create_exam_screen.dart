@@ -1,9 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:dio/dio.dart'; // ✅ لاستخدام Dio في جلب التفاصيل
+// import 'package:dio/dio.dart'; // لم نعد بحاجة إليه هنا إذا استخدمنا TeacherService
 import '../../../core/services/teacher_service.dart';
-import '../../../core/services/storage_service.dart'; // ✅ لجلب التوكن
 import '../../widgets/custom_text_field.dart';
 
 class CreateExamScreen extends StatefulWidget {
@@ -44,22 +43,8 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
   Future<void> _loadExamDetails() async {
     setState(() => _isLoadingDetails = true);
     try {
-      var box = await StorageService.openBox('auth_box');
-      String? token = box.get('jwt_token');
-      String? deviceId = box.get('device_id');
-
-      // ✅ استخدام API المعلم لجلب التفاصيل (بما في ذلك الإجابات الصحيحة)
-      final response = await Dio().get(
-        'https://courses.aw478260.dpdns.org/api/teacher/get-exam-details',
-        queryParameters: {'examId': widget.examId},
-        options: Options(headers: {
-          'Authorization': 'Bearer $token',
-          'x-device-id': deviceId,
-          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
-        }),
-      );
-
-      final data = response.data;
+      // ✅ استخدام السيرفس بدلاً من Dio مباشرة (النظام المرتب)
+      final data = await _teacherService.getExamDetails(widget.examId!);
       
       setState(() {
         _titleController.text = data['title'] ?? '';
