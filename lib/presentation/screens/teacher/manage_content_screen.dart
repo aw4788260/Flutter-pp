@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/teacher_service.dart';
 import '../../widgets/custom_text_field.dart';
-import '../../../core/constants/app_colors.dart'; // تأكد من استدعاء ملف الألوان
+import '../../../core/constants/app_colors.dart'; 
 
 enum ContentType { course, subject, chapter, video, pdf }
 
@@ -155,7 +155,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     }
   }
 
-  // ✅ دالة الحذف الجديدة
+  // ✅ دالة الحذف
   Future<void> _deleteItem() async {
     // تأكيد الحذف
     bool? confirm = await showDialog(
@@ -198,7 +198,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted Successfully"), backgroundColor: AppColors.success));
-        Navigator.pop(context, true); // العودة مع تحديث
+        Navigator.pop(context, true); 
       }
     } catch (e) {
       if (mounted) {
@@ -228,7 +228,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         title: Text(titleText, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
         leading: const BackButton(color: AppColors.accentYellow),
         actions: [
-          // ✅ زر الحذف في الشريط العلوي (يظهر فقط عند التعديل)
+          // زر الحذف
           if (isEditing)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: AppColors.error),
@@ -248,10 +248,12 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                 children: [
                   
                   // --- الحقول المشتركة ---
+                  // ✅ تم تعديل المعاملات لتطابق CustomTextField الجديد
                   CustomTextField(
+                    label: "Title / Name", // ✅
                     controller: _titleController,
-                    hintText: "Title / Name",
-                    prefixIcon: Icons.title,
+                    hintText: "Enter title here", // ✅
+                    prefixIcon: Icons.title, // ✅
                     validator: (val) => val!.isEmpty ? "Required" : null,
                   ),
                   const SizedBox(height: 16),
@@ -259,15 +261,17 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                   // --- حقول الكورس ---
                   if (widget.contentType == ContentType.course) ...[
                     CustomTextField(
+                      label: "Description", // ✅
                       controller: _descController,
-                      hintText: "Description",
+                      hintText: "Enter description",
                       prefixIcon: Icons.description,
                       maxLines: 3,
                     ),
                     const SizedBox(height: 16),
                     CustomTextField(
+                      label: "Price (EGP)", // ✅
                       controller: _priceController,
-                      hintText: "Price (EGP)",
+                      hintText: "0.0",
                       prefixIcon: Icons.attach_money,
                       keyboardType: TextInputType.number,
                     ),
@@ -276,8 +280,9 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                   // --- حقول الفيديو ---
                   if (widget.contentType == ContentType.video) ...[
                     CustomTextField(
+                      label: "YouTube Video ID", // ✅
                       controller: _urlController,
-                      hintText: "YouTube Video ID",
+                      hintText: "e.g., xyz123",
                       prefixIcon: Icons.video_library,
                     ),
                     const SizedBox(height: 8),
@@ -331,7 +336,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                     ),
                   ),
                   
-                  // زر حذف إضافي في الأسفل (اختياري، لزيادة الوضوح)
+                  // زر حذف إضافي
                   if (isEditing) ...[
                     const SizedBox(height: 16),
                     TextButton.icon(
