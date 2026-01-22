@@ -63,7 +63,8 @@ class TeacherService {
   // ==========================================================
   // 2️⃣ رفع الملفات (صور أسئلة أو ملفات PDF)
   // ==========================================================
-  Future<String> uploadFile(File file) async {
+  // ✅ تم التعديل: إضافة معامل اختياري onProgress لمتابعة الرفع
+  Future<String> uploadFile(File file, {Function(int sent, int total)? onProgress}) async {
     try {
       // ✅ التعديل الأول: استخدام _getHeaders مع isUpload: true
       // هذا يضمن إرسال x-device-id و x-app-secret مع طلب الرفع
@@ -79,6 +80,12 @@ class TeacherService {
         '$baseUrl/teacher/upload',
         data: formData,
         options: options, // ✅ الآن الهيدرز صحيحة وتحتوي على device_id
+        onSendProgress: (sent, total) {
+          // ✅ استدعاء دالة التقدم إذا تم تمريرها
+          if (onProgress != null && total != -1) {
+            onProgress(sent, total);
+          }
+        },
       );
       
       if (response.statusCode == 200 && response.data['success'] == true) {
