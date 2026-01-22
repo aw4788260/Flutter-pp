@@ -3,9 +3,8 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/app_state.dart'; // لجلب البيانات الحالية
+import '../../core/services/app_state.dart'; 
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -18,16 +17,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   late TextEditingController _usernameController;
+  
+  // حقول إضافية للمعلم
+  final TextEditingController _bioController = TextEditingController();
+  final TextEditingController _specialtyController = TextEditingController();
+
   bool _isLoading = false;
+  bool _isTeacher = false; // لتحديد هل نظهر الحقول الإضافية أم لا
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   @override
   void initState() {
     super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
     final user = AppState().userData;
+    
+    // تحميل البيانات الأساسية
     _nameController = TextEditingController(text: user?['first_name'] ?? "");
     _phoneController = TextEditingController(text: user?['phone'] ?? "");
     _usernameController = TextEditingController(text: user?['username'] ?? "");
+
+    // التحقق من الصلاحية (معلم أم لا) وجلب بياناته الإضافية
+    var box = await StorageService.openBox('auth_box');
+    String? role = box.get('role');
+    
+    if (mounted) {
+      setState(() {
+        _isTeacher = role == 'teacher';
+        if (_isTeacher) {
+          _bioController.text = box.get('bio') ?? "";
+          _specialtyController.text = box.get('specialty') ?? "";
+        }
+      });
+    }
   }
 
   @override
@@ -35,6 +60,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameController.dispose();
     _phoneController.dispose();
     _usernameController.dispose();
+    _bioController.dispose();
+    _specialtyController.dispose();
     super.dispose();
   }
 
@@ -42,41 +69,68 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isLoading = true);
     try {
       var box = await StorageService.openBox('auth_box');
-      // ✅ جلب التوكن والبصمة
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
 
+      // تجهيز البيانات للإرسال
+      Map<String, dynamic> dataToSend = {
+        'firstName': _nameController.text,
+        'phone': _phoneController.text,
+        'username': _usernameController.text,
+      };
+
+      // إضافة بيانات المعلم إذا وجد
+      if (_isTeacher) {
+        dataToSend['bio'] = _bioController.text;
+        dataToSend['specialty'] = _specialtyController.text;
+      }
+
+      // تحديد الـ Endpoint المناسب (للمعلم endpoint خاص إذا لزم الأمر، أو نستخدم العام)
+      // سنستخدم update-profile العام ونفترض أن الباك إند يتعامل مع الحقول الإضافية بذكاء
+      // أو يمكن استخدام endpoint مخصص للمعلم: /api/teacher/update-profile
+      String endpoint = _isTeacher ? '$_baseUrl/api/teacher/update-profile' : '$_baseUrl/api/student/update-profile';
+
       final res = await Dio().post(
-        '$_baseUrl/api/student/update-profile',
-        data: {
-          'firstName': _nameController.text,
-          'phone': _phoneController.text,
-          'username': _usernameController.text,
-        },
+        endpoint,
+        data: dataToSend,
         options: Options(headers: {
-          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'Authorization': 'Bearer $token',
           'x-device-id': deviceId,
           'x-app-secret': const String.fromEnvironment('APP_SECRET'), 
         }),
       );
 
       if (res.statusCode == 200 && res.data['success'] == true) {
-        // تحديث محلي
+        // تحديث حالة التطبيق (في الذاكرة)
         if (AppState().userData != null) {
           AppState().userData!['first_name'] = _nameController.text;
           AppState().userData!['username'] = _usernameController.text;
           AppState().userData!['phone'] = _phoneController.text;
         }
+        
+        // تحديث التخزين المحلي
         await box.put('first_name', _nameController.text);
         await box.put('username', _usernameController.text);
+        await box.put('phone', _phoneController.text);
+        
+        if (_isTeacher) {
+          await box.put('bio', _bioController.text);
+          await box.put('specialty', _specialtyController.text);
+        }
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile Updated"), backgroundColor: AppColors.success));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile Updated Successfully"), backgroundColor: AppColors.success));
           Navigator.pop(context);
         }
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to update"), backgroundColor: AppColors.error));
+      if (mounted) {
+        String errorMsg = "Failed to update profile";
+        if(e is DioException) {
+           errorMsg = e.response?.data['message'] ?? errorMsg;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: AppColors.error));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -89,6 +143,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // --- Header ---
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
@@ -114,6 +169,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ],
               ),
             ),
+
+            // --- Form Fields ---
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -125,10 +182,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     _buildInputField("Phone Number", _phoneController, LucideIcons.phone, TextInputType.phone),
                     const SizedBox(height: 20),
                     _buildInputField("Username", _usernameController, LucideIcons.atSign),
+                    
+                    // 🟢 حقول إضافية للمعلم فقط
+                    if (_isTeacher) ...[
+                      const SizedBox(height: 20),
+                      const Divider(color: Colors.white10),
+                      const SizedBox(height: 10),
+                      const Text("TEACHER INFO", style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                      const SizedBox(height: 15),
+                      _buildInputField("Specialty / Job Title", _specialtyController, LucideIcons.briefcase),
+                      const SizedBox(height: 20),
+                      _buildInputField("Bio / About Me", _bioController, LucideIcons.fileText, TextInputType.multiline, maxLines: 3),
+                    ],
                   ],
                 ),
               ),
             ),
+
+            // --- Save Button ---
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: SizedBox(
@@ -162,7 +233,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildInputField(String label, TextEditingController controller, IconData icon, [TextInputType type = TextInputType.text]) {
+  Widget _buildInputField(String label, TextEditingController controller, IconData icon, [TextInputType type = TextInputType.text, int maxLines = 1]) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -182,9 +253,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: TextField(
             controller: controller,
             keyboardType: type,
+            maxLines: maxLines,
             style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
             decoration: InputDecoration(
-              prefixIcon: Icon(icon, size: 18, color: AppColors.textSecondary),
+              prefixIcon: maxLines == 1 ? Icon(icon, size: 18, color: AppColors.textSecondary) : Padding(padding: const EdgeInsets.only(bottom: 40), child: Icon(icon, size: 18, color: AppColors.textSecondary)),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
               focusedBorder: OutlineInputBorder(
