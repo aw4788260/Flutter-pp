@@ -226,9 +226,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
 
   // --- قائمة الامتحانات ---
   Widget _buildExamsList(List allExams) {
-    // ✅ [تعديل هام]: فلترة الامتحانات بناءً على وقت البداية
-    // إذا كان المعلم: يرى كل شيء
-    // إذا كان الطالب: يرى فقط الامتحانات التي حان وقتها
+    // ✅ فلترة الامتحانات بناءً على وقت البداية
     final visibleExams = allExams.where((exam) {
        if (_isTeacher) return true; // المعلم يرى كل الامتحانات دائماً
        
@@ -252,9 +250,22 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       itemBuilder: (context, index) {
         final exam = visibleExams[index];
         final bool isCompleted = exam['isCompleted'] ?? false;
+        
+        // ✅ استقبال متغير انتهاء الوقت من الباك إند
+        final bool isExpired = exam['isExpired'] ?? false;
 
-        final Color statusColor = isCompleted ? AppColors.success : AppColors.error;
-        final String statusText = isCompleted ? "COMPLETED" : "UNSOLVED";
+        // ✅ تحديد اللون والحالة: الأخضر للمكتمل، الأحمر للمنتهي، والأصفر للمتاح
+        final Color statusColor = isCompleted 
+            ? AppColors.success 
+            : (isExpired ? AppColors.error : AppColors.accentOrange); 
+
+        // ✅ تحديد النص
+        String statusText = "UNSOLVED";
+        if (isCompleted) {
+          statusText = "COMPLETED";
+        } else if (isExpired) {
+          statusText = "EXPIRED"; // انتهى الوقت
+        }
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -268,7 +279,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
             children: [
               // الأيقونة
               GestureDetector(
-                onTap: () => _openExam(exam, isCompleted),
+                // ✅ السماح بفتح الامتحان حتى لو كان منتهياً (لنموذج الإجابة)
+                onTap: () => _openExam(exam, isCompleted, isExpired),
                 child: Container(
                   width: 48, height: 48,
                   decoration: BoxDecoration(
@@ -277,7 +289,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     border: Border.all(color: statusColor.withOpacity(0.5)),
                   ),
                   child: Icon(
-                    isCompleted ? LucideIcons.checkCircle2 : LucideIcons.fileX, 
+                    // ✅ تغيير الأيقونة في حالة انتهاء الوقت
+                    isCompleted ? LucideIcons.checkCircle2 : (isExpired ? LucideIcons.clock : LucideIcons.fileX), 
                     color: statusColor, 
                     size: 20
                   ),
@@ -288,7 +301,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
               // التفاصيل
               Expanded(
                 child: GestureDetector(
-                  onTap: () => _openExam(exam, isCompleted),
+                  onTap: () => _openExam(exam, isCompleted, isExpired),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -350,7 +363,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
               else
                 IconButton(
                   icon: Icon(LucideIcons.chevronRight, size: 20, color: statusColor.withOpacity(0.5)),
-                  onPressed: () => _openExam(exam, isCompleted),
+                  onPressed: () => _openExam(exam, isCompleted, isExpired),
                 ),
             ],
           ),
@@ -359,8 +372,10 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     );
   }
 
-  void _openExam(Map exam, bool isCompleted) {
+  // ✅ تم تحديث الدالة لاستقبال isExpired
+  void _openExam(Map exam, bool isCompleted, bool isExpired) {
     if (isCompleted) {
+      // إذا كان الامتحان مكتمل، افتح النتيجة
       final attemptId = exam['last_attempt_id'] ?? exam['first_attempt_id'] ?? exam['attempt_id']; 
       if (attemptId != null) {
         Navigator.push(
@@ -378,12 +393,15 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         );
       }
     } else {
+      // ✅ نفتح شاشة الامتحان في الحالتين (جديد أو منتهي)
+      // الامتحان المنتهي (Expired) سيعامله الباك إند كنموذج إجابة
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => ExamViewScreen(
           examId: exam['id'].toString(),
           examTitle: exam['title'] ?? 'Exam',
           isCompleted: isCompleted,
+          // يمكنك تمرير isExpired هنا أيضاً إذا عدلت ExamViewScreen ليحتاج هذا المتغير قبل الاتصال
         )),
       );
     }
