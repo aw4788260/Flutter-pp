@@ -160,7 +160,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
           break;
         case ContentType.pdf:
           data['chapter_id'] = widget.parentId;
-          // ✅ التعديل الأهم: استخدام file_path بدلاً من file_url
+          // ✅ استخدام file_path بدلاً من file_url
           if (finalFileUrl != null) data['file_path'] = finalFileUrl;
           break;
       }
@@ -174,8 +174,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.pdf: dbType = 'pdfs'; break;
       }
 
-      // 3. الحفظ في السيرفر
-      await _teacherService.manageContent(
+      // 3. الحفظ في السيرفر (مع التقاط الاستجابة)
+      final response = await _teacherService.manageContent(
         action: isEditing ? 'update' : 'create',
         type: dbType,
         data: data,
@@ -188,7 +188,24 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(isEditing ? "Updated Successfully" : "Created Successfully"), backgroundColor: AppColors.success),
         );
-        Navigator.pop(context, true);
+
+        // ✅ التعديل الرئيسي: إرجاع البيانات المحدثة بالكامل
+        Map<String, dynamic> resultData = Map<String, dynamic>.from(data);
+        
+        // محاولة دمج البيانات الراجعة من السيرفر (مثل الـ ID الجديد عند الإنشاء)
+        if (response != null && response is Map) {
+           if (response.containsKey('data') && response['data'] is Map) {
+             resultData.addAll(Map<String, dynamic>.from(response['data']));
+           } else {
+             resultData.addAll(Map<String, dynamic>.from(response));
+           }
+        }
+        
+        if (isEditing) {
+           resultData['id'] = widget.initialData!['id'];
+        }
+
+        Navigator.pop(context, resultData);
       }
 
     } catch (e) {
@@ -244,7 +261,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted Successfully"), backgroundColor: AppColors.success));
-        Navigator.pop(context, true);
+        // ✅ التعديل الرئيسي: إرجاع flag الحذف مع الـ ID
+        Navigator.pop(context, {'deleted': true, 'id': widget.initialData!['id']});
       }
     } catch (e) {
       if (mounted) {
