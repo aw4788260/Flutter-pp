@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/teacher_service.dart';
 import '../../../core/services/storage_service.dart';
-import '../../../core/services/app_state.dart'; // ✅ ضروري لتحديث المواد
+import '../../../core/services/app_state.dart'; // ✅ ضروري لتحديث الحالة العامة
 import '../../widgets/custom_text_field.dart';
 import '../../../core/constants/app_colors.dart';
 
@@ -183,11 +183,12 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       // 4. تحديث الكاش المحلي
       await _updateLocalCache();
 
-      // ✅ 5. التحديث المركزي (مخصص للمواد فقط)
-      // تم التعديل: نحدث المواد هنا، لكن نتجاهل الكورسات (لتتحدث في الشاشة السابقة)
-      if (widget.contentType == ContentType.subject) {
-          await AppState().reloadAppInit();
-      }
+      // ✅ 5. التحديث المركزي (Race Condition Fix)
+      // ننتظر ثانية واحدة لضمان أن السيرفر قام بحفظ البيانات في قاعدة البيانات
+      await Future.delayed(const Duration(seconds: 1));
+
+      // نقوم بتحديث الحالة العامة للتطبيق (كورسات ومواد)
+      await AppState().reloadAppInit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -249,10 +250,11 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
       await _updateLocalCache();
 
-      // ✅ التحديث المركزي عند الحذف (مخصص للمواد فقط)
-      if (widget.contentType == ContentType.subject) {
-          await AppState().reloadAppInit();
-      }
+      // ✅ التحديث المركزي عند الحذف (Race Condition Fix)
+      // انتظار لضمان الحذف من السيرفر
+      await Future.delayed(const Duration(seconds: 1));
+      // تحديث الحالة العامة
+      await AppState().reloadAppInit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted Successfully"), backgroundColor: AppColors.success));
