@@ -9,9 +9,9 @@ import '../../core/services/storage_service.dart';
 import 'chapter_contents_screen.dart';
 import 'exam_view_screen.dart';
 import 'exam_result_screen.dart'; 
-import 'teacher/manage_content_screen.dart'; // للشباتر
-import 'teacher/create_exam_screen.dart'; // للامتحانات
-import 'teacher/exam_stats_screen.dart'; // للإحصائيات
+import 'teacher/manage_content_screen.dart'; 
+import 'teacher/create_exam_screen.dart'; 
+import 'teacher/exam_stats_screen.dart'; 
 
 class SubjectMaterialsScreen extends StatefulWidget {
   final String subjectId;
@@ -34,7 +34,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
   Map<String, dynamic>? _content;
   bool _isTeacher = false;
   
-  // ⚠️ تأكد من أن الرابط صحيح ويطابق الباك إند الخاص بك
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   @override
@@ -45,7 +44,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     _fetchContent();
   }
 
-  // ✅ التحقق من الصلاحية
   Future<void> _checkUserRole() async {
     var box = await StorageService.openBox('auth_box');
     String? role = box.get('role');
@@ -84,8 +82,14 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     }
   }
 
-  // ✅ دالة لتحديث الشابتر في القائمة محلياً
+  // ✅ دالة لتحديث الشابتر في القائمة محلياً (Optimistic Update) أو بعد العودة
   void _updateChapterList(dynamic result) {
+    // إذا كانت النتيجة true فقط (بدون بيانات)، نعيد جلب البيانات كاملة من السيرفر
+    if (result == true) {
+       _fetchContent();
+       return;
+    }
+
     if (result == null || _content == null) return;
 
     setState(() {
@@ -95,12 +99,12 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
          // حذف شابتر
          chapters.removeWhere((c) => c['id'].toString() == result['id'].toString());
       } else if (result is Map<String, dynamic>) {
-         // إضافة أو تحديث (بما في ذلك تحديث عدد الفيديوهات داخله)
+         // إضافة أو تحديث
          int index = chapters.indexWhere((c) => c['id'].toString() == result['id'].toString());
          if (index != -1) {
-           chapters[index] = result; // استبدال الشابتر بالنسخة المحدثة
+           chapters[index] = result; 
          } else {
-           chapters.add(result); // إضافة شابتر جديد
+           chapters.add(result); 
          }
       }
       _content!['chapters'] = chapters;
@@ -126,7 +130,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
               child: Column(
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween, // لتوزيع الأزرار
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
                         children: [
@@ -173,12 +177,11 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                         ],
                       ),
 
-                      // 🟢 زر إضافة محتوى (شابتر أو امتحان) حسب التبويب النشط - للمعلم فقط
+                      // 🟢 زر إضافة محتوى
                       if (_isTeacher)
                         GestureDetector(
                           onTap: () {
                             if (_activeTab == 'chapters') {
-                              // إضافة شابتر
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -187,15 +190,17 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                                     parentId: widget.subjectId,
                                   ),
                                 ),
-                              ).then((val) => _updateChapterList(val)); // ✅ تحديث فوري للقائمة
+                              ).then((val) {
+                                // ✅ تحديث البيانات عند العودة (val == true)
+                                if (val == true) _fetchContent();
+                              }); 
                             } else {
-                              // إضافة امتحان
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => CreateExamScreen(subjectId: widget.subjectId),
                                 ),
-                              ).then((_) => _fetchContent()); // تحديث عند العودة
+                              ).then((_) => _fetchContent()); 
                             }
                           },
                           child: Container(
@@ -249,16 +254,14 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
 
   // --- قائمة الامتحانات ---
   Widget _buildExamsList(List allExams) {
-    // ✅ فلترة الامتحانات بناءً على وقت البداية
     final visibleExams = allExams.where((exam) {
-       if (_isTeacher) return true; // المعلم يرى كل الامتحانات دائماً
+       if (_isTeacher) return true; 
        
        if (exam['start_time'] != null) {
-          final DateTime startTime = DateTime.parse(exam['start_time']).toLocal();
-          // إذا كان الوقت الحالي قبل وقت البداية -> أخفِ الامتحان
-          if (DateTime.now().isBefore(startTime)) {
-             return false; 
-          }
+         final DateTime startTime = DateTime.parse(exam['start_time']).toLocal();
+         if (DateTime.now().isBefore(startTime)) {
+            return false; 
+         }
        }
        return true;
     }).toList();
@@ -273,21 +276,17 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       itemBuilder: (context, index) {
         final exam = visibleExams[index];
         final bool isCompleted = exam['isCompleted'] ?? false;
-        
-        // ✅ استقبال متغير انتهاء الوقت من الباك إند
         final bool isExpired = exam['isExpired'] ?? false;
 
-        // ✅ تحديد اللون والحالة: الأخضر للمكتمل، الأحمر للمنتهي، والأصفر للمتاح
         final Color statusColor = isCompleted 
             ? AppColors.success 
             : (isExpired ? AppColors.error : AppColors.accentOrange); 
 
-        // ✅ تحديد النص
         String statusText = "UNSOLVED";
         if (isCompleted) {
           statusText = "COMPLETED";
         } else if (isExpired) {
-          statusText = "EXPIRED"; // انتهى الوقت
+          statusText = "EXPIRED"; 
         }
 
         return Container(
@@ -302,7 +301,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
             children: [
               // الأيقونة
               GestureDetector(
-                // ✅ السماح بفتح الامتحان حتى لو كان منتهياً (لنموذج الإجابة)
                 onTap: () => _openExam(exam, isCompleted, isExpired),
                 child: Container(
                   width: 48, height: 48,
@@ -312,7 +310,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     border: Border.all(color: statusColor.withOpacity(0.5)),
                   ),
                   child: Icon(
-                    // ✅ تغيير الأيقونة في حالة انتهاء الوقت
                     isCompleted ? LucideIcons.checkCircle2 : (isExpired ? LucideIcons.clock : LucideIcons.fileX), 
                     color: statusColor, 
                     size: 20
@@ -366,12 +363,11 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                 ),
               ),
 
-              // 🟢 أزرار التحكم للمعلم (إحصائيات + تعديل)
+              // 🟢 أزرار التحكم للمعلم
               if (_isTeacher)
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // زر التعديل (Edit)
                     IconButton(
                       icon: const Icon(LucideIcons.edit, color: AppColors.accentOrange, size: 20),
                       tooltip: "تعديل الامتحان",
@@ -381,16 +377,14 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                           MaterialPageRoute(
                             builder: (_) => CreateExamScreen(
                               subjectId: widget.subjectId,
-                              examId: exam['id'].toString(), // ✅ تمرير معرف الامتحان للتعديل
+                              examId: exam['id'].toString(), 
                             ),
                           ),
                         ).then((val) { 
-                          // تحديث القائمة إذا تم الحفظ
                           if (val == true) _fetchContent(); 
                         });
                       },
                     ),
-                    // زر الإحصائيات (Stats)
                     IconButton(
                       icon: const Icon(LucideIcons.barChart2, color: AppColors.accentYellow, size: 20),
                       tooltip: "Statistics",
@@ -409,7 +403,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   ],
                 )
               else
-                // للطالب: سهم الدخول فقط
                 IconButton(
                   icon: Icon(LucideIcons.chevronRight, size: 20, color: statusColor.withOpacity(0.5)),
                   onPressed: () => _openExam(exam, isCompleted, isExpired),
@@ -421,10 +414,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
     );
   }
 
-  // ✅ تم تحديث الدالة لاستقبال isExpired
   void _openExam(Map exam, bool isCompleted, bool isExpired) {
     if (isCompleted) {
-      // إذا كان الامتحان مكتمل، افتح النتيجة
       final attemptId = exam['last_attempt_id'] ?? exam['first_attempt_id'] ?? exam['attempt_id']; 
       if (attemptId != null) {
         Navigator.push(
@@ -442,15 +433,12 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         );
       }
     } else {
-      // ✅ نفتح شاشة الامتحان في الحالتين (جديد أو منتهي)
-      // الامتحان المنتهي (Expired) سيعامله الباك إند كنموذج إجابة
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => ExamViewScreen(
           examId: exam['id'].toString(),
           examTitle: exam['title'] ?? 'Exam',
           isCompleted: isCompleted,
-          // يمكنك تمرير isExpired هنا أيضاً إذا عدلت ExamViewScreen ليحتاج هذا المتغير قبل الاتصال
         )),
       );
     }
@@ -478,11 +466,12 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   chapter: Map<String, dynamic>.from(chapter),
                   courseTitle: courseTitle,
                   subjectTitle: widget.subjectTitle,
+                  subjectId: widget.subjectId, // ✅ ضروري لتحديث المحتوى داخل الشابتر
                 )
               ),
             ).then((updatedChapter) {
-               // ✅ عندما يعود المستخدم من داخل الشابتر، نحدث بيانات الشابتر (مثل عدد الفيديوهات)
-               if (updatedChapter != null) _updateChapterList(updatedChapter);
+               // ✅ عند العودة، نطلب تحديث محتوى المادة لضمان تزامن عدد الدروس
+               _fetchContent();
             });
           },
           child: Container(
@@ -555,7 +544,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   IconButton(
                     icon: const Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
                     onPressed: () {
-                        Navigator.push(
+                      Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => ManageContentScreen(
@@ -564,7 +553,10 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                             parentId: widget.subjectId,
                           ),
                         ),
-                      ).then((val) => _updateChapterList(val)); // ✅ تحديث فوري للقائمة
+                      ).then((val) {
+                         // ✅ تحديث فوري عند العودة (true)
+                         if (val == true) _fetchContent();
+                      });
                     },
                   )
                 else
