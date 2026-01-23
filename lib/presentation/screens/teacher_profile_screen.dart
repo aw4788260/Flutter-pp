@@ -50,7 +50,6 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
 
   // ✅ دالة فتح رابط الواتساب
   Future<void> _launchWhatsApp(String phone) async {
-    // تنظيف الرقم من أي رموز غير رقمية
     String cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
     final Uri url = Uri.parse("https://wa.me/$cleanPhone");
     
@@ -138,7 +137,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                 ),
               ),
 
-              // ✅ زر الواتساب (يظهر فقط إذا كان هناك رقم)
+              // ✅ (تمت الإضافة) زر الواتساب
               if (_teacher!['whatsapp_number'] != null && 
                   _teacher!['whatsapp_number'].toString().isNotEmpty) ...[
                 const SizedBox(height: 20),
@@ -148,7 +147,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                     icon: const Icon(LucideIcons.messageCircle, color: Colors.white),
                     label: const Text("Chat on WhatsApp", style: TextStyle(fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366), // لون واتساب الرسمي
+                      backgroundColor: const Color(0xFF25D366), // WhatsApp Green
                       foregroundColor: Colors.white,
                       elevation: 5,
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -203,7 +202,8 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                     final c = courses[index];
                     return GestureDetector(
                       onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailsScreen(courseCode: c['code'])));
+                          // ✅ استخدام toString لتجنب مشاكل نوع البيانات
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailsScreen(courseCode: c['code']?.toString() ?? '')));
                       },
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -221,7 +221,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    c['title'], 
+                                    c['title'] ?? 'Untitled', 
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
                                   ),
                                   const SizedBox(height: 4),
