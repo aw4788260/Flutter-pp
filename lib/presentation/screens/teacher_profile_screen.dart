@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart'; // ✅ ضروري لفتح الرابط
 import '../../core/constants/app_colors.dart';
-import 'course_details_screen.dart'; // للانتقال للكورس عند الضغط عليه
+import 'course_details_screen.dart'; 
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
 
 class TeacherProfileScreen extends StatefulWidget {
   final String teacherId;
@@ -28,7 +28,6 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
   Future<void> _fetchTeacher() async {
     try {
       var box = await StorageService.openBox('auth_box');
-      // ✅ جلب التوكن والبصمة
       final String? token = box.get('jwt_token');
       final String? deviceId = box.get('device_id');
 
@@ -37,7 +36,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
         queryParameters: {'teacherId': widget.teacherId},
         options: Options(
           headers: {
-            if (token != null) 'Authorization': 'Bearer $token', // ✅ إرسال التوكن إن وجد
+            if (token != null) 'Authorization': 'Bearer $token',
             'x-device-id': deviceId,
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
@@ -46,6 +45,25 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
       if (mounted) setState(() { _teacher = res.data; _loading = false; });
     } catch (e) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ✅ دالة فتح رابط الواتساب
+  Future<void> _launchWhatsApp(String phone) async {
+    // تنظيف الرقم من أي رموز غير رقمية
+    String cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final Uri url = Uri.parse("https://wa.me/$cleanPhone");
+    
+    try {
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        throw 'Could not launch $url';
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not open WhatsApp"), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -119,6 +137,26 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                   letterSpacing: 2.0,
                 ),
               ),
+
+              // ✅ زر الواتساب (يظهر فقط إذا كان هناك رقم)
+              if (_teacher!['whatsapp_number'] != null && 
+                  _teacher!['whatsapp_number'].toString().isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Center(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _launchWhatsApp(_teacher!['whatsapp_number']),
+                    icon: const Icon(LucideIcons.messageCircle, color: Colors.white),
+                    label: const Text("Chat on WhatsApp", style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366), // لون واتساب الرسمي
+                      foregroundColor: Colors.white,
+                      elevation: 5,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    ),
+                  ),
+                ),
+              ],
 
               // --- Bio Section ---
               Container(
