@@ -19,7 +19,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
   String _view = 'library'; // library | market
   String _searchTerm = '';
   bool _isTeacher = false;
-  bool _isUpdating = false; // ✅ متغير للتحكم في حالة التحديث
+  bool _isUpdating = false; // يقابل _loading في الكود المرجعي
 
   @override
   void initState() {
@@ -37,36 +37,21 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     }
   }
 
-  // ✅ 1. دالة معالجة البيانات الراجعة (نفس منطق تحديث المادة)
-  void _handleReturnData(dynamic result) async {
-    // إذا كانت النتيجة true، فهذا يعني أنه تم إجراء تغيير (إضافة/تعديل/حذف)
-    if (result == true) {
-      await _refreshData();
-    }
-  }
-
-  // ✅ دالة التحديث مع تأخير بسيط لضمان التزام السيرفر
+  // ✅ منطق التحديث المنسوخ من _fetchSubjects
   Future<void> _refreshData() async {
-    if (!mounted) return;
-
-    setState(() => _isUpdating = true); // عرض مؤشر التحميل
     try {
-      // ✅ التعديل هنا: زيادة الوقت إلى 1.5 ثانية لضمان انتهاء عمليات السيرفر
-      await Future.delayed(const Duration(milliseconds: 1500));
-
-      // جلب البيانات الجديدة من السيرفر وتحديث الحالة العامة
+      // هذا السطر يعادل استدعاء الـ API في الكود المرجعي
       await AppState().reloadAppInit();
-      
-      // ✅ تحديث الواجهة قسرياً بعد جلب البيانات
+
       if (mounted) {
-        setState(() {}); 
+        setState(() {
+          // في الكود المرجعي يتم تحديث القائمة هنا
+          // هنا نحدث الحالة فقط لإعادة بناء الواجهة بالبيانات الجديدة من AppState
+          _isUpdating = false;
+        });
       }
     } catch (e) {
-      debugPrint("Error refreshing data: $e");
-    } finally {
-      if (mounted) {
-        setState(() => _isUpdating = false); // إخفاء المؤشر
-      }
+      if (mounted) setState(() => _isUpdating = false);
     }
   }
 
@@ -206,7 +191,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 3. واجهة المكتبة (المعدلة) ---
+  // --- 3. واجهة المكتبة ---
   Widget _buildLibraryView() {
     final libraryItems = AppState().myLibrary;
 
@@ -272,8 +257,13 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               MaterialPageRoute(
                                 builder: (_) => const ManageContentScreen(contentType: ContentType.course),
                               ),
-                            // ✅ 2. استخدام دالة المعالجة الموحدة هنا
-                            ).then((value) => _handleReturnData(value));
+                            ).then((value) {
+                              // ✅ نسخ المنطق: التحقق من القيمة، تفعيل التحميل، ثم الاستدعاء
+                              if (value == true) {
+                                setState(() => _isUpdating = true);
+                                _refreshData();
+                              }
+                            });
                           },
                           child: Container(
                             padding: const EdgeInsets.all(12),
@@ -308,7 +298,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               ),
             ),
             
-            // ✅ أثناء التحديث، نعرض Loading لمنع ظهور البيانات القديمة
+            // ✅ أثناء التحديث، نعرض Loading (مثل _loading في الكود المرجعي)
             if (_isUpdating)
               const Expanded(
                 child: Center(
@@ -362,7 +352,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   ),
                                 ),
                               ).then((updatedSubjects) {
-                                // تحديث المواد المشتراة محلياً فقط عند العودة من صفحة المواد
                                 if (updatedSubjects != null && updatedSubjects is List) {
                                   final index = AppState().myLibrary.indexWhere((c) => c['id'].toString() == id);
                                   if (index != -1) {
@@ -448,8 +437,13 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                               },
                                             ),
                                           ),
-                                        // ✅ 3. استخدام دالة المعالجة الموحدة هنا أيضاً
-                                        ).then((value) => _handleReturnData(value));
+                                        ).then((value) {
+                                          // ✅ نسخ المنطق: التحقق من القيمة، تفعيل التحميل، ثم الاستدعاء
+                                          if (value == true) {
+                                            setState(() => _isUpdating = true);
+                                            _refreshData();
+                                          }
+                                        });
                                       },
                                       child: Container(
                                         padding: const EdgeInsets.all(8),
