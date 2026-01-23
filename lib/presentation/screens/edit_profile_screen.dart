@@ -23,6 +23,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   // حقول المدرس الإضافية
   final TextEditingController _bioController = TextEditingController();
   final TextEditingController _specialtyController = TextEditingController();
+  
+  // ✅ متحكم جديد لرقم الواتساب
+  final TextEditingController _whatsappController = TextEditingController();
 
   // ✅ قوائم التحكم لبيانات الدفع الثلاثة
   List<TextEditingController> _cashNumberControllers = [];
@@ -59,6 +62,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         if (_isTeacher) {
           _bioController.text = box.get('bio') ?? "";
           _specialtyController.text = box.get('specialty') ?? "";
+          // ✅ تحميل رقم الواتساب المحفوظ
+          _whatsappController.text = box.get('whatsapp_number') ?? "";
 
           // ✅ تحميل قوائم الدفع المحفوظة محلياً (إن وجدت)
           List<dynamic> cachedCash = box.get('cash_numbers', defaultValue: []);
@@ -107,6 +112,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _usernameController.dispose();
     _bioController.dispose();
     _specialtyController.dispose();
+    _whatsappController.dispose(); // ✅ تنظيف
     
     // تنظيف قوائم المتحكمات
     for (var c in _cashNumberControllers) c.dispose();
@@ -140,7 +146,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       // تجهيز البيانات للإرسال
       Map<String, dynamic> dataToSend = {
-        'firstName': _nameController.text, // تأكدنا من توحيد الاسم حسب الباك إند (firstName أو name)
+        'firstName': _nameController.text, 
         'phone': _phoneController.text,
         'username': _usernameController.text,
       };
@@ -148,6 +154,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (_isTeacher) {
         dataToSend['bio'] = _bioController.text;
         dataToSend['specialty'] = _specialtyController.text;
+        // ✅ إرسال رقم الواتساب
+        dataToSend['whatsappNumber'] = _whatsappController.text;
+        
         // ✅ إرسال القوائم الثلاث
         dataToSend['cashNumbersList'] = cashList;
         dataToSend['instapayNumbersList'] = instaNumList;
@@ -185,6 +194,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         if (_isTeacher) {
           await box.put('bio', _bioController.text);
           await box.put('specialty', _specialtyController.text);
+          // ✅ حفظ رقم الواتساب
+          await box.put('whatsapp_number', _whatsappController.text);
+          
           // ✅ حفظ القوائم محلياً
           await box.put('cash_numbers', cashList);
           await box.put('instapay_numbers', instaNumList);
@@ -288,6 +300,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         prefixIcon: LucideIcons.briefcase,
                       ),
                       const SizedBox(height: 20),
+
+                      // ✅ حقل رقم الواتساب
+                      CustomTextField(
+                        label: "WhatsApp Number (For Students)",
+                        controller: _whatsappController,
+                        hintText: "201xxxxxxxxx",
+                        prefixIcon: LucideIcons.messageCircle,
+                        keyboardType: TextInputType.phone,
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6, left: 8, bottom: 20),
+                        child: Text(
+                          "Enter number with country code without '+' (e.g. 201xxxxxxxxx)",
+                          style: TextStyle(color: Colors.white38, fontSize: 11),
+                        ),
+                      ),
                       
                       CustomTextField(
                         label: "Bio / About Me",
