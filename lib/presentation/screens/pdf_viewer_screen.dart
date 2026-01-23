@@ -14,7 +14,6 @@ import '../../core/utils/encryption_helper.dart';
 import '../../core/services/file_crypto_service.dart';
 import '../../core/models/drawing_model.dart';
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfId;
@@ -37,8 +36,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   File? _decryptedTempFile; 
   
   // متغيرات الحالة للعرض
-  String? _filePath; // المسار المحلي أو الرابط
-  Map<String, String>? _onlineHeaders; // الهيدرز للأونلاين
+  String? _filePath; 
+  Map<String, String>? _onlineHeaders; 
 
   bool _loading = true;
   String _loadingMessage = "جار التحقق من الملف...";
@@ -63,7 +62,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   @override
   void initState() {
     super.initState();
-    _initWatermarkText();
+    _initWatermarkText(); // ✅ استدعاء الدالة المحسنة (async)
     _preparePdf();
   }
 
@@ -77,6 +76,32 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
     
     super.dispose();
+  }
+
+  // ✅ تعديل: دالة جلب العلامة المائية لتشمل البحث في Hive (للأوفلاين)
+  Future<void> _initWatermarkText() async {
+    String displayText = '';
+
+    // 1. المحاولة الأولى: من الذاكرة الحية (AppState)
+    if (AppState().userData != null) {
+      displayText = AppState().userData!['phone'] ?? '';
+    }
+
+    // 2. المحاولة الثانية: من التخزين المحلي (Hive) في حالة الأوفلاين
+    if (displayText.isEmpty) {
+      try {
+        final box = await StorageService.openBox('auth_box');
+        // نحاول جلب الهاتف، وإذا لم يوجد نجلب الاسم أو المعرف
+        displayText = box.get('phone') ?? box.get('first_name') ?? '';
+      } catch (e) {
+        debugPrint("Error fetching offline watermark: $e");
+      }
+    }
+
+    // 3. تحديث الواجهة
+    if (mounted) {
+      setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
+    }
   }
 
   Future<void> _saveDrawingsToHive() async {
@@ -113,12 +138,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
   }
 
-  void _initWatermarkText() {
-    String displayText = '';
-    if (AppState().userData != null) displayText = AppState().userData!['phone'] ?? '';
-    setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
-  }
-
   Future<void> _preparePdf() async {
     setState(() {
       _loading = true;
@@ -135,7 +154,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       String? offlinePath;
       bool fileExistsLocally = false;
 
-      // 1. التحقق من وجود الملف في قاعدة البيانات + وجوده فعلياً على الجهاز
       if (downloadItem != null && downloadItem['path'] != null) {
         offlinePath = downloadItem['path'];
         if (await File(offlinePath!).exists()) {
@@ -150,7 +168,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           _loadingMessage = "جار فك التشفير...";
         });
         
-        // فك التشفير للمؤقت
         _decryptedTempFile = await FileCryptoService.decryptToTempFile(offlinePath!);
         
         if (mounted) {
@@ -169,12 +186,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         
         var box = await StorageService.openBox('auth_box');
         
-        // ✅ تحديث الهيدرز: استخدام التوكن والبصمة
         final String? token = box.get('jwt_token');
         final String? deviceId = box.get('device_id');
         
         final headers = {
-          'Authorization': 'Bearer $token', // ✅ الهيدر الجديد
+          'Authorization': 'Bearer $token', 
           'x-device-id': deviceId ?? '',
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         };
@@ -308,7 +324,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       body: Stack(
         children: [
-          // 2. استخدام PdfViewer.file للأوفلاين و PdfViewer.uri للأونلاين (مع headers)
           if (_isOffline)
             PdfViewer.file(
               _filePath!,
@@ -318,12 +333,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           else
             PdfViewer.uri(
               Uri.parse(_filePath!),
-              headers: _onlineHeaders, // استخدام headers الصحيحة
+              headers: _onlineHeaders, 
               controller: _pdfController,
               params: _buildPdfParams(),
             ),
 
-          // 3. العلامة المائية
           IgnorePointer(
             child: Center(
               child: Opacity(
@@ -479,7 +493,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 4. إضافة SingleChildScrollView لجعل الشريط قابلاً للتمرير
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
