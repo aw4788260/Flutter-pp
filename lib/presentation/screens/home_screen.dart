@@ -144,36 +144,20 @@ class _HomeScreenState extends State<HomeScreen> {
                             );
                            }
                         },
-                        child: Stack(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.backgroundSecondary,
-                                borderRadius: BorderRadius.circular(50),
-                                border: Border.all(color: Colors.white.withOpacity(0.05)),
-                                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                              ),
-                              child: Icon(
-                                _isTeacher ? LucideIcons.inbox : LucideIcons.clipboardList, // ✅ تغيير الأيقونة اختيارياً
-                                color: AppColors.accentYellow, 
-                                size: 22
-                              ),
-                            ),
-                            Positioned(
-                              top: 10,
-                              right: 10,
-                              child: Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: AppColors.accentOrange,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: AppColors.backgroundSecondary, width: 2),
-                                ),
-                              ),
-                            ),
-                          ],
+                        // ✅ تم حذف الـ Stack والنقطة الحمراء، وبقي الزر الأصفر فقط
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSecondary,
+                            borderRadius: BorderRadius.circular(50),
+                            border: Border.all(color: Colors.white.withOpacity(0.05)),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                          ),
+                          child: Icon(
+                            _isTeacher ? LucideIcons.inbox : LucideIcons.clipboardList, // ✅ تغيير الأيقونة اختيارياً
+                            color: AppColors.accentYellow, 
+                            size: 22
+                          ),
                         ),
                       ),
                     ],
