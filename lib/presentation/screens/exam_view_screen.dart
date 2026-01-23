@@ -13,7 +13,6 @@ class ExamViewScreen extends StatefulWidget {
   final String examId;
   final String examTitle;
   final bool isCompleted;
-  // ✅ تم حذف durationMinutes من هنا لأننا سنجلبه من الـ API مباشرة
 
   const ExamViewScreen({
     super.key,
@@ -74,27 +73,35 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       if (mounted && res.statusCode == 200) {
         final data = res.data;
         
-        // ✅ 1. التحقق من وضع نموذج الإجابة (إذا انتهى الوقت)
+        // 1. التحقق من وضع نموذج الإجابة
         if (data['mode'] == 'model_answer') {
            setState(() {
-             _isModelAnswerMode = true; // تفعيل وضع العرض فقط
+             _isModelAnswerMode = true; 
              _questions = data['questions'] ?? [];
-             timeLeft = 0; // لا يوجد وقت
+             timeLeft = 0; 
              _loading = false;
            });
-           // ⚠️ لا نبدأ المؤقت في هذا الوضع
         } else {
            // الوضع الطبيعي (بدء امتحان)
-           // ✅ 2. جلب التوقيت الصحيح من الـ API
-           int apiDuration = data['durationMinutes'] ?? 30; // القيمة الافتراضية 30 إذا لم تأتِ
+           int apiDuration = data['durationMinutes'] ?? 30; 
 
            setState(() {
              _isModelAnswerMode = false;
              _questions = data['questions'] ?? [];
              _attemptId = data['attemptId'].toString();
-             timeLeft = apiDuration * 60; // تحويل الدقائق لثواني
+             timeLeft = apiDuration * 60; 
              _loading = false;
            });
+           
+           // ✅ إظهار رسالة تحذيرية بسيطة عند بدء الامتحان
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(
+               content: Text("Warning: Exiting the screen will automatically submit your exam."),
+               backgroundColor: AppColors.accentOrange,
+               duration: Duration(seconds: 4),
+             ),
+           );
+           
            _startTimer();
         }
       }
@@ -137,13 +144,15 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
   }
 
   Future<void> _submitExam({bool autoSubmit = false}) async {
-    // ⚠️ في وضع نموذج الإجابة، هذا الزر يعمل كزر خروج فقط
+    // في وضع نموذج الإجابة، هذا الزر يعمل كزر خروج فقط
     if (_isModelAnswerMode) {
       Navigator.pop(context);
       return;
     }
 
     _timer?.cancel();
+    
+    // إظهار Loading
     showDialog(
       context: context, 
       barrierDismissible: false,
@@ -165,7 +174,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       );
 
       if (mounted) {
-        Navigator.pop(context); 
+        Navigator.pop(context); // إغلاق Loading
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -184,6 +193,37 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     }
   }
 
+  // ✅ دالة لإظهار تحذير الخروج
+  Future<void> _showExitWarningDialog() async {
+    final shouldSubmit = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.backgroundSecondary,
+        title: const Text("Exit Exam?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text(
+          "Leaving the exam screen now will AUTOMATICALLY SUBMIT your current answers and you cannot return.\n\nAre you sure?", 
+          style: TextStyle(color: Colors.white70)
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false), // البقاء في الامتحان
+            child: const Text("Stay", style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true), // تسليم وخروج
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text("Submit & Exit", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSubmit == true) {
+      _submitExam(autoSubmit: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
@@ -194,221 +234,223 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     final options = (questionData['options'] as List).cast<Map<String, dynamic>>();
     final progress = (currentIdx + 1) / _questions.length;
 
-    return Scaffold(
-      backgroundColor: AppColors.backgroundPrimary,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header & Timer
-            Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text("Q ${currentIdx + 1}/${_questions.length}", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
-                  
-                  // ✅ إخفاء المؤقت أو تغييره في وضع نموذج الإجابة
-                  if (!_isModelAnswerMode)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: timeLeft < 60 ? AppColors.error.withOpacity(0.2) : AppColors.backgroundSecondary,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: timeLeft < 60 ? AppColors.error : Colors.white10),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(LucideIcons.clock, size: 14, color: timeLeft < 60 ? AppColors.error : AppColors.accentYellow),
-                          const SizedBox(width: 6),
-                          Text(_formatTime(timeLeft), style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, color: timeLeft < 60 ? AppColors.error : Colors.white)),
-                        ],
-                      ),
-                    )
-                  else
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: AppColors.accentYellow.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                      child: const Text("MODEL ANSWER", style: TextStyle(color: AppColors.accentYellow, fontSize: 10, fontWeight: FontWeight.bold)),
-                    ),
-                ],
-              ),
-            ),
-            
-            LinearProgressIndicator(value: progress, backgroundColor: AppColors.backgroundSecondary, color: AppColors.accentYellow, minHeight: 4),
-            
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    // ✅ استخدام PopScope للتحكم في زر الرجوع
+    return PopScope(
+      canPop: _isModelAnswerMode, // السماح بالخروج مباشرة فقط إذا كان نموذج إجابة
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        // إذا حاول المستخدم الخروج أثناء الامتحان، نعرض التحذير
+        await _showExitWarningDialog();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.backgroundPrimary,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Header & Timer
+              Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    if (imageFileId != null && imageFileId.isNotEmpty)
+                    Text("Q ${currentIdx + 1}/${_questions.length}", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
+                    
+                    if (!_isModelAnswerMode)
                       Container(
-                        margin: const EdgeInsets.only(bottom: 24),
-                        constraints: const BoxConstraints(maxHeight: 250),
-                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white10),
+                          color: timeLeft < 60 ? AppColors.error.withOpacity(0.2) : AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: timeLeft < 60 ? AppColors.error : Colors.white10),
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: CachedNetworkImage(
-                            imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
-                            httpHeaders: {
-                              'Authorization': 'Bearer $_token',
-                              'x-device-id': _deviceId ?? '',
-                              'x-app-secret': _appSecret,
-                            },
-                            placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
-                            errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
-                            fit: BoxFit.contain,
-                          ),
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.clock, size: 14, color: timeLeft < 60 ? AppColors.error : AppColors.accentYellow),
+                            const SizedBox(width: 6),
+                            Text(_formatTime(timeLeft), style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, color: timeLeft < 60 ? AppColors.error : Colors.white)),
+                          ],
                         ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(color: AppColors.accentYellow.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                        child: const Text("MODEL ANSWER", style: TextStyle(color: AppColors.accentYellow, fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
-                    
-                    Text(
-                      questionData['question_text'] ?? "Question Text",
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary, height: 1.4),
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // الخيارات
-                    ...options.map((opt) {
-                      final int optId = opt['id'];
-                      
-                      // ✅ منطق الألوان الجديد
-                      bool isSelected = false;
-                      bool isCorrectModel = false;
-
-                      if (_isModelAnswerMode) {
-                        // في وضع الإجابة النموذجية، نلون الإجابة الصحيحة بالأخضر
-                        isCorrectModel = opt['is_correct'] == true;
-                      } else {
-                        // في الوضع العادي، نلون ما اختاره الطالب
-                        isSelected = userAnswers[questionId] == optId;
-                      }
-                      
-                      // تحديد الألوان بناءً على الوضع
-                      Color bgColor = AppColors.backgroundSecondary;
-                      Color borderColor = Colors.white.withOpacity(0.05);
-
-                      if (_isModelAnswerMode && isCorrectModel) {
-                         bgColor = AppColors.success.withOpacity(0.2); // خلفية خضراء للصحيح
-                         borderColor = AppColors.success;
-                      } else if (isSelected) {
-                         bgColor = AppColors.accentYellow.withOpacity(0.1);
-                         borderColor = AppColors.accentYellow;
-                      }
-                      
-                      return GestureDetector(
-                        onTap: () {
-                          // ⛔ منع التعديل في وضع نموذج الإجابة
-                          if (_isModelAnswerMode) return;
-                          setState(() => userAnswers[questionId] = optId);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: bgColor,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: borderColor,
-                              width: (isSelected || isCorrectModel) ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 24, height: 24,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: (isSelected || isCorrectModel) 
-                                        ? (_isModelAnswerMode && isCorrectModel ? AppColors.success : AppColors.accentYellow) 
-                                        : Colors.white24, 
-                                    width: 2
-                                  ),
-                                  color: (isSelected || isCorrectModel) 
-                                      ? (_isModelAnswerMode && isCorrectModel ? AppColors.success : AppColors.accentYellow) 
-                                      : Colors.transparent,
-                                ),
-                                child: (isSelected || isCorrectModel) 
-                                    ? const Icon(Icons.check, size: 16, color: AppColors.backgroundPrimary) 
-                                    : null,
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Text(
-                                  opt['option_text'],
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: (isSelected || isCorrectModel) ? FontWeight.bold : FontWeight.normal,
-                                    color: (isSelected || isCorrectModel) ? AppColors.textPrimary : AppColors.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
                   ],
                 ),
               ),
-            ),
-            
-            // أزرار التنقل
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(border: Border(top: BorderSide(color: Colors.white10))),
-              child: Row(
-                children: [
-                  if (currentIdx > 0)
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => setState(() => currentIdx--),
-                        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), side: const BorderSide(color: Colors.white10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                        child: const Text("BACK", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+              
+              LinearProgressIndicator(value: progress, backgroundColor: AppColors.backgroundSecondary, color: AppColors.accentYellow, minHeight: 4),
+              
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (imageFileId != null && imageFileId.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 24),
+                          constraints: const BoxConstraints(maxHeight: 250),
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: CachedNetworkImage(
+                              imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
+                              httpHeaders: {
+                                'Authorization': 'Bearer $_token',
+                                'x-device-id': _deviceId ?? '',
+                                'x-app-secret': _appSecret,
+                              },
+                              placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+                              errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                      
+                      Text(
+                        questionData['question_text'] ?? "Question Text",
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary, height: 1.4),
                       ),
-                    ),
-                  if (currentIdx > 0) const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        if (currentIdx == _questions.length - 1) {
-                           // إذا كان نموذج إجابة، فالزر يغلق الشاشة، وإلا يرسل الامتحان
-                           if (_isModelAnswerMode) {
-                             Navigator.pop(context);
-                           } else {
-                             _submitExam();
-                           }
+                      
+                      const SizedBox(height: 32),
+                      
+                      // الخيارات
+                      ...options.map((opt) {
+                        final int optId = opt['id'];
+                        
+                        bool isSelected = false;
+                        bool isCorrectModel = false;
+  
+                        if (_isModelAnswerMode) {
+                          isCorrectModel = opt['is_correct'] == true;
                         } else {
-                          setState(() => currentIdx++);
+                          isSelected = userAnswers[questionId] == optId;
                         }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isModelAnswerMode ? Colors.grey[800] : AppColors.accentYellow, 
-                        foregroundColor: _isModelAnswerMode ? Colors.white : AppColors.backgroundPrimary, 
-                        padding: const EdgeInsets.symmetric(vertical: 16), 
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                        
+                        Color bgColor = AppColors.backgroundSecondary;
+                        Color borderColor = Colors.white.withOpacity(0.05);
+  
+                        if (_isModelAnswerMode && isCorrectModel) {
+                           bgColor = AppColors.success.withOpacity(0.2); 
+                           borderColor = AppColors.success;
+                        } else if (isSelected) {
+                           bgColor = AppColors.accentYellow.withOpacity(0.1);
+                           borderColor = AppColors.accentYellow;
+                        }
+                        
+                        return GestureDetector(
+                          onTap: () {
+                            if (_isModelAnswerMode) return;
+                            setState(() => userAnswers[questionId] = optId);
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: bgColor,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: borderColor,
+                                width: (isSelected || isCorrectModel) ? 1.5 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 24, height: 24,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: (isSelected || isCorrectModel) 
+                                          ? (_isModelAnswerMode && isCorrectModel ? AppColors.success : AppColors.accentYellow) 
+                                          : Colors.white24, 
+                                      width: 2
+                                    ),
+                                    color: (isSelected || isCorrectModel) 
+                                        ? (_isModelAnswerMode && isCorrectModel ? AppColors.success : AppColors.accentYellow) 
+                                        : Colors.transparent,
+                                  ),
+                                  child: (isSelected || isCorrectModel) 
+                                      ? const Icon(Icons.check, size: 16, color: AppColors.backgroundPrimary) 
+                                      : null,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Text(
+                                    opt['option_text'],
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: (isSelected || isCorrectModel) ? FontWeight.bold : FontWeight.normal,
+                                      color: (isSelected || isCorrectModel) ? AppColors.textPrimary : AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // أزرار التنقل
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(border: Border(top: BorderSide(color: Colors.white10))),
+                child: Row(
+                  children: [
+                    if (currentIdx > 0)
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => setState(() => currentIdx--),
+                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), side: const BorderSide(color: Colors.white10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          child: const Text("BACK", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+                        ),
                       ),
-                      child: Text(
-                        currentIdx == _questions.length - 1 
-                            ? (_isModelAnswerMode ? "CLOSE" : "FINISH") // ✅ تغيير النص حسب الوضع
-                            : "NEXT", 
-                        style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0)
+                    if (currentIdx > 0) const SizedBox(width: 16),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          if (currentIdx == _questions.length - 1) {
+                             if (_isModelAnswerMode) {
+                               Navigator.pop(context);
+                             } else {
+                               _submitExam();
+                             }
+                          } else {
+                            setState(() => currentIdx++);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isModelAnswerMode ? Colors.grey[800] : AppColors.accentYellow, 
+                          foregroundColor: _isModelAnswerMode ? Colors.white : AppColors.backgroundPrimary, 
+                          padding: const EdgeInsets.symmetric(vertical: 16), 
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                        ),
+                        child: Text(
+                          currentIdx == _questions.length - 1 
+                              ? (_isModelAnswerMode ? "CLOSE" : "FINISH") 
+                              : "NEXT", 
+                          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0)
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
