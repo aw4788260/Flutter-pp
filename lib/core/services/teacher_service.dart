@@ -205,8 +205,7 @@ class TeacherService {
   // 5️⃣ الامتحانات (إنشاء - تعديل - إحصائيات)
   // ==========================================================
   
-  // ✅ [تعديل هام]: إنشاء أو تحديث امتحان
-  // هذه الدالة الآن ذكية: إذا احتوت البيانات على examId سترسل update، وإلا سترسل create
+  // إنشاء أو تحديث امتحان
   Future<void> createExam(Map<String, dynamic> examData) async {
     final options = await _getHeaders();
     
@@ -216,18 +215,18 @@ class TeacherService {
     await _dio.post(
       '$baseUrl/teacher/exams',
       data: {
-        'action': action, // ✅ يتم تحديده ديناميكياً
+        'action': action,
         'payload': examData
       },
       options: options,
     );
   }
 
-  // ✅ [إضافة جديدة]: جلب تفاصيل الامتحان للمعلم (لغرض التعديل)
+  // جلب تفاصيل الامتحان للمعلم (لغرض التعديل)
   Future<Map<String, dynamic>> getExamDetails(String examId) async {
     final options = await _getHeaders();
     final response = await _dio.get(
-      '$baseUrl/teacher/get-exam-details', // تأكد أن هذا الـ API موجود في الباك إند
+      '$baseUrl/teacher/get-exam-details',
       queryParameters: {'examId': examId},
       options: options,
     );
@@ -243,5 +242,26 @@ class TeacherService {
       options: options,
     );
     return response.data;
+  }
+
+  // ==========================================================
+  // 6️⃣ الإحصائيات المالية (NEW)
+  // ==========================================================
+  
+  // جلب الإحصائيات المالية والطلاب
+  Future<Map<String, dynamic>> getFinancialStats() async {
+    try {
+      final options = await _getHeaders();
+      final response = await _dio.get(
+        '$baseUrl/teacher/financial-stats',
+        options: options,
+      );
+      return response.data;
+    } catch (e) {
+      if (e is DioException) {
+         throw Exception(e.response?.data['error'] ?? "فشل جلب الإحصائيات المالية");
+      }
+      throw Exception('فشل جلب الإحصائيات المالية: $e');
+    }
   }
 }
