@@ -43,8 +43,9 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
 
     setState(() => _isUpdating = true); // عرض مؤشر التحميل
     try {
-      // ✅ التعديل هنا: إضافة تأخير بسيط (500 مللي ثانية) لضمان انتهاء السيرفر من الحفظ
-      await Future.delayed(const Duration(milliseconds: 500));
+      // ✅ التعديل هنا: زيادة الوقت إلى 1.5 ثانية (1500ms) بدلاً من 500ms
+      // هذا يعطي وقتاً كافياً للسيرفر لإنهاء العمليات المعلقة وتحديث قاعدة البيانات
+      await Future.delayed(const Duration(milliseconds: 1500));
 
       // جلب البيانات الجديدة من السيرفر
       await AppState().reloadAppInit();
