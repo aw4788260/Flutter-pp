@@ -15,12 +15,15 @@ class ChapterContentsScreen extends StatefulWidget {
   final Map<String, dynamic> chapter;
   final String courseTitle;
   final String subjectTitle;
+  // ✅ نحتاج Subject ID لجلب التحديثات
+  final String subjectId;
 
   const ChapterContentsScreen({
     super.key, 
     required this.chapter,
     required this.courseTitle,
     required this.subjectTitle,
+    required this.subjectId,
   });
 
   @override
@@ -32,6 +35,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
   bool _isTeacher = false;
   late Map<String, dynamic> _currentChapter;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -50,39 +54,50 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  // ✅ دالة معالجة البيانات الراجعة من شاشة الإضافة/التعديل/الحذف
-  void _handleReturnData(dynamic result, ContentType type) {
-    if (result == null) return;
+  // ✅ دالة جديدة: جلب بيانات الفصل المحدثة من السيرفر
+  Future<void> _refreshChapterData() async {
+    setState(() => _isLoading = true);
+    try {
+      var box = await StorageService.openBox('auth_box');
+      final token = box.get('jwt_token');
+      final deviceId = box.get('device_id');
 
-    if (result is Map && result['deleted'] == true) {
-       // حالة الحذف: إزالة العنصر من القائمة
-       setState(() {
-         if (type == ContentType.video) {
-           List videos = List.from(_currentChapter['videos'] ?? []);
-           videos.removeWhere((v) => v['id'].toString() == result['id'].toString());
-           _currentChapter['videos'] = videos;
-         } else {
-           List pdfs = List.from(_currentChapter['pdfs'] ?? []);
-           pdfs.removeWhere((p) => p['id'].toString() == result['id'].toString());
-           _currentChapter['pdfs'] = pdfs;
-         }
-       });
-    } else if (result is Map<String, dynamic>) {
-       // حالة الإضافة أو التعديل
-       setState(() {
-         String key = type == ContentType.video ? 'videos' : 'pdfs';
-         List items = List.from(_currentChapter[key] ?? []);
-         
-         // التحقق مما إذا كان العنصر موجوداً (تعديل) أم جديداً (إضافة)
-         int existingIndex = items.indexWhere((item) => item['id'].toString() == result['id'].toString());
-         
-         if (existingIndex != -1) {
-           items[existingIndex] = result;
-         } else {
-           items.add(result);
-         }
-         _currentChapter[key] = items;
-       });
+      // نطلب محتوى المادة كاملة لاستخراج الفصل المحدث
+      // (أو يمكن استخدام endpoint خاص بالفصل إذا توفر)
+      final res = await Dio().get(
+        '$_baseUrl/api/secure/get-subject-content',
+        queryParameters: {'subjectId': widget.subjectId},
+        options: Options(headers: {
+          'Authorization': 'Bearer $token',
+          'x-device-id': deviceId,
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
+      );
+
+      if (mounted && res.statusCode == 200) {
+        final chapters = res.data['chapters'] as List;
+        // البحث عن الفصل الحالي
+        final updatedChapter = chapters.firstWhere(
+          (c) => c['id'].toString() == _currentChapter['id'].toString(),
+          orElse: () => _currentChapter,
+        );
+
+        setState(() {
+          _currentChapter = Map<String, dynamic>.from(updatedChapter);
+        });
+      }
+    } catch (e) {
+      FirebaseCrashlytics.instance.recordError(e, StackTrace.current, reason: 'Refresh Chapter Failed');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ✅ دالة معالجة البيانات الراجعة من شاشة الإضافة/التعديل/الحذف
+  void _handleReturnData(dynamic result) {
+    // إذا كانت النتيجة true، نعيد طلب البيانات من السيرفر
+    if (result == true) {
+       _refreshChapterData();
     }
   }
 
@@ -541,7 +556,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    widget.chapter['title'].toString().toUpperCase(),
+                                    _currentChapter['title'].toString().toUpperCase(),
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -581,7 +596,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                       parentId: widget.chapter['id'].toString(), // ID الشابتر
                                     ),
                                   ),
-                                ).then((val) => _handleReturnData(val, type)); // ✅ تحديث فوري باستخدام الدالة الجديدة
+                                ).then((val) => _handleReturnData(val)); // ✅ تحديث فوري
                               },
                               child: Container(
                                 padding: const EdgeInsets.all(10),
@@ -624,7 +639,9 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
               // Content List
               Expanded(
-                child: activeTab == 'videos'
+                child: _isLoading 
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+                  : activeTab == 'videos'
                     ? _buildVideosList(videos)
                     : _buildPdfsList(pdfs),
               ),
@@ -730,7 +747,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                 parentId: widget.chapter['id'].toString(),
                               ),
                             ),
-                          ).then((val) => _handleReturnData(val, ContentType.video)); // ✅ تحديث فوري
+                          ).then((val) => _handleReturnData(val)); // ✅ تحديث فوري
                         },
                       ),
                   ],
@@ -844,7 +861,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                 parentId: widget.chapter['id'].toString(),
                               ),
                             ),
-                          ).then((val) => _handleReturnData(val, ContentType.pdf)); // ✅ تحديث فوري
+                          ).then((val) => _handleReturnData(val)); // ✅ تحديث فوري
                         },
                       ),
                   ],
