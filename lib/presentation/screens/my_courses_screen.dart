@@ -7,8 +7,6 @@ import 'course_details_screen.dart';
 import 'course_materials_screen.dart';
 import 'login_screen.dart';
 import 'teacher/manage_content_screen.dart'; // 2. استدعاء شاشة إضافة المحتوى
-import '../../data/models/course_model.dart'; // ✅ استيراد مودل الكورس
-import '../widgets/course_card.dart'; // ✅ استيراد بطاقة الكورس
 
 class MyCoursesScreen extends StatefulWidget {
   const MyCoursesScreen({super.key});
@@ -303,66 +301,132 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       itemBuilder: (context, index) {
                         final item = libraryItems[index];
                         
-                        // ✅ إنشاء المودل بناءً على البيانات
-                        final course = CourseModel(
-                          id: item['id'].toString(),
-                          title: item['title'] ?? 'Unknown',
-                          code: item['code']?.toString() ?? '',
-                          instructor: item['instructor'] ?? 'Instructor',
-                          price: double.tryParse(item['price']?.toString() ?? '0') ?? 0.0,
-                          imageUrl: item['image_url'], // تأكد من أن اسم الحقل مطابق لما يأتي من الـ API
-                          description: item['description'] ?? '',
-                          subject: 'General', 
-                        );
+                        // ✅ الحفاظ على الأسماء كما في الكود الأصلي
+                        final String title = item['title'] ?? 'Unknown';
+                        final String instructor = item['instructor'] ?? 'Instructor';
+                        final String code = item['code']?.toString() ?? '';
+                        final String id = item['id'].toString();
+                        
+                        // ✅ استخراج بيانات إضافية للتعديل (إذا وجدت)
+                        final String description = item['description'] ?? '';
+                        final double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
 
                         List<dynamic>? subjectsToPass;
                         if (item['owned_subjects'] is List) {
                           subjectsToPass = item['owned_subjects'];
                         }
 
-                        // ✅ استخدام CourseCard مع تمرير زر القلم (onEdit)
-                        return CourseCard(
-                          course: course,
-                          isTeacher: _isTeacher, // تمرير حالة المعلم لإظهار زر التعديل
+                        return GestureDetector(
                           onTap: () {
-                            // الذهاب لتفاصيل الكورس
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => CourseMaterialsScreen(
-                                  courseId: course.id,
-                                  courseTitle: course.title,
-                                  courseCode: course.code,
-                                  instructorName: course.instructor, 
+                                  courseId: id,
+                                  courseTitle: title,
+                                  courseCode: code,
+                                  instructorName: instructor, 
                                   preLoadedSubjects: subjectsToPass, 
                                 ),
                               ),
                             );
                           },
-                          // 🟢 إضافة منطق زر القلم للتعديل
-                          onEdit: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ManageContentScreen(
-                                  contentType: ContentType.course,
-                                  initialData: {
-                                    'id': course.id,
-                                    'title': course.title,
-                                    'description': course.description,
-                                    'price': course.price,
-                                    'code': course.code,
-                                    // يمكنك إضافة المزيد من الحقول هنا إذا لزم الأمر
-                                  },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: AppColors.backgroundSecondary,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: Colors.white.withOpacity(0.05)),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 48, height: 48,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.backgroundPrimary,
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                                  ),
+                                  child: const Icon(
+                                    LucideIcons.playCircle, 
+                                    color: AppColors.accentOrange, 
+                                    size: 24
+                                  ),
                                 ),
-                              ),
-                            ).then((value) {
-                              // إذا تم التعديل بنجاح، نقوم بتحديث الواجهة
-                              if(value == true) {
-                                setState(() {}); 
-                              }
-                            });
-                          },
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title.toUpperCase(),
+                                        style: const TextStyle(
+                                          color: AppColors.textPrimary,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: -0.5,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            instructor.toUpperCase(),
+                                            style: TextStyle(
+                                              color: AppColors.textSecondary.withOpacity(0.7),
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 1.5,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                
+                                // 🟢 التعديل: إظهار زر القلم للمدرس أو السهم للطالب
+                                if (_isTeacher)
+                                  GestureDetector(
+                                    onTap: () {
+                                      // فتح شاشة تعديل الكورس
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => ManageContentScreen(
+                                            contentType: ContentType.course,
+                                            initialData: {
+                                              'id': id,
+                                              'title': title,
+                                              'code': code,
+                                              'price': price,
+                                              'description': description,
+                                            },
+                                          ),
+                                        ),
+                                      ).then((value) {
+                                        if (value == true) setState(() {});
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.accentYellow.withOpacity(0.1),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: AppColors.accentYellow.withOpacity(0.3)),
+                                      ),
+                                      child: const Icon(LucideIcons.edit3, color: AppColors.accentYellow, size: 18),
+                                    ),
+                                  )
+                                else
+                                  Icon(LucideIcons.chevronRight, color: AppColors.textSecondary.withOpacity(0.6), size: 20),
+                              ],
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -503,7 +567,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                course.instructor.toUpperCase(),
+                                course.instructorName.toUpperCase(),
                                 style: TextStyle(
                                   color: AppColors.textSecondary.withOpacity(0.7),
                                   fontSize: 9,
@@ -515,7 +579,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                "${course.price.toInt()} EGP", 
+                                "${course.fullPrice.toInt()} EGP", 
                                 style: const TextStyle(
                                   color: AppColors.accentYellow,
                                   fontSize: 16,
