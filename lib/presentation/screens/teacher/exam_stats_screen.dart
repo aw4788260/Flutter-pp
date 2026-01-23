@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/teacher_service.dart';
-import '../../../core/constants/app_colors.dart'; // ✅ استيراد الألوان
+import '../../../core/constants/app_colors.dart';
 
 class ExamStatsScreen extends StatefulWidget {
   final String examId;
@@ -21,7 +21,8 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
   bool _isLoading = true;
   
   // متغيرات البيانات
-  double _averageScore = 0;
+  double _averageScore = 0;       // متوسط الدرجات الرقمية (مثلاً 18.5)
+  double _averagePercentage = 0;  // متوسط النسب المئوية (مثلاً 92.5)
   int _totalAttempts = 0;
   List<dynamic> _topStudents = [];
 
@@ -35,8 +36,10 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
     try {
       final data = await _teacherService.getExamStats(widget.examId);
       setState(() {
-        _averageScore = double.tryParse(data['average'].toString()) ?? 0;
-        _totalAttempts = int.tryParse(data['totalAttempts'].toString()) ?? 0;
+        // استقبال البيانات الجديدة من الـ API
+        _averageScore = double.tryParse(data['averageScore']?.toString() ?? '0') ?? 0;
+        _averagePercentage = double.tryParse(data['averagePercentage']?.toString() ?? '0') ?? 0;
+        _totalAttempts = int.tryParse(data['totalAttempts']?.toString() ?? '0') ?? 0;
         _topStudents = data['topStudents'] ?? [];
         _isLoading = false;
       });
@@ -53,13 +56,13 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundPrimary, // ✅ خلفية داكنة
+      backgroundColor: AppColors.backgroundPrimary,
       appBar: AppBar(
         title: Text(
           "إحصائيات: ${widget.examTitle}", 
           style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)
         ),
-        backgroundColor: AppColors.backgroundSecondary, // ✅ هيدر داكن
+        backgroundColor: AppColors.backgroundSecondary,
         iconTheme: const IconThemeData(color: AppColors.accentYellow),
         elevation: 0,
       ),
@@ -83,10 +86,11 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                       const SizedBox(width: 15),
                       Expanded(
                         child: _buildStatCard(
-                          title: "متوسط الدرجات",
-                          value: "${_averageScore.toStringAsFixed(1)}%",
+                          title: "متوسط النسب",
+                          // عرض متوسط النسبة المئوية هنا لأنه الأهم للمعلم
+                          value: "${_averagePercentage.toStringAsFixed(1)}%",
                           icon: Icons.analytics,
-                          color: _averageScore >= 50 ? AppColors.success : Colors.orange,
+                          color: _averagePercentage >= 50 ? AppColors.success : Colors.orange,
                         ),
                       ),
                     ],
@@ -150,7 +154,7 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
-                            color: AppColors.backgroundSecondary, // ✅ لون الكارت داكن
+                            color: AppColors.backgroundSecondary,
                             borderRadius: BorderRadius.circular(15),
                             border: Border.all(
                               color: isFirst ? const Color(0xFFFFD700).withOpacity(0.5) : Colors.white10,
@@ -194,7 +198,7 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                                   ],
                                 ),
                                 const SizedBox(height: 4),
-                                // ✅ عرض رقم الهاتف (الجديد)
+                                // ✅ عرض رقم الهاتف
                                 Row(
                                   children: [
                                     const Icon(Icons.phone_android, size: 12, color: AppColors.accentBlue),
@@ -214,9 +218,21 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: AppColors.success.withOpacity(0.5)),
                               ),
-                              child: Text(
-                                "${student['score']}%",
-                                style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 15),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min, // مهم لعدم تمدد الـ Column
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  // ✅ عرض النسبة المئوية بخط عريض
+                                  Text(
+                                    "${student['percentage'] ?? 0}%",
+                                    style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 15),
+                                  ),
+                                  // ✅ عرض الدرجة بخط أصغر
+                                  Text(
+                                    "${student['score'] ?? 0} pts",
+                                    style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 11),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -233,7 +249,7 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.backgroundSecondary, // ✅ خلفية الكارت داكنة
+        color: AppColors.backgroundSecondary,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4)),
@@ -253,12 +269,12 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
           const SizedBox(height: 12),
           Text(
             value, 
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary) // ✅ نص فاتح
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary)
           ),
           const SizedBox(height: 4),
           Text(
             title, 
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12) // ✅ نص رمادي
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)
           ),
         ],
       ),
