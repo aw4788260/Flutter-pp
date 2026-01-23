@@ -6,7 +6,7 @@ import '../../data/models/course_model.dart';
 class CourseCard extends StatelessWidget {
   final CourseModel course;
   final VoidCallback onTap;
-  final bool isTeacher; // ✅ متغير جديد لتحديد الصلاحية
+  final bool isTeacher; // ✅ متغير لتحديد الصلاحية
   final VoidCallback? onEdit; // ✅ دالة عند الضغط على زر التعديل
 
   const CourseCard({
@@ -48,7 +48,7 @@ class CourseCard extends StatelessWidget {
               ),
               child: Stack(
                 children: [
-                  // صورة الخلفية (Placeholder أو صورة الشبكة)
+                  // صورة الخلفية
                   if (course.imageUrl != null && course.imageUrl!.isNotEmpty)
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -137,7 +137,7 @@ class CourseCard extends StatelessWidget {
                       const Icon(LucideIcons.user, size: 14, color: AppColors.textSecondary),
                       const SizedBox(width: 4),
                       Text(
-                        course.instructor,
+                        course.instructorName, // ✅ تم التعديل ليطابق المودل الجديد
                         style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                       ),
                     ],
@@ -152,7 +152,7 @@ class CourseCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        "${course.price} EGP", // إضافة العملة لزيادة الوضوح
+                        "${course.fullPrice.toInt()} EGP", // ✅ تم التعديل ليطابق المودل الجديد
                         style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.bold,
