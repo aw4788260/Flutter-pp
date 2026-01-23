@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../data/models/course_model.dart';
 import '../../core/services/storage_service.dart';
@@ -123,9 +125,41 @@ class AppState {
       }
     } catch (e) {
       // ignore: avoid_print
-      print("Offline Load Error: $e");
+      if (kDebugMode) print("Offline Load Error: $e");
     }
     return false; // فشل التحميل أو لا توجد بيانات
+  }
+
+  // 🟢 دالة جديدة: تحديث بيانات التطبيق بالكامل من السيرفر
+  // تستدعى عند: إضافة/تعديل/حذف كورس أو مادة
+  Future<void> reloadAppInit() async {
+    try {
+      var box = await StorageService.openBox('auth_box');
+      String? token = box.get('jwt_token');
+      
+      // التأكد من وجود التوكن قبل الطلب (للمستخدم المسجل فقط)
+      if (token == null || isGuest) return;
+
+      final response = await Dio().get(
+        'https://courses.aw478260.dpdns.org/api/public/init', 
+        options: Options(headers: {
+          'Authorization': 'Bearer $token',
+          'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        updateFromInitData(response.data); // تحديث القوائم في الذاكرة
+        
+        // تحديث الكاش أيضاً لضمان التزامن
+        var cacheBox = await StorageService.openBox('app_cache');
+        await cacheBox.put('init_data', response.data);
+        
+        if (kDebugMode) print("✅ App Init Reloaded & Synced!");
+      }
+    } catch (e) {
+      if (kDebugMode) print("❌ App Init Reload Error: $e");
+    }
   }
   
   // دالة لمسح البيانات عند الخروج
