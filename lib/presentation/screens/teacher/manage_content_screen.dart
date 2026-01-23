@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/teacher_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/services/app_state.dart'; // ✅ إضافة: لاستدعاء التحديث المركزي
 import '../../widgets/custom_text_field.dart';
 import '../../../core/constants/app_colors.dart';
 
@@ -54,7 +55,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         _urlController.text = widget.initialData!['youtube_video_id'] ?? '';
       }
       if (widget.contentType == ContentType.pdf) {
-        // ✅ تصحيح: قراءة المسار من file_path (اسم العمود في الداتابيز)
         _uploadedFileUrl = widget.initialData!['file_path'] ?? widget.initialData!['file_url'];
         if (_uploadedFileUrl != null) {
           _selectedFileName = "Current PDF File";
@@ -117,7 +117,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     try {
       String? finalFileUrl = _uploadedFileUrl;
 
-      // 1. رفع الملف مع متابعة التقدم
+      // 1. رفع الملف
       if (widget.contentType == ContentType.pdf && _selectedFile != null) {
         finalFileUrl = await _teacherService.uploadFile(
           _selectedFile!,
@@ -160,7 +160,6 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
           break;
         case ContentType.pdf:
           data['chapter_id'] = widget.parentId;
-          // ✅ استخدام file_path بدلاً من file_url
           if (finalFileUrl != null) data['file_path'] = finalFileUrl;
           break;
       }
@@ -174,8 +173,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         case ContentType.pdf: dbType = 'pdfs'; break;
       }
 
-      // 3. الحفظ في السيرفر (مع التقاط الاستجابة)
-      final response = await _teacherService.manageContent(
+      // 3. الحفظ في السيرفر
+      await _teacherService.manageContent(
         action: isEditing ? 'update' : 'create',
         type: dbType,
         data: data,
@@ -184,28 +183,19 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       // 4. تحديث الكاش المحلي
       await _updateLocalCache();
 
+      // ✅ 5. التحديث المركزي (Context-Aware Refresh)
+      if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) {
+          // إذا عدلنا كورس أو مادة، نحدث التطبيق بالكامل (init)
+          await AppState().reloadAppInit();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(isEditing ? "Updated Successfully" : "Created Successfully"), backgroundColor: AppColors.success),
         );
 
-        // ✅ التعديل الرئيسي: إرجاع البيانات المحدثة بالكامل
-        Map<String, dynamic> resultData = Map<String, dynamic>.from(data);
-        
-        // محاولة دمج البيانات الراجعة من السيرفر (مثل الـ ID الجديد عند الإنشاء)
-        if (response != null && response is Map) {
-           if (response.containsKey('data') && response['data'] is Map) {
-             resultData.addAll(Map<String, dynamic>.from(response['data']));
-           } else {
-             resultData.addAll(Map<String, dynamic>.from(response));
-           }
-        }
-        
-        if (isEditing) {
-           resultData['id'] = widget.initialData!['id'];
-        }
-
-        Navigator.pop(context, resultData);
+        // ✅ إرجاع true ليتم استقباله في الشاشات السابقة وإجراء التحديث
+        Navigator.pop(context, true);
       }
 
     } catch (e) {
@@ -259,10 +249,15 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
       await _updateLocalCache();
 
+      // ✅ التحديث المركزي عند الحذف أيضاً
+      if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) {
+          await AppState().reloadAppInit();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted Successfully"), backgroundColor: AppColors.success));
-        // ✅ التعديل الرئيسي: إرجاع flag الحذف مع الـ ID
-        Navigator.pop(context, {'deleted': true, 'id': widget.initialData!['id']});
+        // ✅ إرجاع true
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
