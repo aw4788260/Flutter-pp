@@ -84,10 +84,14 @@ class CourseModel {
   final String id;
   final String title;
   final String instructorName;
-  final String teacherId; // ✅ تمت الإضافة: معرف المدرس
+  final String teacherId; 
   final String code;
   final double fullPrice;
   final String? description;
+  
+  // ✅ الحقول الجديدة التي يحتاجها CourseCard
+  final String? imageUrl; 
+  final String subject;
 
   final List<dynamic> subjects; 
   final List<dynamic> exams;
@@ -96,10 +100,12 @@ class CourseModel {
     required this.id,
     required this.title,
     required this.instructorName,
-    required this.teacherId, // ✅
+    required this.teacherId,
     required this.code,
     required this.fullPrice,
     this.description,
+    this.imageUrl, // ✅
+    this.subject = 'General', // ✅ قيمة افتراضية
     this.subjects = const [],
     this.exams = const [],
   });
@@ -109,11 +115,15 @@ class CourseModel {
       id: json['course_id'].toString(),
       title: json['course_title'] ?? '',
       instructorName: json['instructor_name'] ?? 'Instructor',
-      teacherId: json['teacher_id']?.toString() ?? '', // ✅ قراءة المعرف من الـ API
-      // ✅ تحويل القيمة إلى نص سواء كانت رقم أو نص لتجنب الخطأ
-code: json['code']?.toString() ?? '',
+      teacherId: json['teacher_id']?.toString() ?? '', 
+      code: json['code']?.toString() ?? '',
       fullPrice: (json['price'] ?? 0).toDouble(),
       description: json['description'],
+      
+      // ✅ قراءة الصورة والمادة من الـ JSON (تأكد أن الأسماء تطابق الباك اند)
+      imageUrl: json['image_url'], 
+      subject: json['subject_name'] ?? 'General', 
+
       subjects: [],
       exams: [],
     );
