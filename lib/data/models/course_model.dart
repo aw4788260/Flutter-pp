@@ -83,13 +83,11 @@ class ExamModel {
 class CourseModel {
   final String id;
   final String title;
-  final String instructor; // ✅ تم توحيد الاسم (كان instructorName)
-  final String teacherId; 
+  final String instructorName;
+  final String teacherId; // ✅ تمت الإضافة: معرف المدرس
   final String code;
-  final double price; // ✅ تم توحيد الاسم (كان fullPrice)
+  final double fullPrice;
   final String? description;
-  final String? imageUrl; // ✅ تمت إعادة هذا الحقل الضروري للبطاقة
-  final String subject;   // ✅ تمت إعادة هذا الحقل الضروري للبطاقة
 
   final List<dynamic> subjects; 
   final List<dynamic> exams;
@@ -97,13 +95,11 @@ class CourseModel {
   CourseModel({
     required this.id,
     required this.title,
-    required this.instructor, // ✅
-    this.teacherId = '',      // ✅ جعلناه اختياري بقيمة افتراضية لتجنب الأخطاء في الواجهات القديمة
+    required this.instructorName,
+    required this.teacherId, // ✅
     required this.code,
-    required this.price,      // ✅
+    required this.fullPrice,
     this.description,
-    this.imageUrl,            // ✅
-    this.subject = 'General', // ✅
     this.subjects = const [],
     this.exams = const [],
   });
@@ -112,13 +108,12 @@ class CourseModel {
     return CourseModel(
       id: json['course_id'].toString(),
       title: json['course_title'] ?? '',
-      instructor: json['instructor_name'] ?? 'Instructor',
-      teacherId: json['teacher_id']?.toString() ?? '', 
-      code: json['code']?.toString() ?? '',
-      price: (json['price'] ?? 0).toDouble(),
+      instructorName: json['instructor_name'] ?? 'Instructor',
+      teacherId: json['teacher_id']?.toString() ?? '', // ✅ قراءة المعرف من الـ API
+      // ✅ تحويل القيمة إلى نص سواء كانت رقم أو نص لتجنب الخطأ
+code: json['code']?.toString() ?? '',
+      fullPrice: (json['price'] ?? 0).toDouble(),
       description: json['description'],
-      imageUrl: json['image_url'], // ✅ قراءة الصورة من الـ API
-      subject: json['subject_title'] ?? 'General', // ✅ قراءة المادة أو وضع افتراضي
       subjects: [],
       exams: [],
     );
