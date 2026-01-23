@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/teacher_service.dart';
 import '../../../core/services/storage_service.dart';
-import '../../../core/services/app_state.dart'; // ✅ إضافة: لاستدعاء التحديث المركزي
+import '../../../core/services/app_state.dart'; // ✅ ضروري لتحديث المواد
 import '../../widgets/custom_text_field.dart';
 import '../../../core/constants/app_colors.dart';
 
@@ -183,9 +183,9 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       // 4. تحديث الكاش المحلي
       await _updateLocalCache();
 
-      // ✅ 5. التحديث المركزي (Context-Aware Refresh)
-      if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) {
-          // إذا عدلنا كورس أو مادة، نحدث التطبيق بالكامل (init)
+      // ✅ 5. التحديث المركزي (مخصص للمواد فقط)
+      // تم التعديل: نحدث المواد هنا، لكن نتجاهل الكورسات (لتتحدث في الشاشة السابقة)
+      if (widget.contentType == ContentType.subject) {
           await AppState().reloadAppInit();
       }
 
@@ -194,7 +194,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
           SnackBar(content: Text(isEditing ? "Updated Successfully" : "Created Successfully"), backgroundColor: AppColors.success),
         );
 
-        // ✅ إرجاع true ليتم استقباله في الشاشات السابقة وإجراء التحديث
+        // ✅ إرجاع true ليتم استقباله في الشاشات السابقة وإجراء التحديث اللازم
         Navigator.pop(context, true);
       }
 
@@ -249,8 +249,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
       await _updateLocalCache();
 
-      // ✅ التحديث المركزي عند الحذف أيضاً
-      if (widget.contentType == ContentType.course || widget.contentType == ContentType.subject) {
+      // ✅ التحديث المركزي عند الحذف (مخصص للمواد فقط)
+      if (widget.contentType == ContentType.subject) {
           await AppState().reloadAppInit();
       }
 
