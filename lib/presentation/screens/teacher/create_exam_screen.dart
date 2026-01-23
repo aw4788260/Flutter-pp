@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-// import 'package:dio/dio.dart'; // لم نعد بحاجة إليه هنا إذا استخدمنا TeacherService
 import '../../../core/services/teacher_service.dart';
 import '../../widgets/custom_text_field.dart';
 
@@ -29,13 +28,13 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
   
   List<QuestionModel> _questions = [];
   bool _isSubmitting = false;
-  bool _isLoadingDetails = false; // حالة تحميل بيانات الامتحان عند التعديل
+  bool _isLoadingDetails = false;
 
   @override
   void initState() {
     super.initState();
     if (widget.examId != null) {
-      _loadExamDetails(); // ✅ استدعاء دالة جلب البيانات في حالة التعديل
+      _loadExamDetails();
     }
   }
 
@@ -43,7 +42,6 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
   Future<void> _loadExamDetails() async {
     setState(() => _isLoadingDetails = true);
     try {
-      // ✅ استخدام السيرفس بدلاً من Dio مباشرة (النظام المرتب)
       final data = await _teacherService.getExamDetails(widget.examId!);
       
       setState(() {
@@ -58,14 +56,12 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
           _endDate = DateTime.parse(data['end_time']).toLocal();
         }
 
-        // تحويل الأسئلة القادمة من الـ API إلى QuestionModel
         if (data['questions'] != null) {
           _questions = (data['questions'] as List).map((q) {
             int correctIndex = 0;
             List<String> options = [];
             
             if (q['options'] != null) {
-              // فرز الخيارات حسب الترتيب لضمان اتساق الـ Index
               var sortedOptions = List.from(q['options']);
               sortedOptions.sort((a, b) => (a['sort_order'] ?? 0).compareTo(b['sort_order'] ?? 0));
 
@@ -82,7 +78,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
               text: q['question_text'],
               options: options,
               correctOptionIndex: correctIndex,
-              imageUrl: q['image_file_id'], // استخدام معرف الصورة كرابط
+              imageUrl: q['image_file_id'],
             );
           }).toList();
         }
@@ -101,7 +97,6 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
   // --- دوال اختيار الوقت والتاريخ ---
   Future<void> _pickDateTime(bool isStart) async {
     final now = DateTime.now();
-    // عند التعديل، نبدأ من تاريخ محفوظ سابقاً أو اليوم
     final initialDate = isStart 
         ? (_startDate ?? now) 
         : (_endDate ?? now);
@@ -109,7 +104,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
     final date = await showDatePicker(
       context: context,
       initialDate: initialDate,
-      firstDate: DateTime(2023), // السماح بتواريخ قديمة للتعديل
+      firstDate: DateTime(2023),
       lastDate: now.add(const Duration(days: 365)),
     );
     
@@ -168,13 +163,11 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      // 1. رفع الصور الخاصة بالأسئلة (الجديدة فقط)
       List<Map<String, dynamic>> processedQuestions = [];
       
       for (var q in _questions) {
-        String? imageUrl = q.imageUrl; // الاحتفاظ بالرابط القديم
+        String? imageUrl = q.imageUrl;
         
-        // إذا قام المستخدم باختيار ملف صورة جديد، نرفعه
         if (q.imageFile != null) {
           imageUrl = await _teacherService.uploadFile(q.imageFile!);
         }
@@ -187,7 +180,6 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
         });
       }
 
-      // 2. تجهيز بيانات الامتحان
       final examData = {
         'title': _titleController.text,
         'subjectId': widget.subjectId,
@@ -198,12 +190,10 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
         'questions': processedQuestions,
       };
 
-      // ✅ إضافة معرف الامتحان في حالة التعديل
       if (widget.examId != null) {
         examData['examId'] = widget.examId!;
       }
 
-      // 3. الإرسال للسيرفر (نستخدم createExam التي تدعم التحديث الآن في الباك إند)
       await _teacherService.createExam(examData);
 
       if (mounted) {
@@ -213,7 +203,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
             backgroundColor: Colors.green
           )
         );
-        Navigator.pop(context, true); // إرجاع true لتحديث القائمة
+        Navigator.pop(context, true);
       }
 
     } catch (e) {
@@ -227,7 +217,6 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // عرض مؤشر التحميل عند جلب التفاصيل
     if (_isLoadingDetails) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -252,7 +241,6 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // --- البيانات الأساسية ---
                   CustomTextField(
                     label: "عنوان الامتحان",
                     controller: _titleController,
@@ -272,7 +260,6 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                   ),
                   const SizedBox(height: 15),
 
-                  // --- التواريخ والعشوائية ---
                   Card(
                     child: Column(
                       children: [
@@ -298,7 +285,6 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // --- قسم الأسئلة ---
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -329,7 +315,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                           child: ListTile(
                             leading: CircleAvatar(child: Text("${index + 1}")),
                             title: Text(q.text, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(q.imageFile != null ? "صورة جديدة" : (q.imageUrl != null ? "صورة محفوظة" : "نص فقط")),
+                            subtitle: Text("${q.options.length} اختيارات • ${q.imageFile != null ? "صورة جديدة" : (q.imageUrl != null ? "صورة محفوظة" : "نص فقط")}"),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () => setState(() => _questions.removeAt(index)),
@@ -364,14 +350,14 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
 }
 
 // ==========================================================
-// 🧩 مودل السؤال (للاستخدام الداخلي في الشاشة)
+// 🧩 مودل السؤال
 // ==========================================================
 class QuestionModel {
   String text;
   List<String> options;
   int correctOptionIndex;
-  File? imageFile; // الصورة كملف (جديدة)
-  String? imageUrl; // الصورة كرابط (إذا كانت موجودة مسبقاً)
+  File? imageFile;
+  String? imageUrl;
 
   QuestionModel({
     required this.text,
@@ -383,7 +369,7 @@ class QuestionModel {
 }
 
 // ==========================================================
-// 💬 نافذة إضافة/تعديل السؤال
+// 💬 نافذة إضافة/تعديل السؤال (ديناميكية)
 // ==========================================================
 class QuestionDialog extends StatefulWidget {
   final QuestionModel? initialQuestion;
@@ -398,7 +384,9 @@ class QuestionDialog extends StatefulWidget {
 class _QuestionDialogState extends State<QuestionDialog> {
   final _qFormKey = GlobalKey<FormState>();
   final TextEditingController _questionTextController = TextEditingController();
-  final List<TextEditingController> _optionControllers = List.generate(4, (_) => TextEditingController());
+  
+  // ✅ تغيير: القائمة أصبحت ديناميكية
+  List<TextEditingController> _optionControllers = [];
   
   int _correctIndex = 0;
   File? _selectedImage;
@@ -409,15 +397,28 @@ class _QuestionDialogState extends State<QuestionDialog> {
     super.initState();
     if (widget.initialQuestion != null) {
       _questionTextController.text = widget.initialQuestion!.text;
-      for (int i = 0; i < 4; i++) {
-        if (i < widget.initialQuestion!.options.length) {
-          _optionControllers[i].text = widget.initialQuestion!.options[i];
-        }
+      
+      // تعبئة الخيارات الموجودة
+      for (var option in widget.initialQuestion!.options) {
+        _optionControllers.add(TextEditingController(text: option));
       }
+      
       _correctIndex = widget.initialQuestion!.correctOptionIndex;
       _selectedImage = widget.initialQuestion!.imageFile;
       _existingImageUrl = widget.initialQuestion!.imageUrl;
+    } else {
+      // ✅ الحالة الافتراضية: 4 خيارات فارغة (ويمكن للمستخدم التعديل)
+      _optionControllers = List.generate(4, (_) => TextEditingController());
     }
+  }
+
+  @override
+  void dispose() {
+    _questionTextController.dispose();
+    for (var c in _optionControllers) {
+      c.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _pickImage() async {
@@ -432,12 +433,51 @@ class _QuestionDialogState extends State<QuestionDialog> {
     }
   }
 
+  // ✅ دالة إضافة خيار جديد
+  void _addOption() {
+    setState(() {
+      _optionControllers.add(TextEditingController());
+    });
+  }
+
+  // ✅ دالة حذف خيار
+  void _removeOption(int index) {
+    if (_optionControllers.length <= 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("يجب أن يحتوي السؤال على خيارين على الأقل"))
+      );
+      return;
+    }
+
+    setState(() {
+      _optionControllers[index].dispose(); // تحرير الموارد
+      _optionControllers.removeAt(index);
+      
+      // تعديل الإجابة الصحيحة إذا تأثرت بالحذف
+      if (_correctIndex == index) {
+        _correctIndex = 0; // إعادة تعيين للأول بشكل افتراضي
+      } else if (_correctIndex > index) {
+        _correctIndex--; // تقليل المؤشر لأن القائمة انزاحت
+      }
+    });
+  }
+
   void _save() {
     if (!_qFormKey.currentState!.validate()) return;
 
     List<String> options = _optionControllers.map((c) => c.text.trim()).toList();
+    
+    // التأكد من عدم وجود خيارات فارغة
     if (options.any((o) => o.isEmpty)) {
-      return; 
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("يرجى ملء جميع حقول الخيارات أو حذف الفارغ منها"))
+      );
+      return;
+    }
+
+    // التأكد من أن مؤشر الإجابة الصحيحة صالح
+    if (_correctIndex >= options.length) {
+      _correctIndex = 0;
     }
 
     final newQuestion = QuestionModel(
@@ -445,7 +485,7 @@ class _QuestionDialogState extends State<QuestionDialog> {
       options: options,
       correctOptionIndex: _correctIndex,
       imageFile: _selectedImage,
-      imageUrl: _existingImageUrl, // نحتفظ بالصورة القديمة إذا لم يتم اختيار جديدة
+      imageUrl: _existingImageUrl, 
     );
 
     widget.onSave(newQuestion);
@@ -473,7 +513,7 @@ class _QuestionDialogState extends State<QuestionDialog> {
                 ),
                 const SizedBox(height: 10),
 
-                // 2. صورة السؤال (اختياري)
+                // 2. صورة السؤال
                 Row(
                   children: [
                     Expanded(
@@ -498,17 +538,30 @@ class _QuestionDialogState extends State<QuestionDialog> {
                         tooltip: "حذف الصورة",
                         onPressed: () => setState(() {
                           _selectedImage = null;
-                          _existingImageUrl = null; // حذف الصورة القديمة والجديدة
+                          _existingImageUrl = null;
                         }),
                       )
                   ],
                 ),
                 const Divider(),
 
-                // 3. الخيارات الأربعة
-                const Align(alignment: Alignment.centerRight, child: Text("الخيارات (حدد الإجابة الصحيحة):")),
+                // 3. الخيارات الديناميكية
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("الخيارات (حدد الصحيحة):", style: TextStyle(fontWeight: FontWeight.bold)),
+                    TextButton.icon(
+                      onPressed: _addOption,
+                      icon: const Icon(Icons.add_circle, size: 18),
+                      label: const Text("إضافة خيار"),
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 5),
-                ...List.generate(4, (index) {
+                
+                // قائمة الخيارات
+                ...List.generate(_optionControllers.length, (index) {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8.0),
                     child: Row(
@@ -529,6 +582,12 @@ class _QuestionDialogState extends State<QuestionDialog> {
                             validator: (val) => val!.isEmpty ? "مطلوب" : null,
                           ),
                         ),
+                        if (_optionControllers.length > 2) // إظهار زر الحذف فقط إذا كان هناك أكثر من خيارين
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle, color: Colors.red),
+                            onPressed: () => _removeOption(index),
+                            tooltip: "حذف الخيار",
+                          ),
                       ],
                     ),
                   );
