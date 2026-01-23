@@ -470,8 +470,12 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                 )
               ),
             ).then((updatedChapter) {
-               // ✅ عند العودة، نطلب تحديث محتوى المادة لضمان تزامن عدد الدروس
-               _fetchContent();
+               // ✅ التعديل هنا: استقبال الشابتر المحدث وتحديث القائمة المحلية
+               if (updatedChapter != null && updatedChapter is Map) {
+                 _updateChapterList(Map<String, dynamic>.from(updatedChapter)); 
+               } else {
+                 _fetchContent(); // كإجراء احتياطي فقط
+               }
             });
           },
           child: Container(
