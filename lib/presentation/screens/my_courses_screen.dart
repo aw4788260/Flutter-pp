@@ -43,8 +43,16 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
 
     setState(() => _isUpdating = true); // عرض مؤشر التحميل
     try {
+      // ✅ التعديل هنا: إضافة تأخير بسيط (500 مللي ثانية) لضمان انتهاء السيرفر من الحفظ
+      await Future.delayed(const Duration(milliseconds: 500));
+
       // جلب البيانات الجديدة من السيرفر
       await AppState().reloadAppInit();
+      
+      // ✅ تحديث الواجهة قسرياً بعد جلب البيانات لضمان ظهور التغييرات
+      if (mounted) {
+        setState(() {}); 
+      }
     } catch (e) {
       debugPrint("Error refreshing data: $e");
     } finally {
