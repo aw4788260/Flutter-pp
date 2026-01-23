@@ -19,6 +19,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
   String _view = 'library'; // library | market
   String _searchTerm = '';
   bool _isTeacher = false;
+  bool _isUpdating = false; // ✅ متغير للتحكم في حالة التحديث
 
   @override
   void initState() {
@@ -33,6 +34,23 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
       setState(() {
         _isTeacher = role == 'teacher';
       });
+    }
+  }
+
+  // ✅ دالة التحديث: لا تعمل إلا عند استدعائها صراحةً
+  Future<void> _refreshData() async {
+    if (!mounted) return;
+
+    setState(() => _isUpdating = true); // عرض مؤشر التحميل
+    try {
+      // جلب البيانات الجديدة من السيرفر
+      await AppState().reloadAppInit();
+    } catch (e) {
+      debugPrint("Error refreshing data: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdating = false); // إخفاء المؤشر وإعادة الرسم
+      }
     }
   }
 
@@ -172,7 +190,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 3. واجهة المكتبة ---
+  // --- 3. واجهة المكتبة (المعدلة) ---
   Widget _buildLibraryView() {
     final libraryItems = AppState().myLibrary;
 
@@ -238,10 +256,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               MaterialPageRoute(
                                 builder: (_) => const ManageContentScreen(contentType: ContentType.course),
                               ),
-                            ).then((value) {
-                                // ✅ التحديث: إذا عادت true، نعيد رسم الشاشة (البيانات تم تحديثها في AppState بالفعل)
+                            ).then((value) async {
+                                // ✅ شرط التحديث: فقط إذا عادت العملية بنجاح (true)
                                 if(value == true) {
-                                  setState((){});
+                                  await _refreshData();
                                 }
                             });
                           },
@@ -278,165 +296,172 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               ),
             ),
             
-            Expanded(
-              child: libraryItems.isEmpty
-                  ? Center(
-                      child: Text(
-                        "NO ACTIVE COURSES",
-                        style: TextStyle(
-                          color: AppColors.textSecondary.withOpacity(0.5),
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 2.0,
+            // ✅ أثناء التحديث، نعرض Loading لمنع ظهور البيانات القديمة
+            if (_isUpdating)
+              const Expanded(
+                child: Center(
+                  child: CircularProgressIndicator(color: AppColors.accentYellow),
+                ),
+              )
+            else
+              Expanded(
+                child: libraryItems.isEmpty
+                    ? Center(
+                        child: Text(
+                          "NO ACTIVE COURSES",
+                          style: TextStyle(
+                            color: AppColors.textSecondary.withOpacity(0.5),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 2.0,
+                          ),
                         ),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      itemCount: libraryItems.length,
-                      itemBuilder: (context, index) {
-                        final item = libraryItems[index];
-                        
-                        final String title = item['title'] ?? 'Unknown';
-                        final String instructor = item['instructor'] ?? 'Instructor';
-                        final String code = item['code']?.toString() ?? '';
-                        final String id = item['id'].toString();
-                        
-                        final String description = item['description'] ?? '';
-                        final double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        itemCount: libraryItems.length,
+                        itemBuilder: (context, index) {
+                          final item = libraryItems[index];
+                          
+                          final String title = item['title'] ?? 'Unknown';
+                          final String instructor = item['instructor'] ?? 'Instructor';
+                          final String code = item['code']?.toString() ?? '';
+                          final String id = item['id'].toString();
+                          
+                          final String description = item['description'] ?? '';
+                          final double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
 
-                        List<dynamic>? subjectsToPass;
-                        if (item['owned_subjects'] is List) {
-                          subjectsToPass = item['owned_subjects'];
-                        }
+                          List<dynamic>? subjectsToPass;
+                          if (item['owned_subjects'] is List) {
+                            subjectsToPass = item['owned_subjects'];
+                          }
 
-                        return GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => CourseMaterialsScreen(
-                                  courseId: id,
-                                  courseTitle: title,
-                                  courseCode: code,
-                                  instructorName: instructor, 
-                                  preLoadedSubjects: subjectsToPass, 
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => CourseMaterialsScreen(
+                                    courseId: id,
+                                    courseTitle: title,
+                                    courseCode: code,
+                                    instructorName: instructor, 
+                                    preLoadedSubjects: subjectsToPass, 
+                                  ),
                                 ),
-                              ),
-                            ).then((updatedSubjects) {
-                              // ✅ التعديل هنا: استقبال قائمة المواد المحدثة وتحديث AppState
-                              if (updatedSubjects != null && updatedSubjects is List) {
-                                // 1. تحديث البيانات في الذاكرة المركزية (AppState)
-                                final index = AppState().myLibrary.indexWhere((c) => c['id'].toString() == id);
-                                if (index != -1) {
-                                  AppState().myLibrary[index]['owned_subjects'] = updatedSubjects;
-                                  
-                                  // 2. تحديث واجهة المكتبة لتعكس أي تغييرات
-                                  if (mounted) setState(() {});
+                              ).then((updatedSubjects) {
+                                // تحديث المواد المشتراة محلياً فقط عند العودة من صفحة المواد
+                                if (updatedSubjects != null && updatedSubjects is List) {
+                                  final index = AppState().myLibrary.indexWhere((c) => c['id'].toString() == id);
+                                  if (index != -1) {
+                                    AppState().myLibrary[index]['owned_subjects'] = updatedSubjects;
+                                    if (mounted) setState(() {});
+                                  }
                                 }
-                              }
-                            });
-                          },
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 48, height: 48,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.backgroundPrimary,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                              });
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: AppColors.backgroundSecondary,
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 48, height: 48,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.backgroundPrimary,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                                    ),
+                                    child: const Icon(
+                                      LucideIcons.playCircle, 
+                                      color: AppColors.accentOrange, 
+                                      size: 24
+                                    ),
                                   ),
-                                  child: const Icon(
-                                    LucideIcons.playCircle, 
-                                    color: AppColors.accentOrange, 
-                                    size: 24
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title.toUpperCase(),
-                                        style: const TextStyle(
-                                          color: AppColors.textPrimary,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: -0.5,
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          title.toUpperCase(),
+                                          style: const TextStyle(
+                                            color: AppColors.textPrimary,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: -0.5,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            instructor.toUpperCase(),
-                                            style: TextStyle(
-                                              color: AppColors.textSecondary.withOpacity(0.7),
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: 1.5,
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              instructor.toUpperCase(),
+                                              style: TextStyle(
+                                                color: AppColors.textSecondary.withOpacity(0.7),
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                letterSpacing: 1.5,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  
+                                  // 🟢 زر التعديل (داخل البطاقة)
+                                  if (_isTeacher)
+                                    GestureDetector(
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => ManageContentScreen(
+                                              contentType: ContentType.course,
+                                              initialData: {
+                                                'id': id,
+                                                'title': title,
+                                                'code': code,
+                                                'price': price,
+                                                'description': description,
+                                              },
                                             ),
                                           ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                
-                                // 🟢 زر التعديل (داخل البطاقة)
-                                if (_isTeacher)
-                                  GestureDetector(
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => ManageContentScreen(
-                                            contentType: ContentType.course,
-                                            initialData: {
-                                              'id': id,
-                                              'title': title,
-                                              'code': code,
-                                              'price': price,
-                                              'description': description,
-                                            },
-                                          ),
+                                        ).then((value) async {
+                                          // ✅ شرط التحديث عند التعديل أو الحذف
+                                          if (value == true) {
+                                            await _refreshData();
+                                          }
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accentYellow.withOpacity(0.1),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: AppColors.accentYellow.withOpacity(0.3)),
                                         ),
-                                      ).then((value) {
-                                        // ✅ التحديث عند التعديل أيضاً
-                                        if (value == true) setState(() {});
-                                      });
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.accentYellow.withOpacity(0.1),
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: AppColors.accentYellow.withOpacity(0.3)),
+                                        child: const Icon(LucideIcons.edit3, color: AppColors.accentYellow, size: 18),
                                       ),
-                                      child: const Icon(LucideIcons.edit3, color: AppColors.accentYellow, size: 18),
-                                    ),
-                                  )
-                                else
-                                  Icon(LucideIcons.chevronRight, color: AppColors.textSecondary.withOpacity(0.6), size: 20),
-                              ],
+                                    )
+                                  else
+                                    Icon(LucideIcons.chevronRight, color: AppColors.textSecondary.withOpacity(0.6), size: 20),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
+                          );
+                        },
+                      ),
+              ),
           ],
         ),
       ),
