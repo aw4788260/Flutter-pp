@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../core/services/storage_service.dart';
-import '../../data/models/course_model.dart'; // ✅ استيراد مودل الكورس
-import '../widgets/course_card.dart'; // ✅ استيراد بطاقة الكورس الموحدة
+import '../../core/services/storage_service.dart'; // 1. استدعاء خدمة التخزين للتحقق من الدور
 import 'course_details_screen.dart';
 import 'course_materials_screen.dart';
 import 'login_screen.dart';
-import 'teacher/manage_content_screen.dart';
+import 'teacher/manage_content_screen.dart'; // 2. استدعاء شاشة إضافة المحتوى
+import '../../data/models/course_model.dart'; // ✅ استيراد مودل الكورس
+import '../widgets/course_card.dart'; // ✅ استيراد بطاقة الكورس
 
 class MyCoursesScreen extends StatefulWidget {
   const MyCoursesScreen({super.key});
@@ -303,8 +303,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       itemBuilder: (context, index) {
                         final item = libraryItems[index];
                         
-                        // ✅ تحويل البيانات الخام (Map) إلى كائن CourseModel
-                        // هذا ضروري لأن CourseCard تتوقع كائناً من نوع CourseModel
+                        // ✅ إنشاء المودل بناءً على البيانات
                         final course = CourseModel(
                           id: item['id'].toString(),
                           title: item['title'] ?? 'Unknown',
@@ -316,13 +315,12 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           subject: 'General', 
                         );
 
-                        // تجهيز المواد الفرعية (إن وجدت)
                         List<dynamic>? subjectsToPass;
                         if (item['owned_subjects'] is List) {
                           subjectsToPass = item['owned_subjects'];
                         }
 
-                        // ✅ استخدام CourseCard بدلاً من التصميم اليدوي
+                        // ✅ استخدام CourseCard مع تمرير زر القلم (onEdit)
                         return CourseCard(
                           course: course,
                           isTeacher: _isTeacher, // تمرير حالة المعلم لإظهار زر التعديل
@@ -341,8 +339,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               ),
                             );
                           },
+                          // 🟢 إضافة منطق زر القلم للتعديل
                           onEdit: () {
-                            // ✅ الانتقال لشاشة تعديل المحتوى عند الضغط على زر التعديل
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -461,8 +459,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                 itemBuilder: (context, index) {
                   final course = availableCourses[index];
 
-                  // هنا أيضاً نستخدم CourseCard للمتجر، ولكن بدون خاصية التعديل للمدرس لأن هذا المتجر العام
-                  // أو يمكنك تفعيلها أيضاً إذا أردت
                   return GestureDetector(
                     onTap: () {
                       Navigator.push(
@@ -507,7 +503,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                course.instructorName.toUpperCase(),
+                                course.instructor.toUpperCase(),
                                 style: TextStyle(
                                   color: AppColors.textSecondary.withOpacity(0.7),
                                   fontSize: 9,
@@ -519,7 +515,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                "${course.fullPrice.toInt()} EGP", 
+                                "${course.price.toInt()} EGP", 
                                 style: const TextStyle(
                                   color: AppColors.accentYellow,
                                   fontSize: 16,
