@@ -15,10 +15,11 @@ import 'login_screen.dart';
 // شاشات الطالب
 import 'my_requests_screen.dart';
 
-// شاشات المعلم (التي أنشأناها سابقاً)
+// شاشات المعلم
 import 'teacher/student_requests_screen.dart';
 import 'teacher/manage_students_screen.dart';
 import 'teacher/manage_team_screen.dart';
+import 'teacher/financial_stats_screen.dart'; // ✅ تم إضافة استيراد شاشة الإحصائيات
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -235,17 +236,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSecondary,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.accentYellow.withOpacity(0.2)), // تمييز لون الحدود
+                    border: Border.all(color: AppColors.accentYellow.withOpacity(0.2)),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
-                      // 1. طلبات الاشتراك (بدلاً من طلباتي)
+                      // 1. طلبات الاشتراك
                       _buildMenuItem(
                         context, 
-                        icon: LucideIcons.bellRing, // أيقونة مختلفة
+                        icon: LucideIcons.bellRing, 
                         title: "Incoming Requests", 
-                        badge: "NEW", // يمكن ربطه بالعدد لاحقاً
+                        // badge: "NEW", // ❌ تم حذف الشارة كما طلبت
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentRequestsScreen()))
                       ),
                       const Divider(height: 1, color: Colors.white10),
@@ -265,6 +266,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         icon: LucideIcons.shieldCheck, 
                         title: "Manage Team", 
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageTeamScreen()))
+                      ),
+                      const Divider(height: 1, color: Colors.white10),
+
+                      // 4. ✅ زر الإحصائيات المالية (جديد)
+                      _buildMenuItem(
+                        context, 
+                        icon: LucideIcons.barChart2, 
+                        title: "Financial Stats", 
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FinancialStatsScreen()))
                       ),
                     ],
                   ),
