@@ -148,6 +148,56 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
     );
   }
 
+  // --- حذف الامتحان ---
+  Future<void> _deleteExam() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text("حذف الامتحان", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        content: const Text(
+          "هل أنت متأكد من حذف هذا الامتحان؟\n\n"
+          "⚠️ تحذير: سيتم حذف جميع الأسئلة وجميع نتائج الطلاب المرتبطة بهذا الامتحان بشكل نهائي.",
+          style: TextStyle(color: Colors.black87),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("إلغاء"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("حذف نهائي", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      await _teacherService.deleteExam(widget.examId!);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("تم حذف الامتحان بنجاح"), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context, true); // العودة وتحديث القائمة
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("فشل الحذف: $e"), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
   // --- الحفظ والإرسال ---
   Future<void> _submitExam() async {
     if (!_formKey.currentState!.validate()) return;
@@ -226,6 +276,15 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.examId != null ? "تعديل الامتحان" : "إنشاء امتحان جديد"),
+        actions: [
+          // ✅ زر الحذف يظهر فقط عند التعديل
+          if (widget.examId != null)
+            IconButton(
+              icon: const Icon(Icons.delete_forever, color: Colors.red),
+              onPressed: _isSubmitting ? null : _deleteExam,
+              tooltip: "حذف الامتحان",
+            )
+        ],
       ),
       body: _isSubmitting
           ? const Center(child: Column(
@@ -233,7 +292,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 20),
-                Text("جاري رفع الصور وحفظ البيانات...")
+                Text("جاري التنفيذ...")
               ],
             ))
           : Form(
