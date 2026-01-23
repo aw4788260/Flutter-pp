@@ -140,8 +140,12 @@ class AppState {
       // التأكد من وجود التوكن قبل الطلب (للمستخدم المسجل فقط)
       if (token == null || isGuest) return;
 
+      // ✅ التعديل هنا: إضافة timestamp لمنع الكاش وإجبار السيرفر على جلب بيانات جديدة
       final response = await Dio().get(
         'https://courses.aw478260.dpdns.org/api/public/init', 
+        queryParameters: {
+          't': DateTime.now().millisecondsSinceEpoch, // 👈 هذا السطر يمنع الكاش
+        },
         options: Options(headers: {
           'Authorization': 'Bearer $token',
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
@@ -155,7 +159,7 @@ class AppState {
         var cacheBox = await StorageService.openBox('app_cache');
         await cacheBox.put('init_data', response.data);
         
-        if (kDebugMode) print("✅ App Init Reloaded & Synced!");
+        if (kDebugMode) print("✅ App Init Reloaded & Synced (Fresh Data)!");
       }
     } catch (e) {
       if (kDebugMode) print("❌ App Init Reload Error: $e");
