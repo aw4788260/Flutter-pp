@@ -40,6 +40,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   @override
   void initState() {
     super.initState();
+    // ✅ تهيئة الفصل بالبيانات الممررة أولاً
     _currentChapter = widget.chapter;
     _checkUserRole();
   }
@@ -51,6 +52,11 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       setState(() {
         _isTeacher = role == 'teacher';
       });
+      
+      // ✅ إذا كان معلماً، نحدث البيانات فوراً للتأكد من المزامنة
+      if (_isTeacher) {
+        _refreshChapterData();
+      }
     }
   }
 
@@ -63,7 +69,6 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       final deviceId = box.get('device_id');
 
       // نطلب محتوى المادة كاملة لاستخراج الفصل المحدث
-      // (أو يمكن استخدام endpoint خاص بالفصل إذا توفر)
       final res = await Dio().get(
         '$_baseUrl/api/secure/get-subject-content',
         queryParameters: {'subjectId': widget.subjectId},
@@ -76,7 +81,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
 
       if (mounted && res.statusCode == 200) {
         final chapters = res.data['chapters'] as List;
-        // البحث عن الفصل الحالي
+        // البحث عن الفصل الحالي للحصول على النسخة المحدثة
         final updatedChapter = chapters.firstWhere(
           (c) => c['id'].toString() == _currentChapter['id'].toString(),
           orElse: () => _currentChapter,
@@ -515,6 +520,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     // ✅ تغليف Scaffold بـ WillPopScope لإرجاع الشابتر المحدث عند العودة للشاشة السابقة
     return WillPopScope(
       onWillPop: () async {
+        // ✅ إرجاع بيانات الفصل المحدثة عند الضغط على زر الرجوع (System Back)
         Navigator.pop(context, _currentChapter);
         return false;
       },
@@ -537,7 +543,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                             children: [
                               GestureDetector(
                                 onTap: () {
-                                  // عند الضغط على زر الرجوع العلوي، نرجع البيانات أيضاً
+                                  // ✅ عند الضغط على زر الرجوع العلوي، نرجع البيانات أيضاً
                                   Navigator.pop(context, _currentChapter);
                                 },
                                 child: Container(
