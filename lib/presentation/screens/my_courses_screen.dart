@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../core/services/storage_service.dart'; // 1. استدعاء خدمة التخزين للتحقق من الدور
+import '../../core/services/storage_service.dart';
 import 'course_details_screen.dart';
 import 'course_materials_screen.dart';
 import 'login_screen.dart';
-import 'teacher/manage_content_screen.dart'; // 2. استدعاء شاشة إضافة المحتوى
+import 'teacher/manage_content_screen.dart';
 
 class MyCoursesScreen extends StatefulWidget {
   const MyCoursesScreen({super.key});
@@ -18,15 +18,14 @@ class MyCoursesScreen extends StatefulWidget {
 class _MyCoursesScreenState extends State<MyCoursesScreen> {
   String _view = 'library'; // library | market
   String _searchTerm = '';
-  bool _isTeacher = false; // متغير لتخزين هل المستخدم مدرس أم لا
+  bool _isTeacher = false;
 
   @override
   void initState() {
     super.initState();
-    _checkUserRole(); // التحقق عند بدء الشاشة
+    _checkUserRole();
   }
 
-  // دالة التحقق من الصلاحية
   Future<void> _checkUserRole() async {
     var box = await StorageService.openBox('auth_box');
     String? role = box.get('role');
@@ -39,24 +38,20 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. التحقق أولاً: هل المستخدم ضيف؟
     if (AppState().isGuest) {
-      // إذا كان المستخدم في وضع "المتجر"، نسمح له بالتصفح
       if (_view == 'market') {
         return _buildMarketView();
       }
-      // إذا حاول الوصول للمكتبة، نعرض له واجهة "يجب تسجيل الدخول"
       return _buildGuestView();
     }
 
-    // المستخدم مسجل دخول: السلوك الطبيعي
     if (_view == 'market') {
       return _buildMarketView();
     }
     return _buildLibraryView();
   }
 
-  // --- 2. واجهة خاصة بالضيف عند محاولة دخول المكتبة ---
+  // --- 2. واجهة خاصة بالضيف ---
   Widget _buildGuestView() {
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -108,7 +103,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       ),
                     ],
                   ),
-                  // زر الذهاب للمتجر (مسموح للضيف)
+                  // زر الذهاب للمتجر
                   GestureDetector(
                     onTap: () => setState(() => _view = 'market'),
                     child: Container(
@@ -126,7 +121,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               ),
             ),
 
-            // محتوى رسالة "يجب تسجيل الدخول"
+            // Login Required Message
             Expanded(
               child: Center(
                 child: Column(
@@ -177,7 +172,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 3. واجهة المكتبة (للمستخدم المسجل) ---
+  // --- 3. واجهة المكتبة ---
   Widget _buildLibraryView() {
     final libraryItems = AppState().myLibrary;
 
@@ -231,35 +226,36 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                     ],
                   ),
                   
-                  // الأزرار الجانبية (إضافة + المتجر)
+                  // Buttons
                   Row(
                     children: [
-                      // 🟢 زر إضافة كورس (يظهر للمدرس فقط)
+                      // 🟢 زر إضافة كورس (للمدرس)
                       if (_isTeacher) ...[
                         GestureDetector(
                           onTap: () {
-                            // الذهاب لشاشة إضافة الكورس
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => const ManageContentScreen(contentType: ContentType.course),
                               ),
                             ).then((value) {
-                                // إذا تم الحفظ بنجاح، قد نحتاج لتحديث القائمة (اختياري)
-                                if(value == true) setState((){});
+                                // ✅ التحديث: إذا عادت true، نعيد رسم الشاشة (البيانات تم تحديثها في AppState بالفعل)
+                                if(value == true) {
+                                  setState((){});
+                                }
                             });
                           },
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppColors.accentYellow.withOpacity(0.1), // خلفية خفيفة مميزة
+                              color: AppColors.accentYellow.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(50),
                               border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
                             ),
                             child: const Icon(LucideIcons.plusSquare, color: AppColors.accentYellow, size: 22),
                           ),
                         ),
-                        const SizedBox(width: 12), // مسافة فاصلة بين الزرين
+                        const SizedBox(width: 12),
                       ],
 
                       // زر المتجر
@@ -301,13 +297,11 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       itemBuilder: (context, index) {
                         final item = libraryItems[index];
                         
-                        // ✅ الحفاظ على الأسماء كما في الكود الأصلي
                         final String title = item['title'] ?? 'Unknown';
                         final String instructor = item['instructor'] ?? 'Instructor';
                         final String code = item['code']?.toString() ?? '';
                         final String id = item['id'].toString();
                         
-                        // ✅ استخراج بيانات إضافية للتعديل (إذا وجدت)
                         final String description = item['description'] ?? '';
                         final double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
 
@@ -389,11 +383,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   ),
                                 ),
                                 
-                                // 🟢 التعديل: إظهار زر القلم للمدرس أو السهم للطالب
+                                // 🟢 زر التعديل (داخل البطاقة)
                                 if (_isTeacher)
                                   GestureDetector(
                                     onTap: () {
-                                      // فتح شاشة تعديل الكورس
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
@@ -409,6 +402,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                           ),
                                         ),
                                       ).then((value) {
+                                        // ✅ التحديث عند التعديل أيضاً
                                         if (value == true) setState(() {});
                                       });
                                     },
@@ -437,7 +431,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 4. واجهة المتجر (تعرض كل الكورسات - متاحة للضيف أيضاً) ---
+  // --- 4. واجهة المتجر ---
   Widget _buildMarketView() {
     final availableCourses = AppState().allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
