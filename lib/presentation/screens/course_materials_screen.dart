@@ -6,7 +6,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/storage_service.dart';
 import 'subject_materials_screen.dart';
-import 'teacher/manage_content_screen.dart'; // تأكد من المسار الصحيح
+import 'teacher/manage_content_screen.dart'; 
 
 class CourseMaterialsScreen extends StatefulWidget {
   final String courseId;
@@ -83,8 +83,6 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
         bool ownsCourse = AppState().ownsCourse(widget.courseId);
 
         setState(() {
-          // في حالة المعلم، قد يرغب برؤية كل المواد، لكن هنا سنلتزم بالمنطق الحالي
-          // أو يمكنك عرض الكل للمعلم: if (_isTeacher) return true;
           _ownedSubjects = allSubjects.where((sub) {
             if (_isTeacher) return true; // ✅ المعلم يرى كل المواد
             bool ownsSubject = AppState().ownsSubject(sub['id'].toString());
@@ -181,7 +179,11 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                             ),
                           ),
                         ).then((value) {
-                          if(value == true) _fetchSubjects(); // تحديث القائمة بعد الإضافة
+                          // ✅ إعادة طلب البيانات عند نجاح الإضافة
+                          if(value == true) {
+                            setState(() => _loading = true);
+                            _fetchSubjects(); 
+                          }
                         });
                       },
                       child: Container(
@@ -274,8 +276,8 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                                         if (_isTeacher)
                                           GestureDetector(
                                             onTap: () {
-                                               // فتح شاشة التعديل للمادة
-                                               Navigator.push(
+                                              // فتح شاشة التعديل للمادة
+                                              Navigator.push(
                                                 context,
                                                 MaterialPageRoute(
                                                   builder: (_) => ManageContentScreen(
@@ -285,7 +287,11 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                                                   ),
                                                 ),
                                               ).then((val) {
-                                                if(val == true) _fetchSubjects();
+                                                // ✅ إعادة طلب البيانات عند نجاح التعديل
+                                                if(val == true) {
+                                                  setState(() => _loading = true);
+                                                  _fetchSubjects();
+                                                }
                                               });
                                             },
                                             child: const Icon(LucideIcons.edit2, size: 20, color: AppColors.accentYellow),
