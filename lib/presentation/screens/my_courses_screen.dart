@@ -37,20 +37,27 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     }
   }
 
-  // ✅ دالة التحديث: لا تعمل إلا عند استدعائها صراحةً
+  // ✅ 1. دالة معالجة البيانات الراجعة (نفس منطق تحديث المادة)
+  void _handleReturnData(dynamic result) async {
+    // إذا كانت النتيجة true، فهذا يعني أنه تم إجراء تغيير (إضافة/تعديل/حذف)
+    if (result == true) {
+      await _refreshData();
+    }
+  }
+
+  // ✅ دالة التحديث مع تأخير بسيط لضمان التزام السيرفر
   Future<void> _refreshData() async {
     if (!mounted) return;
 
     setState(() => _isUpdating = true); // عرض مؤشر التحميل
     try {
-      // ✅ التعديل هنا: زيادة الوقت إلى 1.5 ثانية (1500ms) بدلاً من 500ms
-      // هذا يعطي وقتاً كافياً للسيرفر لإنهاء العمليات المعلقة وتحديث قاعدة البيانات
+      // ✅ التعديل هنا: زيادة الوقت إلى 1.5 ثانية لضمان انتهاء عمليات السيرفر
       await Future.delayed(const Duration(milliseconds: 1500));
 
-      // جلب البيانات الجديدة من السيرفر
+      // جلب البيانات الجديدة من السيرفر وتحديث الحالة العامة
       await AppState().reloadAppInit();
       
-      // ✅ تحديث الواجهة قسرياً بعد جلب البيانات لضمان ظهور التغييرات
+      // ✅ تحديث الواجهة قسرياً بعد جلب البيانات
       if (mounted) {
         setState(() {}); 
       }
@@ -58,7 +65,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
       debugPrint("Error refreshing data: $e");
     } finally {
       if (mounted) {
-        setState(() => _isUpdating = false); // إخفاء المؤشر وإعادة الرسم
+        setState(() => _isUpdating = false); // إخفاء المؤشر
       }
     }
   }
@@ -265,12 +272,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               MaterialPageRoute(
                                 builder: (_) => const ManageContentScreen(contentType: ContentType.course),
                               ),
-                            ).then((value) async {
-                                // ✅ شرط التحديث: فقط إذا عادت العملية بنجاح (true)
-                                if(value == true) {
-                                  await _refreshData();
-                                }
-                            });
+                            // ✅ 2. استخدام دالة المعالجة الموحدة هنا
+                            ).then((value) => _handleReturnData(value));
                           },
                           child: Container(
                             padding: const EdgeInsets.all(12),
@@ -445,12 +448,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                               },
                                             ),
                                           ),
-                                        ).then((value) async {
-                                          // ✅ شرط التحديث عند التعديل أو الحذف
-                                          if (value == true) {
-                                            await _refreshData();
-                                          }
-                                        });
+                                        // ✅ 3. استخدام دالة المعالجة الموحدة هنا أيضاً
+                                        ).then((value) => _handleReturnData(value));
                                       },
                                       child: Container(
                                         padding: const EdgeInsets.all(8),
@@ -477,7 +476,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 4. واجهة المتجر ---
+  // --- 4. واجهة المتجر (لا تغيير) ---
   Widget _buildMarketView() {
     final availableCourses = AppState().allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
