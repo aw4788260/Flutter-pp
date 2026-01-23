@@ -202,7 +202,7 @@ class TeacherService {
   }
 
   // ==========================================================
-  // 5️⃣ الامتحانات (إنشاء - تعديل - إحصائيات)
+  // 5️⃣ الامتحانات (إنشاء - تعديل - حذف - إحصائيات)
   // ==========================================================
   
   // إنشاء أو تحديث امتحان
@@ -217,6 +217,20 @@ class TeacherService {
       data: {
         'action': action,
         'payload': examData
+      },
+      options: options,
+    );
+  }
+
+  // ✅ حذف امتحان
+  Future<void> deleteExam(String examId) async {
+    final options = await _getHeaders();
+    
+    await _dio.post(
+      '$baseUrl/teacher/exams',
+      data: {
+        'action': 'delete',
+        'payload': {'examId': examId}
       },
       options: options,
     );
