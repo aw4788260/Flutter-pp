@@ -323,7 +323,19 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   preLoadedSubjects: subjectsToPass, 
                                 ),
                               ),
-                            );
+                            ).then((updatedSubjects) {
+                              // ✅ التعديل هنا: استقبال قائمة المواد المحدثة وتحديث AppState
+                              if (updatedSubjects != null && updatedSubjects is List) {
+                                // 1. تحديث البيانات في الذاكرة المركزية (AppState)
+                                final index = AppState().myLibrary.indexWhere((c) => c['id'].toString() == id);
+                                if (index != -1) {
+                                  AppState().myLibrary[index]['owned_subjects'] = updatedSubjects;
+                                  
+                                  // 2. تحديث واجهة المكتبة لتعكس أي تغييرات
+                                  if (mounted) setState(() {});
+                                }
+                              }
+                            });
                           },
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 16),
