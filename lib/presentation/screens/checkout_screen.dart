@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ✅ لاستخدام الحافظة (Clipboard)
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,7 +10,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import 'main_wrapper.dart'; 
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
 
 class CheckoutScreen extends StatefulWidget {
   final double amount;
@@ -44,7 +44,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  // دالة فتح الروابط
   Future<void> _launchURL(String url) async {
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -54,6 +53,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         );
       }
     }
+  }
+
+  // ✅ دالة لنسخ النص إلى الحافظة
+  void _copyToClipboard(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Copied to clipboard"), 
+        backgroundColor: AppColors.success, 
+        duration: Duration(seconds: 1)
+      ),
+    );
   }
 
   Future<void> _submitOrder() async {
@@ -68,7 +79,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       var box = await StorageService.openBox('auth_box');
-      // ✅ جلب التوكن والبصمة
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
 
@@ -85,7 +95,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         data: formData,
         options: Options(
           headers: {
-            'Authorization': 'Bearer $token', // ✅ إرسال التوكن
+            'Authorization': 'Bearer $token',
             'x-device-id': deviceId,
             'x-app-secret': const String.fromEnvironment('APP_SECRET'),
           },
@@ -149,15 +159,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final String vodafone = widget.paymentInfo['vodafone_cash_number'] ?? '';
-    final String instapayNum = widget.paymentInfo['instapay_number'] ?? '';
-    final String instapayLink = widget.paymentInfo['instapay_link'] ?? ''; 
+    // ✅ استخراج القوائم من الـ paymentInfo
+    // نستخدم List<dynamic> أو List<String> مع التحقق من null
+    final List cashNumbers = (widget.paymentInfo['cash_numbers'] as List?) ?? [];
+    final List instapayNumbers = (widget.paymentInfo['instapay_numbers'] as List?) ?? [];
+    final List instapayLinks = (widget.paymentInfo['instapay_links'] as List?) ?? [];
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       body: SafeArea(
         child: Column(
           children: [
+            // Header
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Row(
@@ -188,6 +201,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Amount Box
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(32),
@@ -207,19 +221,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    if (vodafone.isNotEmpty)
-                      _buildPaymentMethod("VODAFONE CASH", vodafone, LucideIcons.smartphone),
-                    
-                    if (instapayNum.isNotEmpty)
-                      _buildPaymentMethod(
-                        "INSTAPAY", 
-                        instapayNum, 
-                        LucideIcons.creditCard,
-                        link: instapayLink 
-                      ),
+                    // 1. Cash Numbers Section
+                    if (cashNumbers.isNotEmpty) ...[
+                      const Text("CASH WALLETS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                      const SizedBox(height: 10),
+                      ...cashNumbers.map((num) => _buildCopyableCard("WALLET NUMBER", num.toString(), Icons.account_balance_wallet)),
+                      const SizedBox(height: 24),
+                    ],
 
-                    const SizedBox(height: 32),
-                    
+                    // 2. InstaPay Numbers Section
+                    if (instapayNumbers.isNotEmpty) ...[
+                      const Text("INSTAPAY NUMBERS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                      const SizedBox(height: 10),
+                      ...instapayNumbers.map((num) => _buildCopyableCard("INSTAPAY PHONE", num.toString(), Icons.phone_iphone)),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // 3. InstaPay Links Section
+                    if (instapayLinks.isNotEmpty) ...[
+                      const Text("INSTAPAY LINKS / USERNAME", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                      const SizedBox(height: 10),
+                      ...instapayLinks.map((link) => _buildLinkCard(link.toString())),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // Receipt Upload
                     const Text("UPLOAD RECEIPT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
                     const SizedBox(height: 16),
                     GestureDetector(
@@ -262,6 +288,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                     const SizedBox(height: 32),
                     
+                    // Notes
                     const Text("NOTES (OPTIONAL)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
                     const SizedBox(height: 16),
                     Container(
@@ -288,6 +315,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
 
+            // Confirm Button
             Padding(
               padding: const EdgeInsets.all(24),
               child: SizedBox(
@@ -313,62 +341,102 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // دالة بناء طريقة الدفع لإضافة زر الرابط
-  Widget _buildPaymentMethod(String title, String value, IconData icon, {String? link}) {
+  // ✅ ويدجت للأرقام مع زر نسخ
+  Widget _buildCopyableCard(String title, String value, IconData icon) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.backgroundSecondary.withOpacity(0.5),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
-      child: Column( 
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundPrimary,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppColors.accentYellow, size: 20),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                const SizedBox(height: 4),
+                SelectableText(
+                  value, 
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'monospace')
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(LucideIcons.copy, size: 18, color: AppColors.textSecondary),
+            onPressed: () => _copyToClipboard(value),
+            tooltip: "Copy",
+          )
+        ],
+      ),
+    );
+  }
+
+  // ✅ ويدجت للروابط مع زر فتح وزر نسخ
+  Widget _buildLinkCard(String link) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSecondary.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: AppColors.backgroundPrimary,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, color: AppColors.accentYellow, size: 24),
+                child: const Icon(LucideIcons.link, color: AppColors.accentYellow, size: 20),
               ),
-              const SizedBox(width: 20),
+              const SizedBox(width: 16),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-                    const SizedBox(height: 6),
-                    SelectableText(
-                      value, 
-                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'monospace')
-                    ),
-                  ],
+                child: Text(
+                  link,
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              IconButton(
+                icon: const Icon(LucideIcons.copy, size: 18, color: AppColors.textSecondary),
+                onPressed: () => _copyToClipboard(link),
+              )
             ],
           ),
-          
-          if (link != null && link.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _launchURL(link),
-                icon: const Icon(LucideIcons.externalLink, size: 14),
-                label: const Text("Open in InstaPay", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.accentYellow,
-                  side: BorderSide(color: AppColors.accentYellow.withOpacity(0.3)),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _launchURL(link.startsWith('http') ? link : 'https://$link'),
+              icon: const Icon(LucideIcons.externalLink, size: 14),
+              label: const Text("Open Link / InstaPay", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accentYellow,
+                side: BorderSide(color: AppColors.accentYellow.withOpacity(0.3)),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
