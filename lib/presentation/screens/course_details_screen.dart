@@ -21,7 +21,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
   List<String> _selectedSubjectIds = [];
   bool _isFullCourse = false;
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
-  
+   
   bool _isTeacher = false; // ✅ متغير لحفظ الدور
 
   @override
@@ -76,7 +76,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     final course = _courseData!;
     final teacher = course['teacher'] ?? {};
     final String teacherName = teacher['name'] ?? "Unknown Instructor";
-    final String? teacherId = teacher['id']?.toString(); 
+    // نستخدم هذا المتغير لصفحة البروفايل (String)
+    final String? teacherIdString = teacher['id']?.toString(); 
 
     final subjects = List<Map<String, dynamic>>.from(course['subjects'] ?? []);
     final double fullPrice = (course['price'] ?? 0).toDouble();
@@ -150,11 +151,11 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       // ✅ تصميم جديد وأنيق لبطاقة المدرس (New Elegant Instructor Card)
                       GestureDetector(
                         onTap: () {
-                          if (teacherId != null && teacherId.isNotEmpty) {
+                          if (teacherIdString != null && teacherIdString.isNotEmpty) {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => TeacherProfileScreen(teacherId: teacherId),
+                                builder: (context) => TeacherProfileScreen(teacherId: teacherIdString),
                               ),
                             );
                           } else {
@@ -383,7 +384,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: AppColors.backgroundSecondary,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                   border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
                   boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, offset: const Offset(0, -5))],
                 ),
@@ -419,6 +420,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                               amount: currentPrice,
                               paymentInfo: Map<String, dynamic>.from(course['paymentInfo'] ?? {}),
                               selectedItems: selectedItems,
+                              // ✅ التعديل هنا: تمرير teacherId
+                              teacherId: teacher['id'], 
                             ),
                           ),
                         );
