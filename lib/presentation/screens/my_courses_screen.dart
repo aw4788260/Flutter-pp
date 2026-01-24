@@ -463,19 +463,33 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           );
                         },
                       ),
-              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // --- 4. واجهة المتجر (لا تغيير) ---
+  // --- 4. واجهة المتجر (تم التعديل لتناسب التابلت والوضع الأفقي) ---
   Widget _buildMarketView() {
     final availableCourses = AppState().allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
       course.code.toLowerCase().contains(_searchTerm.toLowerCase())
     ).toList();
+
+    // ✅ حساب عدد الأعمدة بناءً على عرض الشاشة
+    double screenWidth = MediaQuery.of(context).size.width;
+    int crossAxisCount = 2; // الافتراضي للموبايل
+    
+    if (screenWidth >= 600) {
+      crossAxisCount = 3; // التابلت (رأسي)
+    }
+    if (screenWidth >= 900) {
+      crossAxisCount = 4; // التابلت (أفقي) / ديسكتوب
+    }
+    if (screenWidth >= 1200) {
+      crossAxisCount = 5; // شاشات كبيرة جداً
+    }
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -546,11 +560,12 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
+                // ✅ استخدام متغير الأعمدة المحسوب
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: 1.0,
+                  childAspectRatio: 1.0, // مربع
                 ),
                 itemCount: availableCourses.length,
                 itemBuilder: (context, index) {
