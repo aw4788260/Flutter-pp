@@ -79,6 +79,9 @@ class AppState {
     if (castedData['user'] != null) {
       userData = Map<String, dynamic>.from(castedData['user']);
       isGuest = false; 
+      
+      // ✅ [تمت الإضافة] التأكد من وجود مفتاح الصورة في الـ userData
+      // ملاحظة: الـ API يرسل 'profile_image' داخل كائن 'user' كما عدلناه سابقاً
     }
 
     // 3. أرقام الاشتراكات (فقط إذا لم يكن ضيفاً)
@@ -106,6 +109,7 @@ class AppState {
     try {
       // فتح صندوق الكاش
       var cacheBox = await StorageService.openBox('app_cache');
+      var authBox = await StorageService.openBox('auth_box');
       
       // جلب البيانات
       final cachedData = cacheBox.get('init_data');
@@ -114,11 +118,15 @@ class AppState {
         // تحديث التطبيق بالبيانات المخبأة
         updateFromInitData(cachedData);
         
-        // ⚠️ مهم: استرجاع نوع المستخدم (role) المخزن في auth_box لضمان تزامن الصلاحيات
-        // لأن init_data قد لا تحتوي دائماً على الـ role بشكل صريح في بعض الحالات
-        var authBox = await StorageService.openBox('auth_box');
-        if (userData != null && authBox.containsKey('role')) {
-           userData!['role'] = authBox.get('role');
+        // ⚠️ استرجاع نوع المستخدم (role) وصورة البروفايل من auth_box لضمان التزامن
+        if (userData != null) {
+           if (authBox.containsKey('role')) {
+             userData!['role'] = authBox.get('role');
+           }
+           // ✅ [تمت الإضافة] استرجاع الصورة محلياً لضمان ظهورها أوفلاين
+           if (authBox.containsKey('profile_image')) {
+             userData!['profile_image'] = authBox.get('profile_image');
+           }
         }
         
         return true; // تم التحميل بنجاح
@@ -142,7 +150,7 @@ class AppState {
 
       // ✅ التعديل هنا: إضافة timestamp لمنع الكاش وإجبار السيرفر على جلب بيانات جديدة
       final response = await Dio().get(
-        'https://courses.aw478260.dpdns.org/api/public/init', 
+        'https://courses.aw478260.dpdns.org/api/public/get-app-init-data', // تأكد من الرابط الصحيح (init أم get-app-init-data)
         queryParameters: {
           't': DateTime.now().millisecondsSinceEpoch, // 👈 هذا السطر يمنع الكاش
         },
