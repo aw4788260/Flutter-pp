@@ -159,10 +159,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: AppColors.backgroundPrimary,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.accentYellow.withOpacity(0.5), width: 2),
-                        // ✅ إذا كان مدرساً ولديه صورة، نعرضها
+                        // ✅ إصلاح عرض الصورة هنا
                         image: (_isTeacher && _profileImage != null && _profileImage!.isNotEmpty)
                             ? DecorationImage(
-                                image: NetworkImage(_profileImage!),
+                                image: NetworkImage(
+                                  // ✅ إذا كان الرابط يبدأ بـ http نستخدمه، وإلا نقوم ببنائه
+                                  _profileImage!.startsWith('http') 
+                                      ? _profileImage! 
+                                      : '$_baseUrl/api/public/get-avatar?file=$_profileImage'
+                                ),
                                 fit: BoxFit.cover,
                               )
                             : null,
