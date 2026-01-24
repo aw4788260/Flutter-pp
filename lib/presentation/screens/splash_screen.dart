@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/storage_service.dart';
+import '../../main.dart'; // ✅ 1. استيراد ملف main.dart للوصول لكلاس الحماية
 import 'login_screen.dart';
 import 'main_wrapper.dart';
 import 'privacy_policy_screen.dart';
@@ -155,7 +156,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   Future<void> _initializeApp() async {
     try {
-      // ✅ 1. تنظيف الملفات المؤقتة فوراً عند الفتح
+      // ✅ تنظيف الملفات المؤقتة فوراً عند الفتح
       await _cleanupTempFiles();
 
       await Hive.initFlutter();
@@ -166,6 +167,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       if (!termsAccepted) {
         await Future.delayed(const Duration(seconds: 1)); 
         if (mounted) {
+          // ✅ 2. التحقق الأمني قبل عرض الشروط
+          if (!await SecurityManager.instance.checkSecurity()) return;
+
           bool userAgreed = await _showTermsDialog(box);
           if (!userAgreed) {
             if (Platform.isAndroid) SystemNavigator.pop();
@@ -190,6 +194,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
       if (userId == null || deviceId == null) {
         if (mounted) {
+           // ✅ 3. التحقق الأمني قبل الانتقال لتسجيل الدخول
+           if (!await SecurityManager.instance.checkSecurity()) return;
+
            Navigator.of(context).pushReplacement(
              MaterialPageRoute(builder: (_) => const LoginScreen()),
            );
@@ -202,6 +209,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack);
       if (mounted) {
+        // ✅ 4. التحقق الأمني في حالة الخطأ وقبل الانتقال
+        if (!await SecurityManager.instance.checkSecurity()) return;
+
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
         );
@@ -230,6 +240,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     } finally {
       AppState().isGuest = true;
       if (mounted) {
+        // ✅ 5. التحقق الأمني قبل دخول الضيف
+        if (!await SecurityManager.instance.checkSecurity()) return;
+
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const MainWrapper()),
         );
@@ -271,6 +284,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           await box.put('terms_accepted', true); 
           
           if (mounted) {
+            // ✅ 6. التحقق الأمني قبل الرجوع لتسجيل الدخول
+            if (!await SecurityManager.instance.checkSecurity()) return;
+
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => const LoginScreen()),
             );
@@ -279,6 +295,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         }
 
         if (mounted) {
+          // ✅ 7. التحقق الأمني قبل الدخول للتطبيق
+          if (!await SecurityManager.instance.checkSecurity()) return;
+
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const MainWrapper()),
           );
@@ -304,6 +323,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                duration: Duration(seconds: 3),
              ),
            );
+           
+           // ✅ 8. التحقق الأمني قبل الدخول في وضع الأوفلاين
+           if (!await SecurityManager.instance.checkSecurity()) return;
+
            Navigator.of(context).pushReplacement(
              MaterialPageRoute(builder: (_) => const MainWrapper()),
            );
@@ -313,6 +336,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             ScaffoldMessenger.of(context).showSnackBar(
              const SnackBar(content: Text("Offline Mode (Limited Access)"), backgroundColor: Colors.grey),
            );
+           
+           // ✅ 9. التحقق الأمني الأخير
+           if (!await SecurityManager.instance.checkSecurity()) return;
+
            Navigator.of(context).pushReplacement(
              MaterialPageRoute(builder: (_) => const MainWrapper()),
            );
