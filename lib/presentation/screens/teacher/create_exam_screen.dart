@@ -22,9 +22,12 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _durationController = TextEditingController();
   
-  bool _randomizeQuestions = true; 
+  bool _randomizeQuestions = true;
+  // ✅ 1. إضافة متغير لترتيب الاختيارات عشوائياً
+  bool _randomizeOptions = true; 
+  
   DateTime? _startDate; 
-  DateTime? _endDate;   
+  DateTime? _endDate;    
   
   List<QuestionModel> _questions = [];
   bool _isSubmitting = false;
@@ -47,7 +50,9 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
       setState(() {
         _titleController.text = data['title'] ?? '';
         _durationController.text = (data['duration_minutes'] ?? 0).toString();
-        _randomizeQuestions = data['randomize_questions'] ?? true;
+        _randomizeQuestions = data['randomizeQuestions'] ?? true;
+        // ✅ تحميل إعداد العشوائية للخيارات
+        _randomizeOptions = data['randomizeOptions'] ?? true;
         
         if (data['start_time'] != null) {
           _startDate = DateTime.parse(data['start_time']).toLocal();
@@ -63,6 +68,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
             
             if (q['options'] != null) {
               var sortedOptions = List.from(q['options']);
+              // الترتيب حسب sort_order القادم من الباك اند للعرض الصحيح للمعلم
               sortedOptions.sort((a, b) => (a['sort_order'] ?? 0).compareTo(b['sort_order'] ?? 0));
 
               for (int i = 0; i < sortedOptions.length; i++) {
@@ -94,17 +100,27 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
     }
   }
 
-  // --- دوال اختيار الوقت والتاريخ ---
+  // --- دوال اختيار الوقت والتاريخ (المعدلة) ---
   Future<void> _pickDateTime(bool isStart) async {
     final now = DateTime.now();
-    final initialDate = isStart 
-        ? (_startDate ?? now) 
-        : (_endDate ?? now);
+    
+    // تحديد التاريخ المبدئي للتقويم
+    DateTime initialDate;
+    if (isStart) {
+      initialDate = _startDate ?? now;
+    } else {
+      // عند اختيار تاريخ النهاية، نبدأ من تاريخ البداية إذا كان محدداً
+      initialDate = _endDate ?? (_startDate ?? now);
+    }
+
+    // ✅ 2. تقييد التواريخ في الـ DatePicker
+    // إذا كنا نختار تاريخ النهاية، يجب أن يكون الحد الأدنى هو تاريخ البداية
+    final firstDate = isStart ? DateTime(2023) : (_startDate ?? DateTime(2023));
 
     final date = await showDatePicker(
       context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2023),
+      initialDate: initialDate.isBefore(firstDate) ? firstDate : initialDate,
+      firstDate: firstDate,
       lastDate: now.add(const Duration(days: 365)),
     );
     
@@ -119,13 +135,28 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
 
     final dateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
     
-    setState(() {
-      if (isStart) {
-        _startDate = dateTime;
-      } else {
-        _endDate = dateTime;
+    // ✅ 3. التحقق المنطقي من الوقت (لأن DatePicker يتحقق من الأيام فقط)
+    if (isStart) {
+      if (_endDate != null && dateTime.isAfter(_endDate!)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("تاريخ البدء لا يمكن أن يكون بعد تاريخ الانتهاء!"), backgroundColor: Colors.red)
+          );
+        }
+        return;
       }
-    });
+      setState(() => _startDate = dateTime);
+    } else {
+      if (_startDate != null && dateTime.isBefore(_startDate!)) {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("تاريخ الانتهاء لا يمكن أن يكون قبل تاريخ البدء!"), backgroundColor: Colors.red)
+          );
+        }
+        return;
+      }
+      setState(() => _endDate = dateTime);
+    }
   }
 
   // --- دالة إضافة/تعديل سؤال ---
@@ -209,6 +240,12 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("يرجى تحديد وقت بداية ونهاية الامتحان"), backgroundColor: Colors.red));
       return;
     }
+    
+    // تحقق أخير للتأكد قبل الإرسال
+    if (_startDate!.isAfter(_endDate!)) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("خطأ: وقت البداية بعد وقت النهاية!"), backgroundColor: Colors.red));
+       return;
+    }
 
     setState(() => _isSubmitting = true);
 
@@ -234,7 +271,8 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
         'title': _titleController.text,
         'subjectId': widget.subjectId,
         'duration': int.parse(_durationController.text),
-        'randomize': _randomizeQuestions,
+        'randomizeQuestions': _randomizeQuestions, // تم تعديل المفتاح ليتوافق مع الباك اند
+        'randomizeOptions': _randomizeOptions,     // ✅ إرسال إعداد عشوائية الخيارات
         'start_time': _startDate!.toIso8601String(), 
         'end_time': _endDate!.toIso8601String(),
         'questions': processedQuestions,
@@ -277,7 +315,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
       appBar: AppBar(
         title: Text(widget.examId != null ? "تعديل الامتحان" : "إنشاء امتحان جديد"),
         actions: [
-          // ✅ زر الحذف يظهر فقط عند التعديل
+          // زر الحذف يظهر فقط عند التعديل
           if (widget.examId != null)
             IconButton(
               icon: const Icon(Icons.delete_forever, color: Colors.red),
@@ -323,20 +361,30 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                     child: Column(
                       children: [
                         SwitchListTile(
-                          title: const Text("ترتيب أسئلة عشوائي للطلاب"),
-                          subtitle: const Text("يظهر لكل طالب ترتيب مختلف"),
+                          title: const Text("ترتيب أسئلة عشوائي"),
+                          subtitle: const Text("يظهر لكل طالب ترتيب أسئلة مختلف"),
                           value: _randomizeQuestions,
                           onChanged: (val) => setState(() => _randomizeQuestions = val),
                         ),
-                        const Divider(),
+                        // ✅ عنصر التحكم في ترتيب الخيارات عشوائياً
+                        const Divider(height: 1),
+                        SwitchListTile(
+                          title: const Text("ترتيب اختيارات عشوائي"),
+                          subtitle: const Text("تغيير أماكن الإجابات داخل كل سؤال"),
+                          value: _randomizeOptions,
+                          onChanged: (val) => setState(() => _randomizeOptions = val),
+                        ),
+                        const Divider(thickness: 2),
                         ListTile(
                           leading: const Icon(Icons.calendar_today, color: Colors.blue),
                           title: Text(_startDate == null ? "تاريخ ووقت التفعيل (البداية)" : "يبدأ: ${_formatDate(_startDate!)}"),
+                          subtitle: const Text("اضغط لتحديد البداية"),
                           onTap: () => _pickDateTime(true),
                         ),
                         ListTile(
                           leading: const Icon(Icons.event_busy, color: Colors.red),
                           title: Text(_endDate == null ? "تاريخ ووقت الإغلاق (النهاية)" : "ينتهي: ${_formatDate(_endDate!)}"),
+                          subtitle: const Text("اضغط لتحديد النهاية"),
                           onTap: () => _pickDateTime(false),
                         ),
                       ],
@@ -444,7 +492,6 @@ class _QuestionDialogState extends State<QuestionDialog> {
   final _qFormKey = GlobalKey<FormState>();
   final TextEditingController _questionTextController = TextEditingController();
   
-  // ✅ تغيير: القائمة أصبحت ديناميكية
   List<TextEditingController> _optionControllers = [];
   
   int _correctIndex = 0;
@@ -457,7 +504,6 @@ class _QuestionDialogState extends State<QuestionDialog> {
     if (widget.initialQuestion != null) {
       _questionTextController.text = widget.initialQuestion!.text;
       
-      // تعبئة الخيارات الموجودة
       for (var option in widget.initialQuestion!.options) {
         _optionControllers.add(TextEditingController(text: option));
       }
@@ -466,7 +512,6 @@ class _QuestionDialogState extends State<QuestionDialog> {
       _selectedImage = widget.initialQuestion!.imageFile;
       _existingImageUrl = widget.initialQuestion!.imageUrl;
     } else {
-      // ✅ الحالة الافتراضية: 4 خيارات فارغة (ويمكن للمستخدم التعديل)
       _optionControllers = List.generate(4, (_) => TextEditingController());
     }
   }
@@ -492,14 +537,12 @@ class _QuestionDialogState extends State<QuestionDialog> {
     }
   }
 
-  // ✅ دالة إضافة خيار جديد
   void _addOption() {
     setState(() {
       _optionControllers.add(TextEditingController());
     });
   }
 
-  // ✅ دالة حذف خيار
   void _removeOption(int index) {
     if (_optionControllers.length <= 2) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -509,14 +552,13 @@ class _QuestionDialogState extends State<QuestionDialog> {
     }
 
     setState(() {
-      _optionControllers[index].dispose(); // تحرير الموارد
+      _optionControllers[index].dispose();
       _optionControllers.removeAt(index);
       
-      // تعديل الإجابة الصحيحة إذا تأثرت بالحذف
       if (_correctIndex == index) {
-        _correctIndex = 0; // إعادة تعيين للأول بشكل افتراضي
+        _correctIndex = 0;
       } else if (_correctIndex > index) {
-        _correctIndex--; // تقليل المؤشر لأن القائمة انزاحت
+        _correctIndex--;
       }
     });
   }
@@ -526,7 +568,6 @@ class _QuestionDialogState extends State<QuestionDialog> {
 
     List<String> options = _optionControllers.map((c) => c.text.trim()).toList();
     
-    // التأكد من عدم وجود خيارات فارغة
     if (options.any((o) => o.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("يرجى ملء جميع حقول الخيارات أو حذف الفارغ منها"))
@@ -534,7 +575,6 @@ class _QuestionDialogState extends State<QuestionDialog> {
       return;
     }
 
-    // التأكد من أن مؤشر الإجابة الصحيحة صالح
     if (_correctIndex >= options.length) {
       _correctIndex = 0;
     }
@@ -563,7 +603,6 @@ class _QuestionDialogState extends State<QuestionDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 1. نص السؤال
                 TextFormField(
                   controller: _questionTextController,
                   decoration: const InputDecoration(labelText: "نص السؤال", border: OutlineInputBorder()),
@@ -572,7 +611,6 @@ class _QuestionDialogState extends State<QuestionDialog> {
                 ),
                 const SizedBox(height: 10),
 
-                // 2. صورة السؤال
                 Row(
                   children: [
                     Expanded(
@@ -604,7 +642,6 @@ class _QuestionDialogState extends State<QuestionDialog> {
                 ),
                 const Divider(),
 
-                // 3. الخيارات الديناميكية
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -619,7 +656,6 @@ class _QuestionDialogState extends State<QuestionDialog> {
                 ),
                 const SizedBox(height: 5),
                 
-                // قائمة الخيارات
                 ...List.generate(_optionControllers.length, (index) {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8.0),
@@ -641,7 +677,7 @@ class _QuestionDialogState extends State<QuestionDialog> {
                             validator: (val) => val!.isEmpty ? "مطلوب" : null,
                           ),
                         ),
-                        if (_optionControllers.length > 2) // إظهار زر الحذف فقط إذا كان هناك أكثر من خيارين
+                        if (_optionControllers.length > 2)
                           IconButton(
                             icon: const Icon(Icons.remove_circle, color: Colors.red),
                             onPressed: () => _removeOption(index),
