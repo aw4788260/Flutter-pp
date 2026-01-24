@@ -15,12 +15,14 @@ class CheckoutScreen extends StatefulWidget {
   final double amount;
   final Map<String, dynamic> paymentInfo;
   final List<Map<String, dynamic>> selectedItems;
+  final int? teacherId; // ✅ 1. متغير جديد لاستقبال رقم المدرس
 
   const CheckoutScreen({
     super.key,
     required this.amount,
     required this.paymentInfo,
     required this.selectedItems,
+    this.teacherId, // ✅ إضافته للمنشئ
   });
 
   @override
@@ -31,7 +33,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final TextEditingController _noteController = TextEditingController();
   File? _receiptImage;
   bool _isUploading = false;
-  
+   
   // ✅ متغيرات جديدة لإدارة حالة البيانات
   bool _isLoadingPaymentData = false;
   late Map<String, dynamic> _currentPaymentInfo;
@@ -60,17 +62,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // إذا كانت البيانات موجودة، لا داعي للتحميل
     if (hasData) return;
 
-    // إذا لم تكن موجودة، ولدينا عناصر في السلة، نحاول جلب بيانات الدفع للكورس الأول
-    if (widget.selectedItems.isNotEmpty) {
+    // ✅ 2. الأولوية لاستخدام teacherId إذا تم تمريره (وهو الأسرع والأضمن)
+    if (widget.teacherId != null) {
       setState(() => _isLoadingPaymentData = true);
       try {
-        final firstItem = widget.selectedItems.first;
-        final itemId = firstItem['id'];
+        debugPrint("🛒 Checkout: Fetching payment info using Teacher ID: ${widget.teacherId}");
         
-        // جلب البيانات من الـ API العام الذي قمنا بإصلاحه
         final response = await Dio().get(
           '$_baseUrl/api/public/get-payment-info',
-          queryParameters: {'courseId': itemId},
+          queryParameters: { 'teacherId': widget.teacherId }, // ✅ إرسال رقم المدرس مباشرة
         );
 
         if (response.statusCode == 200 && response.data != null) {
@@ -81,7 +81,42 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           }
         }
       } catch (e) {
-        debugPrint("Error fetching payment info: $e");
+        debugPrint("Error fetching payment info by teacherId: $e");
+      } finally {
+        if (mounted) setState(() => _isLoadingPaymentData = false);
+      }
+      return; // ✅ نخرج من الدالة لأننا استخدمنا الطريقة الأفضل
+    }
+
+    // الطريقة الاحتياطية: إذا لم تكن البيانات موجودة، ولم يتم تمرير Teacher ID
+    if (widget.selectedItems.isNotEmpty) {
+      setState(() => _isLoadingPaymentData = true);
+      try {
+        final firstItem = widget.selectedItems.first;
+        Map<String, dynamic> queryParams = {};
+
+        // محاولة استنتاج المعرف (كورس أم مادة)
+        if (firstItem.containsKey('course_id') && firstItem['course_id'] != null) {
+           queryParams['subjectId'] = firstItem['id'];
+        } else {
+           queryParams['courseId'] = firstItem['id'];
+        }
+        
+        // جلب البيانات من الـ API
+        final response = await Dio().get(
+          '$_baseUrl/api/public/get-payment-info',
+          queryParameters: queryParams,
+        );
+
+        if (response.statusCode == 200 && response.data != null) {
+          if (mounted) {
+            setState(() {
+              _currentPaymentInfo = response.data;
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint("Error fetching payment info by item: $e");
       } finally {
         if (mounted) setState(() => _isLoadingPaymentData = false);
       }
