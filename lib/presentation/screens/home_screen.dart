@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
-import '../../core/services/storage_service.dart'; // ✅ لاستخدام التخزين والتحقق من الدور
+import '../../core/services/storage_service.dart';
+import '../../data/models/course_model.dart'; // تأكد من استيراد الموديل الخاص بالكورس
 import 'course_details_screen.dart';
 import 'my_requests_screen.dart';
 import 'teacher_profile_screen.dart';
-import 'teacher/student_requests_screen.dart'; // ✅ شاشة طلبات الطلاب للمعلم
+import 'teacher/student_requests_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,7 +27,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final _allCourses = AppState().allCourses;
   final _user = AppState().userData;
   
-  bool _isTeacher = false; // ✅ متغير لتخزين صلاحية المستخدم
+  // ✅ قائمة لتخزين الكورسات العشوائية
+  List<dynamic> _randomCourses = []; 
+
+  bool _isTeacher = false;
 
   final List<String> _encouragements = [
     "Knowledge is the key to unlocking your true potential.",
@@ -39,8 +43,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _checkUserRole(); // ✅ التحقق من الدور عند بدء الشاشة
-    
+    _checkUserRole();
+    _generateRandomCourses(); // ✅ توليد القائمة العشوائية عند بدء الشاشة
+
     // إعداد مؤقت السلايدر للنص التشجيعي
     _timer = Timer.periodic(const Duration(seconds: 8), (Timer timer) {
       if (_currentSlide < _encouragements.length - 1) {
@@ -59,7 +64,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // ✅ دالة التحقق من دور المستخدم
+  // ✅ دالة لاختيار 5 كورسات عشوائية
+  void _generateRandomCourses() {
+    if (_allCourses.isNotEmpty) {
+      // نأخذ نسخة من القائمة الأصلية حتى لا نعدل ترتيب البيانات الرئيسية
+      var tempList = List.of(_allCourses);
+      tempList.shuffle(); // ✅ خلط القائمة عشوائياً
+      setState(() {
+        _randomCourses = tempList.take(5).toList(); // ✅ أخذ أول 5 عناصر بعد الخلط
+      });
+    }
+  }
+
   Future<void> _checkUserRole() async {
     var box = await StorageService.openBox('auth_box');
     String? role = box.get('role');
@@ -79,11 +95,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // تصفية الكورسات محلياً بناءً على البحث
-    final filteredCourses = _allCourses.where((course) => 
-      course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
-      course.code.toLowerCase().contains(_searchTerm.toLowerCase())
-    ).take(5).toList();
+    // ✅ منطق العرض: إذا كان هناك بحث نستخدم _allCourses، وإلا نستخدم _randomCourses
+    List<dynamic> coursesToDisplay;
+    
+    if (_searchTerm.isEmpty) {
+      // إذا لم يكن هناك بحث، اعرض القائمة العشوائية التي جهزناها
+      coursesToDisplay = _randomCourses;
+      // حماية إضافية: إذا كانت القائمة العشوائية فارغة لسبب ما (مثل تحميل البيانات متأخراً)، أعد توليدها
+      if (coursesToDisplay.isEmpty && _allCourses.isNotEmpty) {
+         _generateRandomCourses();
+         coursesToDisplay = _randomCourses;
+      }
+    } else {
+      // إذا كان المستخدم يبحث، قم بالفلترة من القائمة الكاملة
+      coursesToDisplay = _allCourses.where((course) => 
+        course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
+        course.code.toLowerCase().contains(_searchTerm.toLowerCase())
+      ).toList();
+    }
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -127,24 +156,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                       
-                      // زر الطلبات (متغير حسب الدور)
+                      // زر الطلبات
                       GestureDetector(
                         onTap: () {
                            if (_isTeacher) {
-                             // ✅ للمدرس: الذهاب لصفحة طلبات الطلاب
                              Navigator.push(
-                              context, 
-                              MaterialPageRoute(builder: (_) => const StudentRequestsScreen())
-                            );
+                               context, 
+                               MaterialPageRoute(builder: (_) => const StudentRequestsScreen())
+                             );
                            } else {
-                             // ✅ للطالب: الذهاب لصفحة طلباتي
                              Navigator.push(
-                              context, 
-                              MaterialPageRoute(builder: (_) => const MyRequestsScreen())
-                            );
+                               context, 
+                               MaterialPageRoute(builder: (_) => const MyRequestsScreen())
+                             );
                            }
                         },
-                        // ✅ تم حذف الـ Stack والنقطة الحمراء، وبقي الزر الأصفر فقط
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
@@ -154,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                           ),
                           child: Icon(
-                            _isTeacher ? LucideIcons.inbox : LucideIcons.clipboardList, // ✅ تغيير الأيقونة اختيارياً
+                            _isTeacher ? LucideIcons.inbox : LucideIcons.clipboardList,
                             color: AppColors.accentYellow, 
                             size: 22
                           ),
@@ -266,17 +292,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     // Section Title
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
+                      children: [
                         Text(
-                          "AVAILABLE COURSES",
-                          style: TextStyle(
+                          _searchTerm.isEmpty ? "SUGGESTED FOR YOU" : "SEARCH RESULTS", // ✅ تغيير العنوان حسب الحالة
+                          style: const TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1.5,
                           ),
                         ),
-                        Text(
+                        const Text(
                           "ACTIVE",
                           style: TextStyle(
                             color: AppColors.accentOrange,
@@ -290,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 16),
 
                     // Course List
-                    filteredCourses.isEmpty 
+                    coursesToDisplay.isEmpty 
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 40),
                         child: Text("No courses found", style: TextStyle(color: AppColors.textSecondary.withOpacity(0.5))),
@@ -298,9 +324,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     : ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filteredCourses.length,
+                        itemCount: coursesToDisplay.length,
                         itemBuilder: (context, index) {
-                          final course = filteredCourses[index];
+                          final course = coursesToDisplay[index];
                           
                           return GestureDetector(
                             onTap: () {
