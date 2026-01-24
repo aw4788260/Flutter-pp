@@ -191,7 +191,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 3. واجهة المكتبة ---
+  // --- 3. واجهة المكتبة (تم التعديل لإظهار الكود وتمرير السعر) ---
   Widget _buildLibraryView() {
     final libraryItems = AppState().myLibrary;
 
@@ -258,7 +258,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                 builder: (_) => const ManageContentScreen(contentType: ContentType.course),
                               ),
                             ).then((value) {
-                              // ✅ نسخ المنطق: التحقق من القيمة، تفعيل التحميل، ثم الاستدعاء
                               if (value == true) {
                                 setState(() => _isUpdating = true);
                                 _refreshData();
@@ -298,7 +297,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               ),
             ),
             
-            // ✅ أثناء التحديث، نعرض Loading (مثل _loading في الكود المرجعي)
             if (_isUpdating)
               const Expanded(
                 child: Center(
@@ -331,7 +329,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           final String id = item['id'].toString();
                           
                           final String description = item['description'] ?? '';
-                          final double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+                          // السعر هنا قد يكون غير دقيق لأنه من المكتبة المحلية
+                          final double localPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
 
                           List<dynamic>? subjectsToPass;
                           if (item['owned_subjects'] is List) {
@@ -390,6 +389,26 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
+                                        // ✅ 1. إظهار كود الكورس (ID Badge)
+                                        if (code.isNotEmpty)
+                                          Container(
+                                            margin: const EdgeInsets.only(bottom: 4),
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.accentOrange.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: AppColors.accentOrange.withOpacity(0.2), width: 0.5),
+                                            ),
+                                            child: Text(
+                                              "#$code",
+                                              style: const TextStyle(
+                                                color: AppColors.accentOrange,
+                                                fontSize: 8,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+
                                         Text(
                                           title.toUpperCase(),
                                           style: const TextStyle(
@@ -423,6 +442,13 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   if (_isTeacher)
                                     GestureDetector(
                                       onTap: () {
+                                        // ✅ 2. جلب السعر الحقيقي من المتجر قبل التعديل
+                                        double realPrice = localPrice;
+                                        try {
+                                          final freshCourse = AppState().allCourses.firstWhere((c) => c.id == id);
+                                          realPrice = freshCourse.fullPrice;
+                                        } catch (_) {}
+
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
@@ -432,13 +458,13 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                                 'id': id,
                                                 'title': title,
                                                 'code': code,
-                                                'price': price,
+                                                'price': realPrice, // ✅ السعر الصحيح
+                                                'fullPrice': realPrice, // للتأكيد
                                                 'description': description,
                                               },
                                             ),
                                           ),
                                         ).then((value) {
-                                          // ✅ نسخ المنطق: التحقق من القيمة، تفعيل التحميل، ثم الاستدعاء
                                           if (value == true) {
                                             setState(() => _isUpdating = true);
                                             _refreshData();
