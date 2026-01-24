@@ -47,9 +47,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   // --- أدوات الرسم ---
   bool _isDrawingMode = false;
+  
+  // 0 = Pen, 1 = Highlighter, 2 = Eraser
   int _selectedTool = 0; 
-  Color _penColor = Colors.red;
-  Color _highlightColor = Colors.yellow;
+  
+  // لون واحد موحد لجميع الأدوات
+  Color _selectedColor = Colors.red;
+  
   double _penSize = 0.003; 
   double _highlightSize = 0.035; 
   double _eraserSize = 0.04; 
@@ -62,7 +66,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   @override
   void initState() {
     super.initState();
-    _initWatermarkText(); // ✅ استدعاء الدالة المحسنة (async)
+    _initWatermarkText(); 
     _preparePdf();
   }
 
@@ -78,27 +82,22 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     super.dispose();
   }
 
-  // ✅ تعديل: دالة جلب العلامة المائية لتشمل البحث في Hive (للأوفلاين)
   Future<void> _initWatermarkText() async {
     String displayText = '';
 
-    // 1. المحاولة الأولى: من الذاكرة الحية (AppState)
     if (AppState().userData != null) {
       displayText = AppState().userData!['phone'] ?? '';
     }
 
-    // 2. المحاولة الثانية: من التخزين المحلي (Hive) في حالة الأوفلاين
     if (displayText.isEmpty) {
       try {
         final box = await StorageService.openBox('auth_box');
-        // نحاول جلب الهاتف، وإذا لم يوجد نجلب الاسم أو المعرف
         displayText = box.get('phone') ?? box.get('first_name') ?? '';
       } catch (e) {
         debugPrint("Error fetching offline watermark: $e");
       }
     }
 
-    // 3. تحديث الواجهة
     if (mounted) {
       setState(() => _watermarkText = displayText.isNotEmpty ? displayText : 'User');
     }
@@ -162,7 +161,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       }
 
       if (fileExistsLocally) {
-        // حالة الأوفلاين
         setState(() {
           _isOffline = true;
           _loadingMessage = "جار فك التشفير...";
@@ -178,7 +176,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         }
 
       } else {
-        // حالة الأونلاين
         setState(() {
           _isOffline = false;
           _loadingMessage = "جار التحميل...";
@@ -282,6 +279,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           children: [
             Expanded(child: Text(widget.title, style: const TextStyle(fontSize: 14, color: Colors.white), overflow: TextOverflow.ellipsis)),
             const SizedBox(width: 8),
+            // ✅ حالة الاتصال (Offline/Stream)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
@@ -297,6 +295,27 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 ],
               ),
             ),
+            
+            // ✅ زر فتح/غلق أدوات الرسم (تم نقله هنا بجوار الحالة)
+            if (_isOffline) ...[
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () => setState(() => _isDrawingMode = !_isDrawingMode),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: _isDrawingMode ? AppColors.accentYellow : Colors.transparent,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.accentYellow.withOpacity(0.5))
+                  ),
+                  child: Icon(
+                    LucideIcons.penTool, 
+                    color: _isDrawingMode ? Colors.black : AppColors.accentYellow, 
+                    size: 16
+                  ),
+                ),
+              ),
+            ]
           ],
         ),
         backgroundColor: AppColors.backgroundSecondary,
@@ -308,18 +327,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           }
         ),
         actions: [
+          // تم حذف زر القلم من هنا ونقله لليسار
           IconButton(
             icon: const Icon(LucideIcons.list, color: AppColors.accentYellow),
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
           ),
-          if (_isOffline)
-            IconButton(
-              icon: Icon(
-                _isDrawingMode ? LucideIcons.checkCircle : LucideIcons.penTool, 
-                color: _isDrawingMode ? Colors.greenAccent : Colors.white
-              ),
-              onPressed: () => setState(() => _isDrawingMode = !_isDrawingMode),
-            ),
         ],
       ),
       body: Stack(
@@ -421,24 +433,26 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                       );
                       setState(() {
                         _activePage = page.pageNumber;
+                        
+                        // ✅ منطق الرسم الموحد
                         double width = _penSize;
-                        int color = _penColor.value;
+                        int colorValue = _selectedColor.value;
                         bool isHighlighter = false;
                         bool isEraser = false;
 
-                        if (_selectedTool == 1) { 
+                        if (_selectedTool == 1) { // Highlighter Mode
                           width = _highlightSize;
-                          color = _highlightColor.value;
                           isHighlighter = true;
-                        } else if (_selectedTool == 2) { 
+                          // لا نغير اللون هنا، نستخدم _selectedColor كما هو
+                        } else if (_selectedTool == 2) { // Eraser Mode
                           width = _eraserSize;
-                          color = 0; 
+                          colorValue = 0; 
                           isEraser = true;
                         }
 
                         _currentLine = DrawingLine(
                           points: [relativePoint],
-                          color: color,
+                          color: colorValue,
                           strokeWidth: width,
                           isHighlighter: isHighlighter,
                           isEraser: isEraser,
@@ -515,17 +529,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                       }
                   },
                 ),
-           
+            
                 const SizedBox(width: 8),
                 Container(width: 1, height: 24, color: Colors.grey),
                 const SizedBox(width: 8),
                 
                 if (_selectedTool != 2) ...[
+                  // ✅ عرض جميع الألوان لجميع الأدوات
                   _buildColorButton(Colors.black),
                   _buildColorButton(Colors.red),
                   _buildColorButton(Colors.blue),
-                  _buildColorButton(Colors.yellow, isHighlight: true),
-                  _buildColorButton(Colors.green, isHighlight: true),
+                  _buildColorButton(Colors.green),
+                  _buildColorButton(Colors.yellow),
+                  _buildColorButton(Colors.orange),
+                  _buildColorButton(Colors.purple),
+                  _buildColorButton(Colors.white),
                 ] else 
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8.0),
@@ -544,7 +562,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   value: _getCurrentSize(),
                   min: 0.001,
                   max: 0.08, 
-                  activeColor: _selectedTool == 2 ? Colors.white : (_selectedTool == 1 ? _highlightColor : _penColor),
+                  activeColor: _selectedTool == 2 ? Colors.white : _selectedColor,
                   inactiveColor: Colors.grey,
                   onChanged: (val) {
                     setState(() {
@@ -577,16 +595,15 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  Widget _buildColorButton(Color color, {bool isHighlight = false}) {
-    final bool isSelected = _selectedTool == 1 ? _highlightColor == color : _penColor == color;
+  // ✅ زر اللون الموحد
+  Widget _buildColorButton(Color color) {
+    final bool isSelected = _selectedColor == color;
     return GestureDetector(
       onTap: () {
         setState(() {
-          if (isHighlight) {
-             _highlightColor = color;
-             _selectedTool = 1;
-          } else { 
-             _penColor = color;
+          _selectedColor = color;
+          // إذا كان الممحاة مفعلة، نعود للقلم عند اختيار لون
+          if (_selectedTool == 2) {
              _selectedTool = 0;
           }
         });
@@ -594,7 +611,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
         width: 26, height: 26,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle, border: isSelected ? Border.all(color: Colors.white, width: 2.5) : null),
+        decoration: BoxDecoration(
+          color: color, 
+          shape: BoxShape.circle, 
+          border: isSelected ? Border.all(color: Colors.white, width: 2.5) : Border.all(color: Colors.white24, width: 1)
+        ),
       ),
     );
   }
@@ -621,6 +642,7 @@ class RelativeSketchPainter extends CustomPainter {
         paint.blendMode = BlendMode.clear;
         paint.color = Colors.transparent; 
       } else {
+        // ✅ منطق الشفافية للهايلاتير
         paint.color = Color(line.color).withOpacity(line.isHighlighter ? 0.35 : 1.0);
         if (line.isHighlighter) paint.blendMode = BlendMode.darken; 
       }
