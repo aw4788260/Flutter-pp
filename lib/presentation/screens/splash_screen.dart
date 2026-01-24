@@ -197,8 +197,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
            // ✅ 3. التحقق الأمني قبل الانتقال لتسجيل الدخول
            if (!await SecurityManager.instance.checkSecurity()) return;
 
-           Navigator.of(context).pushReplacement(
+           // 🔥 FIX: استخدام pushAndRemoveUntil لمنع العودة للشاشة
+           Navigator.of(context).pushAndRemoveUntil(
              MaterialPageRoute(builder: (_) => const LoginScreen()),
+             (route) => false,
            );
         }
         return;
@@ -212,8 +214,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         // ✅ 4. التحقق الأمني في حالة الخطأ وقبل الانتقال
         if (!await SecurityManager.instance.checkSecurity()) return;
 
-        Navigator.of(context).pushReplacement(
+        // 🔥 FIX: استخدام pushAndRemoveUntil لمنع العودة للشاشة
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
         );
       }
     }
@@ -243,8 +247,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         // ✅ 5. التحقق الأمني قبل دخول الضيف
         if (!await SecurityManager.instance.checkSecurity()) return;
 
-        Navigator.of(context).pushReplacement(
+        // 🔥 FIX: استخدام pushAndRemoveUntil لمنع العودة للشاشة
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const MainWrapper()),
+          (route) => false,
         );
       }
     }
@@ -287,8 +293,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             // ✅ 6. التحقق الأمني قبل الرجوع لتسجيل الدخول
             if (!await SecurityManager.instance.checkSecurity()) return;
 
-            Navigator.of(context).pushReplacement(
+            // 🔥 FIX: استخدام pushAndRemoveUntil لمنع العودة للشاشة
+            Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(builder: (_) => const LoginScreen()),
+              (route) => false,
             );
           }
           return;
@@ -298,8 +306,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           // ✅ 7. التحقق الأمني قبل الدخول للتطبيق
           if (!await SecurityManager.instance.checkSecurity()) return;
 
-          Navigator.of(context).pushReplacement(
+          // 🔥 FIX: استخدام pushAndRemoveUntil لمنع العودة للشاشة
+          Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const MainWrapper()),
+            (route) => false,
           );
         }
       } else {
@@ -327,8 +337,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
            // ✅ 8. التحقق الأمني قبل الدخول في وضع الأوفلاين
            if (!await SecurityManager.instance.checkSecurity()) return;
 
-           Navigator.of(context).pushReplacement(
+           // 🔥 FIX: استخدام pushAndRemoveUntil لمنع العودة للشاشة
+           Navigator.of(context).pushAndRemoveUntil(
              MaterialPageRoute(builder: (_) => const MainWrapper()),
+             (route) => false,
            );
          }
       } else {
@@ -340,8 +352,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
            // ✅ 9. التحقق الأمني الأخير
            if (!await SecurityManager.instance.checkSecurity()) return;
 
-           Navigator.of(context).pushReplacement(
+           // 🔥 FIX: استخدام pushAndRemoveUntil لمنع العودة للشاشة
+           Navigator.of(context).pushAndRemoveUntil(
              MaterialPageRoute(builder: (_) => const MainWrapper()),
+             (route) => false,
            );
          }
       }
