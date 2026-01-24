@@ -19,7 +19,7 @@ import 'my_requests_screen.dart';
 import 'teacher/student_requests_screen.dart';
 import 'teacher/manage_students_screen.dart';
 import 'teacher/manage_team_screen.dart';
-import 'teacher/financial_stats_screen.dart'; // ✅ تم إضافة استيراد شاشة الإحصائيات
+import 'teacher/financial_stats_screen.dart'; 
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,21 +30,25 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
-  bool _isTeacher = false; // لتخزين حالة المعلم
+  bool _isTeacher = false; 
+  String? _profileImage; // ✅ متغير لتخزين رابط الصورة
 
   @override
   void initState() {
     super.initState();
-    _checkUserRole();
+    _loadUserData(); // ✅ تحميل البيانات
   }
 
-  // ✅ التحقق من الصلاحية (هل هو معلم؟)
-  Future<void> _checkUserRole() async {
+  // ✅ تحميل بيانات المستخدم والصلاحية والصورة
+  Future<void> _loadUserData() async {
     var box = await StorageService.openBox('auth_box');
     String? role = box.get('role');
+    String? image = box.get('profile_image'); // ✅ جلب الصورة المخزنة
+
     if (mounted) {
       setState(() {
         _isTeacher = role == 'teacher';
+        _profileImage = image; // ✅ تعيين الصورة
       });
     }
   }
@@ -148,24 +152,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: Row(
                   children: [
-                    // Avatar
+                    // ✅ Avatar (صورة للمدرس، وحرف للطالب)
                     Container(
                       width: 64, height: 64,
                       decoration: BoxDecoration(
                         color: AppColors.backgroundPrimary,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.accentYellow.withOpacity(0.5), width: 2),
+                        // ✅ إذا كان مدرساً ولديه صورة، نعرضها
+                        image: (_isTeacher && _profileImage != null && _profileImage!.isNotEmpty)
+                            ? DecorationImage(
+                                image: NetworkImage(_profileImage!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
                       ),
-                      child: Center(
-                        child: Text(
-                          firstLetter,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.accentYellow,
-                          ),
-                        ),
-                      ),
+                      // ✅ إذا لم يكن هناك صورة أو ليس مدرساً، نعرض الحرف الأول
+                      child: (_isTeacher && _profileImage != null && _profileImage!.isNotEmpty)
+                          ? null
+                          : Center(
+                              child: Text(
+                                firstLetter,
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.accentYellow,
+                                ),
+                              ),
+                            ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -204,7 +218,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     if (!isGuest)
                       GestureDetector(
                         onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => setState(() {}));
+                          // ✅ تحديث البيانات عند العودة من شاشة التعديل
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen()))
+                              .then((_) => _loadUserData()); 
                         },
                         child: Container(
                           padding: const EdgeInsets.all(10),
@@ -246,7 +262,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         context, 
                         icon: LucideIcons.bellRing, 
                         title: "Incoming Requests", 
-                        // badge: "NEW", // ❌ تم حذف الشارة كما طلبت
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentRequestsScreen()))
                       ),
                       const Divider(height: 1, color: Colors.white10),
@@ -269,7 +284,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const Divider(height: 1, color: Colors.white10),
 
-                      // 4. ✅ زر الإحصائيات المالية (جديد)
+                      // 4. الإحصائيات المالية
                       _buildMenuItem(
                         context, 
                         icon: LucideIcons.barChart2, 
@@ -300,11 +315,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
-                      _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => setState(() {}))),
+                      _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => _loadUserData())), // ✅ تحديث عند العودة
                       const Divider(height: 1, color: Colors.white10),
                       _buildMenuItem(context, icon: LucideIcons.lock, title: "Change Password", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
                       
-                      // ⚠️ إظهار "طلباتي" فقط للطالب (لأن المعلم لديه لوحة تحكم أعلاه)
+                      // ⚠️ إظهار "طلباتي" فقط للطالب
                       if (!_isTeacher) ...[
                         const Divider(height: 1, color: Colors.white10),
                         _buildMenuItem(context, icon: LucideIcons.clipboardList, title: "My Requests", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen()))),
