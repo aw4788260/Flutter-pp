@@ -123,7 +123,15 @@ class _LoginScreenState extends State<LoginScreen> {
         await box.put('phone', userMap['phone'] ?? ''); // حفظ الهاتف إن وجد
         
         // ✅ [هام جداً] حفظ نوع المستخدم (معلم/طالب)
-        await box.put('role', userMap['role']); // يفترض أن الباك إند يرجع حقل 'role'
+        await box.put('role', userMap['role']); 
+
+        // ✅ [تمت الإضافة] حفظ رابط صورة البروفايل إذا وجد (للمعلمين)
+        if (userMap['profileImage'] != null) {
+           await box.put('profile_image', userMap['profileImage']);
+        } else {
+           // حذف القيمة القديمة إذا لم تكن موجودة الآن
+           await box.delete('profile_image');
+        }
 
         // ✅ حفظ التوكن القادم من السيرفر
         if (data['token'] != null) {
@@ -135,7 +143,10 @@ class _LoginScreenState extends State<LoginScreen> {
         AppState().isGuest = false;
         
         // تحديث حالة التطبيق بالبيانات الجديدة
-        AppState().updateUserData(userMap);
+        AppState().updateUserData({
+            ...userMap,
+            'profile_image': userMap['profileImage'] // التأكد من تمرير الصورة للذاكرة
+        });
         
         // جلب البيانات الأولية (مع تمرير التوكن ضمناً عبر الهيدرز المعدلة)
         await _fetchInitData(deviceId);
@@ -381,7 +392,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   GestureDetector(
                     onTap: () {
-                       Navigator.push(
+                        Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => const RegisterScreen()),
                       );
