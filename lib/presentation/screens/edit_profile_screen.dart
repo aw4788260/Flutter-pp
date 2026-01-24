@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // ✅ للتحكم في الإدخال
+import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -19,7 +19,6 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  // ✅ مفتاح النموذج للتحقق
   final _formKey = GlobalKey<FormState>();
 
   // الحقول الأساسية
@@ -37,7 +36,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   List<TextEditingController> _instapayNumberControllers = [];
   List<TextEditingController> _instapayLinkControllers = [];
 
-  // متغيرات الصورة
   File? _selectedImage;
   String? _currentImageUrl;
 
@@ -50,42 +48,108 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    // 1. تهيئة المتحكمات بقيم فارغة مبدئياً لتجنب الأخطاء
+    _nameController = TextEditingController();
+    _phoneController = TextEditingController();
+    _usernameController = TextEditingController();
+    
+    // 2. بدء عملية التحقق من الدور وتحميل البيانات
+    _checkRoleAndLoad();
   }
 
+  // دالة لفحص الدور ثم استدعاء التحميل المناسب
+  Future<void> _checkRoleAndLoad() async {
+     var box = await StorageService.openBox('auth_box');
+     if (mounted) {
+       setState(() {
+         _isTeacher = box.get('role') == 'teacher';
+       });
+       _loadUserData();
+     }
+  }
+
+  // ✅ الدالة الأساسية لجلب البيانات (من السيرفر للمدرس، أو محلياً للطالب)
   Future<void> _loadUserData() async {
-    final user = AppState().userData;
-    
-    _nameController = TextEditingController(text: user?['first_name'] ?? "");
-    _phoneController = TextEditingController(text: user?['phone'] ?? "");
-    _usernameController = TextEditingController(text: user?['username'] ?? "");
+    setState(() => _isLoading = true);
 
-    var box = await StorageService.openBox('auth_box');
-    String? role = box.get('role');
-    
-    if (mounted) {
-      setState(() {
-        _isTeacher = role == 'teacher';
+    try {
+      if (_isTeacher) {
+        // أ) محاولة جلب البيانات الأحدث من السيرفر
+        final data = await _teacherService.getTeacherProfile();
         
-        if (_isTeacher) {
-          _bioController.text = box.get('bio') ?? "";
-          _specialtyController.text = box.get('specialty') ?? "";
-          _whatsappController.text = box.get('whatsapp_number') ?? "";
-          _currentImageUrl = box.get('profile_image');
-
-          List<dynamic> cachedCash = box.get('cash_numbers', defaultValue: []);
-          List<dynamic> cachedInstaNums = box.get('instapay_numbers', defaultValue: []);
-          List<dynamic> cachedInstaLinks = box.get('instapay_links', defaultValue: []);
-
-          for (var item in cachedCash) _cashNumberControllers.add(TextEditingController(text: item.toString()));
-          for (var item in cachedInstaNums) _instapayNumberControllers.add(TextEditingController(text: item.toString()));
-          for (var item in cachedInstaLinks) _instapayLinkControllers.add(TextEditingController(text: item.toString()));
-
-          if (_cashNumberControllers.isEmpty) _addController(_cashNumberControllers);
-          if (_instapayNumberControllers.isEmpty) _addController(_instapayNumberControllers);
-          if (_instapayLinkControllers.isEmpty) _addController(_instapayLinkControllers);
+        // ب) تحديث الحقول النصية
+        _nameController.text = data['name'] ?? "";
+        _phoneController.text = data['phone'] ?? "";
+        _usernameController.text = data['username'] ?? "";
+        
+        _bioController.text = data['bio'] ?? "";
+        _specialtyController.text = data['specialty'] ?? "";
+        _whatsappController.text = data['whatsapp_number'] ?? "";
+        
+        if (data['profile_image'] != null) {
+          _currentImageUrl = data['profile_image'];
         }
-      });
+
+        // ج) تعبئة قوائم الدفع الديناميكية
+        final paymentDetails = data['payment_details'] ?? {};
+        _populateListControllers(_cashNumberControllers, paymentDetails['cash_numbers']);
+        _populateListControllers(_instapayNumberControllers, paymentDetails['instapay_numbers']);
+        _populateListControllers(_instapayLinkControllers, paymentDetails['instapay_links']);
+
+      } else {
+        // للطالب: الاعتماد على البيانات المحلية
+        await _loadFromCacheFallback();
+      }
+    } catch (e) {
+      debugPrint("Error loading profile from API: $e");
+      // في حال الفشل (أوفلاين)، نلجأ للكاش
+      await _loadFromCacheFallback();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not fetch latest data, showing cached version."), backgroundColor: Colors.orange)
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ✅ دالة مساعدة لتحويل مصفوفة البيانات إلى TextControllers
+  void _populateListControllers(List<TextEditingController> controllersList, dynamic dataList) {
+    // تنظيف القديم
+    for (var c in controllersList) c.dispose();
+    controllersList.clear();
+
+    if (dataList != null && dataList is List) {
+      for (var item in dataList) {
+        if (item.toString().trim().isNotEmpty) {
+          controllersList.add(TextEditingController(text: item.toString()));
+        }
+      }
+    }
+    
+    // إضافة حقل فارغ افتراضي إذا كانت القائمة فارغة
+    if (controllersList.isEmpty) {
+      controllersList.add(TextEditingController());
+    }
+  }
+
+  // دالة التحميل من الكاش (الاحتياطية)
+  Future<void> _loadFromCacheFallback() async {
+    var box = await StorageService.openBox('auth_box');
+    _nameController.text = box.get('first_name') ?? "";
+    _phoneController.text = box.get('phone') ?? "";
+    _usernameController.text = box.get('username') ?? "";
+    
+    if (_isTeacher) {
+      _bioController.text = box.get('bio') ?? "";
+      _specialtyController.text = box.get('specialty') ?? "";
+      _whatsappController.text = box.get('whatsapp_number') ?? "";
+      _currentImageUrl = box.get('profile_image');
+      
+      _populateListControllers(_cashNumberControllers, box.get('cash_numbers', defaultValue: []));
+      _populateListControllers(_instapayNumberControllers, box.get('instapay_numbers', defaultValue: []));
+      _populateListControllers(_instapayLinkControllers, box.get('instapay_links', defaultValue: []));
     }
   }
 
@@ -122,7 +186,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _saveChanges() async {
-    // ✅ 1. التحقق من صحة الحقول قبل الإرسال
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -180,6 +243,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           }
         }
         
+        // تحديث الكاش المحلي
         await box.put('first_name', _nameController.text);
         await box.put('username', _usernameController.text);
         await box.put('phone', _phoneController.text);
@@ -188,9 +252,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           await box.put('bio', _bioController.text);
           await box.put('specialty', _specialtyController.text);
           await box.put('whatsapp_number', _whatsappController.text);
+          // ✅ حفظ القوائم في Hive أيضاً لكي تظهر في ProfileScreen إذا كان يقرأ من Hive
           await box.put('cash_numbers', cashList);
           await box.put('instapay_numbers', instaNumList);
           await box.put('instapay_links', instaLinkList);
+          
           if (dataToSend.containsKey('profileImage')) await box.put('profile_image', dataToSend['profileImage']);
         }
 
@@ -250,7 +316,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Form( // ✅ تغليف الحقول بنموذج للتحقق
+                child: Form( 
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,17 +379,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ),
                       const SizedBox(height: 20),
                       
-                      // ✅ حقل اسم المستخدم مع القيود المطلوبة
                       CustomTextField(
                         label: "Username",
                         controller: _usernameController,
                         hintText: "English letters & numbers only",
                         prefixIcon: LucideIcons.atSign,
-                        // 1. منع الكتابة: يسمح فقط بالحروف الإنجليزية (صغيرة/كبيرة) والأرقام
                         inputFormatters: [
                           FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
                         ],
-                        // 2. التحقق النهائي: للتأكد من عدم وجود مسافات أو رموز
                         validator: (value) {
                           if (value == null || value.isEmpty) return "Username is required";
                           if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(value)) {
