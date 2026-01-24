@@ -30,8 +30,31 @@ class TeacherService {
   }
 
   // ==========================================================
-  // 🆕 إدارة البروفايل (رفع الصورة + تحديث البيانات)
+  // 🆕 إدارة البروفايل (جلب البيانات + رفع الصورة + التحديث)
   // ==========================================================
+
+  // ✅ دالة جلب البروفايل الكامل للمدرس (البيانات الحالية + تفاصيل الدفع)
+  Future<Map<String, dynamic>> getTeacherProfile() async {
+    try {
+      final options = await _getHeaders();
+      // إرسال طلب GET لجلب البيانات
+      final response = await _dio.get(
+        '$baseUrl/teacher/update-profile', 
+        options: options,
+      );
+      
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        return response.data['data'];
+      } else {
+        throw Exception("فشل تحميل البيانات");
+      }
+    } catch (e) {
+      if (e is DioException) {
+         throw Exception(e.response?.data['error'] ?? "فشل الاتصال بالسيرفر");
+      }
+      throw Exception("خطأ غير متوقع: $e");
+    }
+  }
 
   // ✅ دالة رفع صورة البروفايل
   Future<String> uploadProfileImage(File file) async {
