@@ -30,6 +30,64 @@ class TeacherService {
   }
 
   // ==========================================================
+  // 🆕 إدارة البروفايل (رفع الصورة + تحديث البيانات)
+  // ==========================================================
+
+  // ✅ دالة رفع صورة البروفايل
+  Future<String> uploadProfileImage(File file) async {
+    try {
+      final options = await _getHeaders(isUpload: true);
+      String fileName = file.path.split('/').last;
+      
+      FormData formData = FormData.fromMap({
+        "file": await MultipartFile.fromFile(file.path, filename: fileName),
+      });
+
+      // استخدام الـ API الجديد المخصص للصور الشخصية
+      final response = await _dio.post(
+        '$baseUrl/user/upload-avatar', 
+        data: formData,
+        options: options,
+      );
+      
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        return response.data['url'];
+      } else {
+        throw Exception("فشل رفع الصورة");
+      }
+    } catch (e) {
+      throw Exception("خطأ أثناء الرفع: $e");
+    }
+  }
+
+  // ✅ دالة تحديث بيانات المدرس (تحديث البيانات الشخصية + الصورة)
+  Future<void> updateProfile({
+    String? firstName,
+    String? phone,
+    String? password,
+    String? profileImage,
+  }) async {
+    try {
+      final options = await _getHeaders();
+      await _dio.post(
+        '$baseUrl/teacher/update-profile',
+        data: {
+          if (firstName != null) 'firstName': firstName,
+          if (phone != null) 'phone': phone,
+          if (password != null) 'password': password,
+          if (profileImage != null) 'profileImage': profileImage,
+        },
+        options: options,
+      );
+    } catch (e) {
+      if (e is DioException) {
+         throw Exception(e.response?.data['error'] ?? "فشل تحديث البيانات");
+      }
+      throw Exception("خطأ غير متوقع: $e");
+    }
+  }
+
+  // ==========================================================
   // 1️⃣ إدارة المحتوى (إضافة - تعديل - حذف)
   // ==========================================================
   Future<dynamic> manageContent({
@@ -58,7 +116,7 @@ class TeacherService {
   }
 
   // ==========================================================
-  // 2️⃣ رفع الملفات
+  // 2️⃣ رفع الملفات العامة (للمحتوى)
   // ==========================================================
   Future<String> uploadFile(File file, {Function(int sent, int total)? onProgress}) async {
     try {
