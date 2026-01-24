@@ -31,7 +31,62 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final TextEditingController _noteController = TextEditingController();
   File? _receiptImage;
   bool _isUploading = false;
+  
+  // ✅ متغيرات جديدة لإدارة حالة البيانات
+  bool _isLoadingPaymentData = false;
+  late Map<String, dynamic> _currentPaymentInfo;
+
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
+
+  @override
+  void initState() {
+    super.initState();
+    // نبدأ بالبيانات الممررة، ثم نتحقق إذا كانت تحتاج لتحديث
+    _currentPaymentInfo = widget.paymentInfo;
+    _checkAndFetchPaymentInfo();
+  }
+
+  /// ✅ دالة ذكية للتحقق من البيانات وجلبها إذا كانت ناقصة
+  Future<void> _checkAndFetchPaymentInfo() async {
+    // التحقق هل هناك أي بيانات موجودة فعلاً؟
+    final cash = _currentPaymentInfo['cash_numbers'] as List?;
+    final instaNum = _currentPaymentInfo['instapay_numbers'] as List?;
+    final instaLink = _currentPaymentInfo['instapay_links'] as List?;
+
+    bool hasData = (cash != null && cash.isNotEmpty) ||
+                   (instaNum != null && instaNum.isNotEmpty) ||
+                   (instaLink != null && instaLink.isNotEmpty);
+
+    // إذا كانت البيانات موجودة، لا داعي للتحميل
+    if (hasData) return;
+
+    // إذا لم تكن موجودة، ولدينا عناصر في السلة، نحاول جلب بيانات الدفع للكورس الأول
+    if (widget.selectedItems.isNotEmpty) {
+      setState(() => _isLoadingPaymentData = true);
+      try {
+        final firstItem = widget.selectedItems.first;
+        final itemId = firstItem['id'];
+        
+        // جلب البيانات من الـ API العام الذي قمنا بإصلاحه
+        final response = await Dio().get(
+          '$_baseUrl/api/public/get-payment-info',
+          queryParameters: {'courseId': itemId},
+        );
+
+        if (response.statusCode == 200 && response.data != null) {
+          if (mounted) {
+            setState(() {
+              _currentPaymentInfo = response.data;
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint("Error fetching payment info: $e");
+      } finally {
+        if (mounted) setState(() => _isLoadingPaymentData = false);
+      }
+    }
+  }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -159,11 +214,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ استخراج القوائم من الـ paymentInfo
-    // نستخدم List<dynamic> أو List<String> مع التحقق من null
-    final List cashNumbers = (widget.paymentInfo['cash_numbers'] as List?) ?? [];
-    final List instapayNumbers = (widget.paymentInfo['instapay_numbers'] as List?) ?? [];
-    final List instapayLinks = (widget.paymentInfo['instapay_links'] as List?) ?? [];
+    // ✅ نستخدم _currentPaymentInfo بدلاً من widget.paymentInfo لضمان عرض البيانات المحدثة
+    final List cashNumbers = (_currentPaymentInfo['cash_numbers'] as List?) ?? [];
+    final List instapayNumbers = (_currentPaymentInfo['instapay_numbers'] as List?) ?? [];
+    final List instapayLinks = (_currentPaymentInfo['instapay_links'] as List?) ?? [];
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -196,123 +250,146 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
 
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Amount Box
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSecondary,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)],
-                      ),
-                      child: Column(
-                        children: [
-                          const Text("TOTAL AMOUNT", style: TextStyle(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 2.0, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 12),
-                          Text("${widget.amount} EGP", style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: AppColors.accentYellow)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    // 1. Cash Numbers Section
-                    if (cashNumbers.isNotEmpty) ...[
-                      const Text("CASH WALLETS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
-                      const SizedBox(height: 10),
-                      ...cashNumbers.map((num) => _buildCopyableCard("WALLET NUMBER", num.toString(), Icons.account_balance_wallet)),
-                      const SizedBox(height: 24),
-                    ],
-
-                    // 2. InstaPay Numbers Section
-                    if (instapayNumbers.isNotEmpty) ...[
-                      const Text("INSTAPAY NUMBERS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
-                      const SizedBox(height: 10),
-                      ...instapayNumbers.map((num) => _buildCopyableCard("INSTAPAY PHONE", num.toString(), Icons.phone_iphone)),
-                      const SizedBox(height: 24),
-                    ],
-
-                    // 3. InstaPay Links Section
-                    if (instapayLinks.isNotEmpty) ...[
-                      const Text("INSTAPAY LINKS / USERNAME", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
-                      const SizedBox(height: 10),
-                      ...instapayLinks.map((link) => _buildLinkCard(link.toString())),
-                      const SizedBox(height: 24),
-                    ],
-
-                    // Receipt Upload
-                    const Text("UPLOAD RECEIPT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
-                    const SizedBox(height: 16),
-                    GestureDetector(
-                      onTap: _pickImage,
-                      child: Container(
-                        height: 180,
+              child: _isLoadingPaymentData 
+                ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)) 
+                : SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Amount Box
+                      Container(
                         width: double.infinity,
+                        padding: const EdgeInsets.all(32),
                         decoration: BoxDecoration(
                           color: AppColors.backgroundSecondary,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: _receiptImage != null ? AppColors.accentYellow : Colors.white.withOpacity(0.1),
-                            style: BorderStyle.solid, 
-                            width: 2,
-                          ),
-                          image: _receiptImage != null 
-                              ? DecorationImage(image: FileImage(_receiptImage!), fit: BoxFit.cover)
-                              : null,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)],
                         ),
-                        child: _receiptImage == null 
-                            ? Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
-                                  Icon(LucideIcons.uploadCloud, color: AppColors.accentYellow, size: 40),
-                                  SizedBox(height: 12),
-                                  Text("Tap to upload screenshot", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                                ],
-                              )
-                            : Container(
-                                alignment: Alignment.topRight,
-                                padding: const EdgeInsets.all(12),
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                                  child: const Icon(LucideIcons.edit2, color: Colors.white, size: 16),
-                                ),
-                              ),
+                        child: Column(
+                          children: [
+                            const Text("TOTAL AMOUNT", style: TextStyle(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 2.0, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 12),
+                            Text("${widget.amount} EGP", style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: AppColors.accentYellow)),
+                          ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 32),
 
-                    const SizedBox(height: 32),
-                    
-                    // Notes
-                    const Text("NOTES (OPTIONAL)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
-                    const SizedBox(height: 16),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSecondary,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
-                      ),
-                      child: TextField(
-                        controller: _noteController,
-                        style: const TextStyle(color: Colors.white),
-                        maxLines: 3,
-                        decoration: InputDecoration(
-                          hintText: "Add any notes...",
-                          hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.5)),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.all(20),
+                      // 1. Cash Numbers Section
+                      if (cashNumbers.isNotEmpty) ...[
+                        const Text("CASH WALLETS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                        const SizedBox(height: 10),
+                        ...cashNumbers.map((num) => _buildCopyableCard("WALLET NUMBER", num.toString(), Icons.account_balance_wallet)),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // 2. InstaPay Numbers Section
+                      if (instapayNumbers.isNotEmpty) ...[
+                        const Text("INSTAPAY NUMBERS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                        const SizedBox(height: 10),
+                        ...instapayNumbers.map((num) => _buildCopyableCard("INSTAPAY PHONE", num.toString(), Icons.phone_iphone)),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // 3. InstaPay Links Section
+                      if (instapayLinks.isNotEmpty) ...[
+                        const Text("INSTAPAY LINKS / USERNAME", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                        const SizedBox(height: 10),
+                        ...instapayLinks.map((link) => _buildLinkCard(link.toString())),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // 4. رسالة في حال عدم وجود أي طرق دفع
+                      if (cashNumbers.isEmpty && instapayNumbers.isEmpty && instapayLinks.isEmpty)
+                         Container(
+                           width: double.infinity,
+                           padding: const EdgeInsets.all(20),
+                           margin: const EdgeInsets.only(bottom: 24),
+                           decoration: BoxDecoration(
+                             color: AppColors.error.withOpacity(0.1),
+                             borderRadius: BorderRadius.circular(16),
+                             border: Border.all(color: AppColors.error.withOpacity(0.3))
+                           ),
+                           child: const Column(
+                             children: [
+                               Icon(LucideIcons.alertCircle, color: AppColors.error, size: 30),
+                               SizedBox(height: 10),
+                               Text("Payment methods unavailable", style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+                               Text("Please contact support or try again later.", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                             ],
+                           ),
+                         ),
+
+                      // Receipt Upload
+                      const Text("UPLOAD RECEIPT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                      const SizedBox(height: 16),
+                      GestureDetector(
+                        onTap: _pickImage,
+                        child: Container(
+                          height: 180,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSecondary,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: _receiptImage != null ? AppColors.accentYellow : Colors.white.withOpacity(0.1),
+                              style: BorderStyle.solid, 
+                              width: 2,
+                            ),
+                            image: _receiptImage != null 
+                                ? DecorationImage(image: FileImage(_receiptImage!), fit: BoxFit.cover)
+                                : null,
+                          ),
+                          child: _receiptImage == null 
+                              ? Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(LucideIcons.uploadCloud, color: AppColors.accentYellow, size: 40),
+                                    SizedBox(height: 12),
+                                    Text("Tap to upload screenshot", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                  ],
+                                )
+                              : Container(
+                                  alignment: Alignment.topRight,
+                                  padding: const EdgeInsets.all(12),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                                    child: const Icon(LucideIcons.edit2, color: Colors.white, size: 16),
+                                  ),
+                                ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 40),
-                  ],
+
+                      const SizedBox(height: 32),
+                      
+                      // Notes
+                      const Text("NOTES (OPTIONAL)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                      const SizedBox(height: 16),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        ),
+                        child: TextField(
+                          controller: _noteController,
+                          style: const TextStyle(color: Colors.white),
+                          maxLines: 3,
+                          decoration: InputDecoration(
+                            hintText: "Add any notes...",
+                            hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.5)),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.all(20),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                    ],
+                  ),
                 ),
-              ),
             ),
 
             // Confirm Button
@@ -321,7 +398,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isUploading ? null : _submitOrder,
+                  onPressed: (_isUploading || _isLoadingPaymentData) ? null : _submitOrder,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.accentYellow,
                     foregroundColor: AppColors.backgroundPrimary,
