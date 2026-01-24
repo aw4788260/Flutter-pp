@@ -3,6 +3,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/storage_service.dart';
+// ✅ إضافة استيراد خدمة المدرس
+import '../../core/services/teacher_service.dart';
 import 'course_details_screen.dart';
 import 'course_materials_screen.dart';
 import 'login_screen.dart';
@@ -19,7 +21,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
   String _view = 'library'; // library | market
   String _searchTerm = '';
   bool _isTeacher = false;
-  bool _isUpdating = false; // يقابل _loading في الكود المرجعي
+  bool _isUpdating = false;
+  
+  // ✅ تعريف خدمة المدرس
+  final TeacherService _teacherService = TeacherService();
 
   @override
   void initState() {
@@ -37,21 +42,34 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     }
   }
 
-  // ✅ منطق التحديث المنسوخ من _fetchSubjects
+  // ✅ منطق التحديث المعدل (الحل الجذري للمشكلة)
   Future<void> _refreshData() async {
+    if (mounted) setState(() => _isUpdating = true); // إظهار التحميل فوراً
+
     try {
-      // هذا السطر يعادل استدعاء الـ API في الكود المرجعي
+      // 1. إذا كان المستخدم مدرساً، نجبر التطبيق على جلب أحدث محتوى له من السيرفر وتحديث الكاش
+      if (_isTeacher) {
+        try {
+          final updatedContent = await _teacherService.getMyContent();
+          var box = await StorageService.openBox('teacher_data');
+          await box.put('my_content', updatedContent);
+        } catch (e) {
+          debugPrint("Failed to refresh teacher content: $e");
+        }
+      }
+
+      // 2. إعادة تحميل حالة التطبيق العامة (والتي ستقرأ الآن الكاش المحدث)
       await AppState().reloadAppInit();
 
+    } catch (e) {
+      debugPrint("Error refreshing data: $e");
+    } finally {
+      // 3. إخفاء التحميل وإعادة بناء الواجهة
       if (mounted) {
         setState(() {
-          // في الكود المرجعي يتم تحديث القائمة هنا
-          // هنا نحدث الحالة فقط لإعادة بناء الواجهة بالبيانات الجديدة من AppState
           _isUpdating = false;
         });
       }
-    } catch (e) {
-      if (mounted) setState(() => _isUpdating = false);
     }
   }
 
@@ -191,8 +209,9 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 3. واجهة المكتبة (تم التعديل لإظهار الكود وتمرير السعر) ---
+  // --- 3. واجهة المكتبة ---
   Widget _buildLibraryView() {
+    // استخدام البيانات من الحالة العامة
     final libraryItems = AppState().myLibrary;
 
     return Scaffold(
@@ -258,8 +277,8 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                 builder: (_) => const ManageContentScreen(contentType: ContentType.course),
                               ),
                             ).then((value) {
+                              // ✅ عند العودة بنجاح (value == true)، نقوم بالتحديث
                               if (value == true) {
-                                setState(() => _isUpdating = true);
                                 _refreshData();
                               }
                             });
@@ -329,7 +348,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           final String id = item['id'].toString();
                           
                           final String description = item['description'] ?? '';
-                          // السعر هنا قد يكون غير دقيق لأنه من المكتبة المحلية
                           final double localPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
 
                           List<dynamic>? subjectsToPass;
@@ -389,7 +407,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        // ✅ 1. إظهار كود الكورس (ID Badge)
                                         if (code.isNotEmpty)
                                           Container(
                                             margin: const EdgeInsets.only(bottom: 4),
@@ -442,7 +459,6 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                   if (_isTeacher)
                                     GestureDetector(
                                       onTap: () {
-                                        // ✅ 2. جلب السعر الحقيقي من المتجر قبل التعديل
                                         double realPrice = localPrice;
                                         try {
                                           final freshCourse = AppState().allCourses.firstWhere((c) => c.id == id);
@@ -458,15 +474,14 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                                 'id': id,
                                                 'title': title,
                                                 'code': code,
-                                                'price': realPrice, // ✅ السعر الصحيح
-                                                'fullPrice': realPrice, // للتأكيد
+                                                'price': realPrice,
+                                                'fullPrice': realPrice,
                                                 'description': description,
                                               },
                                             ),
                                           ),
                                         ).then((value) {
                                           if (value == true) {
-                                            setState(() => _isUpdating = true);
                                             _refreshData();
                                           }
                                         });
@@ -496,26 +511,18 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     );
   }
 
-  // --- 4. واجهة المتجر (تم التعديل لتناسب التابلت والوضع الأفقي) ---
+  // --- 4. واجهة المتجر ---
   Widget _buildMarketView() {
     final availableCourses = AppState().allCourses.where((course) => 
       course.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
       course.code.toLowerCase().contains(_searchTerm.toLowerCase())
     ).toList();
 
-    // ✅ حساب عدد الأعمدة بناءً على عرض الشاشة
     double screenWidth = MediaQuery.of(context).size.width;
-    int crossAxisCount = 2; // الافتراضي للموبايل
-    
-    if (screenWidth >= 600) {
-      crossAxisCount = 3; // التابلت (رأسي)
-    }
-    if (screenWidth >= 900) {
-      crossAxisCount = 4; // التابلت (أفقي) / ديسكتوب
-    }
-    if (screenWidth >= 1200) {
-      crossAxisCount = 5; // شاشات كبيرة جداً
-    }
+    int crossAxisCount = 2;
+    if (screenWidth >= 600) crossAxisCount = 3;
+    if (screenWidth >= 900) crossAxisCount = 4;
+    if (screenWidth >= 1200) crossAxisCount = 5;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
@@ -586,12 +593,11 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                // ✅ استخدام متغير الأعمدة المحسوب
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: crossAxisCount,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: 1.0, // مربع
+                  childAspectRatio: 1.0,
                 ),
                 itemCount: availableCourses.length,
                 itemBuilder: (context, index) {
