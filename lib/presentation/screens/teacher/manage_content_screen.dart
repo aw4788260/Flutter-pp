@@ -49,7 +49,10 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     if (isEditing) {
       _titleController.text = widget.initialData!['title'] ?? '';
       _descController.text = widget.initialData!['description'] ?? '';
-      _priceController.text = widget.initialData!['price']?.toString() ?? '';
+      
+      // ✅ التعديل هنا: التحقق من مفتاح السعر بجميع احتمالاته (price أو fullPrice)
+      var priceValue = widget.initialData!['price'] ?? widget.initialData!['fullPrice'];
+      _priceController.text = priceValue?.toString() ?? '';
 
       if (widget.contentType == ContentType.video) {
         _urlController.text = widget.initialData!['youtube_video_id'] ?? '';
