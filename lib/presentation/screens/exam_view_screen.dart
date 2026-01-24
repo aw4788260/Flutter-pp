@@ -34,6 +34,10 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
 
   int currentIdx = 0;
   Map<String, int> userAnswers = {}; 
+  
+  // ✅ 1. قائمة لتخزين الأسئلة التي تم وضع علامة عليها (Flagged)
+  Set<String> flaggedQuestions = {};
+
   int timeLeft = 0;
   Timer? _timer;
   String? _attemptId;
@@ -73,7 +77,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       if (mounted && res.statusCode == 200) {
         final data = res.data;
         
-        // 1. التحقق من وضع نموذج الإجابة
+        // التحقق من وضع نموذج الإجابة
         if (data['mode'] == 'model_answer') {
            setState(() {
              _isModelAnswerMode = true; 
@@ -93,14 +97,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
              _loading = false;
            });
            
-           // ✅ إظهار رسالة تحذيرية بسيطة عند بدء الامتحان
-           ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(
-               content: Text("Warning: Exiting the screen will automatically submit your exam."),
-               backgroundColor: AppColors.accentOrange,
-               duration: Duration(seconds: 4),
-             ),
-           );
+           // ✅ تم إزالة SnackBar التحذيرية الأولية هنا بناءً على طلبك
            
            _startTimer();
         }
@@ -150,6 +147,24 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
       return;
     }
 
+    // ✅ 2. منع تسليم الامتحان إذا كانت هناك أسئلة فارغة (إلا في حالة انتهاء الوقت autoSubmit)
+    if (!autoSubmit) {
+      if (userAnswers.length < _questions.length) {
+        int unanswered = _questions.length - userAnswers.length;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Cannot submit yet. You have $unanswered unanswered questions!",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return; // إيقاف العملية
+      }
+    }
+
     _timer?.cancel();
     
     // إظهار Loading
@@ -193,7 +208,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     }
   }
 
-  // ✅ دالة لإظهار تحذير الخروج
+  // دالة لإظهار تحذير الخروج
   Future<void> _showExitWarningDialog() async {
     final shouldSubmit = await showDialog<bool>(
       context: context,
@@ -224,6 +239,47 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     }
   }
 
+  // ✅ 3. دالة لتكبير الصورة
+  void _showZoomableImage(String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                httpHeaders: {
+                  'Authorization': 'Bearer $_token',
+                  'x-device-id': _deviceId ?? '',
+                  'x-app-secret': _appSecret,
+                },
+                placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+                errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
+                fit: BoxFit.contain,
+              ),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                style: IconButton.styleFrom(backgroundColor: Colors.black54),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
@@ -232,9 +288,10 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     final String questionId = questionData['id'].toString();
     final String? imageFileId = questionData['image_file_id'];
     final options = (questionData['options'] as List).cast<Map<String, dynamic>>();
-    final progress = (currentIdx + 1) / _questions.length;
+    
+    // التحقق مما إذا كان السؤال الحالي معلم عليه
+    bool isFlagged = flaggedQuestions.contains(questionId);
 
-    // ✅ استخدام PopScope للتحكم في زر الرجوع
     return PopScope(
       canPop: _isModelAnswerMode, // السماح بالخروج مباشرة فقط إذا كان نموذج إجابة
       onPopInvokedWithResult: (didPop, result) async {
@@ -247,12 +304,32 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              // Header & Timer
+              // Header & Timer & Flag
               Padding(
-                padding: const EdgeInsets.all(24.0),
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    // ✅ 4. زر وضع العلامة (Flag)
+                    if (!_isModelAnswerMode)
+                      IconButton(
+                        onPressed: () {
+                          setState(() {
+                            if (isFlagged) {
+                              flaggedQuestions.remove(questionId);
+                            } else {
+                              flaggedQuestions.add(questionId);
+                            }
+                          });
+                        },
+                        icon: Icon(
+                          LucideIcons.flag,
+                          color: isFlagged ? AppColors.accentOrange : Colors.grey,
+                          // fill: isFlagged ? 1.0 : 0.0, // يمكن تفعيل هذا إذا كانت الأيقونة تدعم التعبئة
+                        ),
+                        tooltip: "Mark Question",
+                      ),
+
                     Text("Q ${currentIdx + 1}/${_questions.length}", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
                     
                     if (!_isModelAnswerMode)
@@ -281,7 +358,72 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                 ),
               ),
               
-              LinearProgressIndicator(value: progress, backgroundColor: AppColors.backgroundSecondary, color: AppColors.accentYellow, minHeight: 4),
+              // ✅ 5. شريط التنقل بين الأسئلة (Horizontal Navigator)
+              Container(
+                height: 50,
+                width: double.infinity,
+                padding: const EdgeInsets.only(bottom: 8),
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _questions.length,
+                  separatorBuilder: (ctx, index) => const SizedBox(width: 8),
+                  itemBuilder: (ctx, index) {
+                    final q = _questions[index];
+                    final qIdStr = q['id'].toString();
+                    
+                    bool isCurrent = index == currentIdx;
+                    bool isAnswered = userAnswers.containsKey(qIdStr);
+                    bool isMarked = flaggedQuestions.contains(qIdStr);
+                    
+                    Color boxColor = AppColors.backgroundSecondary;
+                    Color textColor = AppColors.textSecondary;
+                    Color borderColor = Colors.white10;
+
+                    if (isCurrent) {
+                      boxColor = AppColors.accentYellow.withOpacity(0.2);
+                      borderColor = AppColors.accentYellow;
+                      textColor = AppColors.accentYellow;
+                    } else if (isMarked) {
+                      // اللون البرتقالي للسؤال المعلم
+                      boxColor = AppColors.accentOrange.withOpacity(0.2);
+                      borderColor = AppColors.accentOrange;
+                      textColor = AppColors.accentOrange;
+                    } else if (isAnswered) {
+                      boxColor = AppColors.success.withOpacity(0.2);
+                      borderColor = Colors.transparent;
+                      textColor = AppColors.success;
+                    }
+
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          currentIdx = index;
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: boxColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: borderColor, width: 1.5),
+                        ),
+                        child: Text(
+                          "${index + 1}",
+                          style: TextStyle(
+                            color: textColor,
+                            fontWeight: isCurrent || isMarked ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              const Divider(color: Colors.white10, height: 1),
               
               Expanded(
                 child: SingleChildScrollView(
@@ -290,26 +432,48 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (imageFileId != null && imageFileId.isNotEmpty)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 24),
-                          constraints: const BoxConstraints(maxHeight: 250),
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white10),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: CachedNetworkImage(
-                              imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
-                              httpHeaders: {
-                                'Authorization': 'Bearer $_token',
-                                'x-device-id': _deviceId ?? '',
-                                'x-app-secret': _appSecret,
-                              },
-                              placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
-                              errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
-                              fit: BoxFit.contain,
+                        GestureDetector(
+                          // ✅ تفعيل تكبير الصورة عند الضغط
+                          onTap: () {
+                             final imageUrl = '$_baseUrl/api/exams/get-image?file_id=$imageFileId';
+                             _showZoomableImage(imageUrl);
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 24),
+                            constraints: const BoxConstraints(maxHeight: 250),
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: CachedNetworkImage(
+                                    imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
+                                    httpHeaders: {
+                                      'Authorization': 'Bearer $_token',
+                                      'x-device-id': _deviceId ?? '',
+                                      'x-app-secret': _appSecret,
+                                    },
+                                    placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+                                    errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                                // أيقونة صغيرة لتوضيح إمكانية التكبير
+                                Positioned(
+                                  bottom: 8,
+                                  right: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
+                                    child: const Icon(LucideIcons.maximize2, color: Colors.white, size: 16),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
