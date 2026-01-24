@@ -89,6 +89,30 @@ class CourseCard extends StatelessWidget {
                     ),
                   ),
 
+                  // ✅ التعديل الجديد: عرض كود الكورس بنفس ستايل الصفحة الرئيسية (أسفل يمين الصورة)
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        // خلفية سوداء نصف شفافة لضمان الوضوح فوق الصورة
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.accentOrange.withOpacity(0.3), width: 0.5),
+                      ),
+                      child: Text(
+                        "#${course.code}", 
+                        style: const TextStyle(
+                          color: AppColors.accentOrange, // نفس اللون البرتقالي
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ),
+                  ),
+
                   // 🟢 زر التعديل (يمين علوي - يظهر للمعلم فقط)
                   if (isTeacher)
                     Positioned(
