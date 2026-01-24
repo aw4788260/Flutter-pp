@@ -11,7 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/storage_service.dart';
-import '../../main.dart'; // ✅ 1. استيراد ملف main.dart للوصول لكلاس الحماية
+import '../../main.dart'; // ✅ استيراد ملف main.dart للوصول لكلاس الحماية
 import 'login_screen.dart';
 import 'main_wrapper.dart';
 import 'privacy_policy_screen.dart';
@@ -278,8 +278,17 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         AppState().updateFromInitData(response.data);
 
         // ✅ حفظ/تحديث نوع المستخدم (معلم/طالب) إذا كان موجوداً في الرد
-        if (response.data['user'] != null && response.data['user']['role'] != null) {
-           await box.put('role', response.data['user']['role']);
+        if (response.data['user'] != null) {
+           final userData = response.data['user'];
+           
+           if (userData['role'] != null) {
+              await box.put('role', userData['role']);
+           }
+           
+           // ✅ حفظ صورة البروفايل إذا كانت موجودة (للمدرسين)
+           if (userData['profile_image'] != null) {
+              await box.put('profile_image', userData['profile_image']);
+           }
         }
 
         bool isLoggedIn = response.data['isLoggedIn'] ?? false;
