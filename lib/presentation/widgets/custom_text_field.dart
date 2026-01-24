@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ✅ إضافة المكتبة اللازمة لـ TextInputFormatter
 import '../../core/constants/app_colors.dart';
 
 class CustomTextField extends StatefulWidget {
   final String label;
-  final String hintText; // ✅ تم التعديل من hint إلى hintText
-  final IconData prefixIcon; // ✅ تم التعديل من icon إلى prefixIcon
+  final String hintText;
+  final IconData prefixIcon;
   final bool isPassword;
   final TextEditingController controller;
-  final int maxLines; // ✅ تمت الإضافة
-  final TextInputType keyboardType; // ✅ تمت الإضافة
-  final String? Function(String?)? validator; // ✅ تمت الإضافة لدعم التحقق في النماذج
+  final int maxLines;
+  final TextInputType keyboardType;
+  final String? Function(String?)? validator;
+  final List<TextInputFormatter>? inputFormatters; // ✅ تمت الإضافة
 
   const CustomTextField({
     super.key,
@@ -21,6 +23,7 @@ class CustomTextField extends StatefulWidget {
     this.maxLines = 1,
     this.keyboardType = TextInputType.text,
     this.validator,
+    this.inputFormatters, // ✅ تمت الإضافة إلى البناء
   });
 
   @override
@@ -60,20 +63,20 @@ class _CustomTextFieldState extends State<CustomTextField> {
                   : Colors.white.withOpacity(0.05),
             ),
           ),
-          // ✅ استخدام TextFormField بدلاً من TextField لدعم validator
           child: TextFormField(
             controller: widget.controller,
             obscureText: widget.isPassword,
             maxLines: widget.maxLines,
             keyboardType: widget.keyboardType,
-            validator: widget.validator, // تفعيل التحقق
+            validator: widget.validator,
+            inputFormatters: widget.inputFormatters, // ✅ تمرير الخاصية هنا
             style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
             cursorColor: AppColors.accentYellow,
             
             onTap: () => setState(() => _isFocused = true),
             onTapOutside: (_) {
               setState(() => _isFocused = false);
-              FocusScope.of(context).unfocus(); // إغلاق الكيبورد عند الضغط خارج الحقل
+              FocusScope.of(context).unfocus();
             },
             
             decoration: InputDecoration(
@@ -84,7 +87,6 @@ class _CustomTextFieldState extends State<CustomTextField> {
               prefixIcon: Icon(
                 widget.prefixIcon,
                 size: 18,
-                // تغيير لون الأيقونة عند التركيز أو الكتابة
                 color: widget.controller.text.isNotEmpty || _isFocused
                     ? AppColors.accentYellow 
                     : AppColors.textSecondary,
