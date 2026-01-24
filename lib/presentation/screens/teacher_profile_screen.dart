@@ -108,8 +108,18 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                     shape: BoxShape.circle,
                     border: Border.all(color: AppColors.accentYellow, width: 2),
                     boxShadow: [BoxShadow(color: AppColors.accentYellow.withOpacity(0.3), blurRadius: 20)],
+                    // ✅ عرض الصورة إذا كانت موجودة
+                    image: (_teacher!['profile_image'] != null && _teacher!['profile_image'].toString().isNotEmpty)
+                        ? DecorationImage(
+                            image: NetworkImage(_teacher!['profile_image']),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
                   ),
-                  child: const Icon(LucideIcons.user, size: 40, color: Colors.white),
+                  // ✅ عرض الأيقونة فقط إذا لم تكن هناك صورة
+                  child: (_teacher!['profile_image'] == null || _teacher!['profile_image'].toString().isEmpty)
+                      ? const Icon(LucideIcons.user, size: 40, color: Colors.white)
+                      : null,
                 ),
               ),
               const SizedBox(height: 20),
