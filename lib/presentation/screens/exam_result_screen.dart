@@ -3,11 +3,10 @@ import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:percent_indicator/percent_indicator.dart';
-import 'package:cached_network_image/cached_network_image.dart'; 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
 
 class ExamResultScreen extends StatefulWidget {
   final String attemptId;
@@ -77,6 +76,61 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
     } catch (e) {
       debugPrint("Failed to cache result: $e");
     }
+  }
+
+  // ✅ دالة جديدة لعرض الصورة بحجم كامل مع التكبير
+  void _showEnlargedImage(String imageFileId) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent, // خلفية شفافة
+        insetPadding: EdgeInsets.zero, // ملء الشاشة تقريباً
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // منطقة العرض مع التكبير
+            SizedBox(
+              width: double.infinity,
+              height: double.infinity,
+              child: InteractiveViewer(
+                minScale: 1.0,
+                maxScale: 4.0, // أقصى حد للتكبير
+                child: CachedNetworkImage(
+                  imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
+                  httpHeaders: {
+                    'Authorization': 'Bearer $_token',
+                    'x-device-id': _deviceId ?? '',
+                    'x-app-secret': _appSecret,
+                  },
+                  placeholder: (context, url) => const Center(
+                      child: CircularProgressIndicator(color: AppColors.accentYellow)),
+                  errorWidget: (context, url, error) =>
+                      const Icon(Icons.error, color: AppColors.error),
+                  fit: BoxFit.contain, // احتواء الصورة بالكامل
+                ),
+              ),
+            ),
+            
+            // زر الإغلاق
+            Positioned(
+              top: 40,
+              right: 20,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 30),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -176,28 +230,31 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
                     ),
                     const SizedBox(height: 12),
                     
-                    // ✅ عرض الصورة إن وجدت (مع الهيدرز الصحيحة)
+                    // ✅ عرض الصورة إن وجدت (مع إضافة GestureDetector للتكبير)
                     if (imageFileId != null && imageFileId.isNotEmpty)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        height: 150,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white10),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: CachedNetworkImage(
-                            imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
-                            httpHeaders: {
-                              'Authorization': 'Bearer $_token', // ✅ إضافة التوكن للهيدر
-                              'x-device-id': _deviceId ?? '',
-                              'x-app-secret': _appSecret,
-                            },
-                            placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)),
-                            errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
-                            fit: BoxFit.contain,
+                      GestureDetector(
+                        onTap: () => _showEnlargedImage(imageFileId), // عند الضغط، افتح الصورة المكبرة
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          height: 150,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: CachedNetworkImage(
+                              imageUrl: '$_baseUrl/api/exams/get-image?file_id=$imageFileId',
+                              httpHeaders: {
+                                'Authorization': 'Bearer $_token', // ✅ إضافة التوكن للهيدر
+                                'x-device-id': _deviceId ?? '',
+                                'x-app-secret': _appSecret,
+                              },
+                              placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)),
+                              errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
+                              fit: BoxFit.contain,
+                            ),
                           ),
                         ),
                       ),
