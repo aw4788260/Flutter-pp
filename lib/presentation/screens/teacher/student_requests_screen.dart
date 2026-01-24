@@ -263,6 +263,10 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
     final bool hasImage = filename != null && filename.isNotEmpty;
     final String imageUrl = hasImage ? "$_receiptProxyUrl$filename" : "";
 
+    // ✅ استخراج الملاحظة من العمود الجديد
+    final String? userNote = req['user_note'];
+    final bool hasNote = userNote != null && userNote.trim().isNotEmpty;
+
     String dateStr = req['created_at'] ?? "";
     if (dateStr.length > 10) dateStr = dateStr.substring(0, 10);
 
@@ -278,11 +282,10 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // ================== القسم العلوي ==================
+            // ================== القسم العلوي (الصورة والبيانات) ==================
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🖼️ الصورة المصغرة
                 GestureDetector(
                   onTap: () {
                     if (hasImage) _showFullImage(imageUrl);
@@ -300,7 +303,6 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                       child: hasImage
                           ? CachedNetworkImage(
                               imageUrl: imageUrl,
-                              // ✅ الهيدرز هنا أيضاً للصورة المصغرة
                               httpHeaders: {
                                 'Authorization': 'Bearer $_token',
                                 'x-device-id': _deviceId ?? '',
@@ -315,7 +317,6 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                // ℹ️ البيانات
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -349,38 +350,78 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
             
             Divider(height: 24, color: Colors.white.withOpacity(0.1)),
 
-            // ================== التفاصيل والسعر ==================
+            // ================== التفاصيل والسعر والملاحظة ==================
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start, // محاذاة للأعلى لضمان تناسق العمودين
               children: [
                 Expanded(
                   flex: 3,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.backgroundPrimary.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.accentBlue.withOpacity(0.3))
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
+                  child: Column(
+                    children: [
+                      // صندوق تفاصيل الكورس
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundPrimary.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.accentBlue.withOpacity(0.3))
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.shopping_cart_outlined, size: 16, color: AppColors.accentBlue),
-                            SizedBox(width: 6),
-                            Text("المحتوى المطلوب:", style: TextStyle(color: AppColors.accentBlue, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const Row(
+                              children: [
+                                Icon(Icons.shopping_cart_outlined, size: 16, color: AppColors.accentBlue),
+                                SizedBox(width: 6),
+                                Text("المحتوى المطلوب:", style: TextStyle(color: AppColors.accentBlue, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              req['course_title'] ?? 'غير محدد',
+                              style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.3),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          req['course_title'] ?? 'غير محدد',
-                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.3),
+                      ),
+                      
+                      // ✅ عرض الملاحظة هنا بشكل منفصل وبتصميم مميز
+                      if (hasNote) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.1), // خلفية شفافة صفراء
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.amber.withOpacity(0.3)), // حدود صفراء خفيفة
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.edit_note_rounded, size: 16, color: Colors.amber),
+                                  SizedBox(width: 6),
+                                  Text("ملاحظة الطالب:", style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                userNote,
+                                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.3),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 12),
+                
+                // صندوق السعر
                 Expanded(
                   flex: 2,
                   child: Container(
