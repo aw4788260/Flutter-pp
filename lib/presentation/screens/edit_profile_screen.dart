@@ -1,13 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ✅ للتحكم في الإدخال
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:image_picker/image_picker.dart'; // ✅ إضافة مكتبة الصور
+import 'package:image_picker/image_picker.dart'; 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart'; 
 import '../../core/services/storage_service.dart';
-import '../../core/services/teacher_service.dart'; // ✅ استيراد خدمة المدرس
+import '../../core/services/teacher_service.dart'; 
 import '../widgets/custom_text_field.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -18,6 +19,9 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
+  // ✅ مفتاح النموذج للتحقق
+  final _formKey = GlobalKey<FormState>();
+
   // الحقول الأساسية
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
@@ -28,21 +32,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final TextEditingController _specialtyController = TextEditingController();
   final TextEditingController _whatsappController = TextEditingController();
 
-  // قوائم التحكم لبيانات الدفع الثلاثة
+  // قوائم التحكم لبيانات الدفع
   List<TextEditingController> _cashNumberControllers = [];
   List<TextEditingController> _instapayNumberControllers = [];
   List<TextEditingController> _instapayLinkControllers = [];
 
-  // ✅ متغيرات الصورة
+  // متغيرات الصورة
   File? _selectedImage;
   String? _currentImageUrl;
 
   bool _isLoading = false;
   bool _isTeacher = false;
   
-  // خدمة المدرس لرفع الصور وتحديث البيانات
   final TeacherService _teacherService = TeacherService(); 
-  
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   @override
@@ -54,7 +56,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _loadUserData() async {
     final user = AppState().userData;
     
-    // تحميل البيانات الأساسية
     _nameController = TextEditingController(text: user?['first_name'] ?? "");
     _phoneController = TextEditingController(text: user?['phone'] ?? "");
     _usernameController = TextEditingController(text: user?['username'] ?? "");
@@ -70,22 +71,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _bioController.text = box.get('bio') ?? "";
           _specialtyController.text = box.get('specialty') ?? "";
           _whatsappController.text = box.get('whatsapp_number') ?? "";
-          _currentImageUrl = box.get('profile_image'); // ✅ تحميل رابط الصورة الحالي
+          _currentImageUrl = box.get('profile_image');
 
-          // تحميل قوائم الدفع المحفوظة محلياً
           List<dynamic> cachedCash = box.get('cash_numbers', defaultValue: []);
           List<dynamic> cachedInstaNums = box.get('instapay_numbers', defaultValue: []);
           List<dynamic> cachedInstaLinks = box.get('instapay_links', defaultValue: []);
 
-          for (var item in cachedCash) {
-            _cashNumberControllers.add(TextEditingController(text: item.toString()));
-          }
-          for (var item in cachedInstaNums) {
-            _instapayNumberControllers.add(TextEditingController(text: item.toString()));
-          }
-          for (var item in cachedInstaLinks) {
-            _instapayLinkControllers.add(TextEditingController(text: item.toString()));
-          }
+          for (var item in cachedCash) _cashNumberControllers.add(TextEditingController(text: item.toString()));
+          for (var item in cachedInstaNums) _instapayNumberControllers.add(TextEditingController(text: item.toString()));
+          for (var item in cachedInstaLinks) _instapayLinkControllers.add(TextEditingController(text: item.toString()));
 
           if (_cashNumberControllers.isEmpty) _addController(_cashNumberControllers);
           if (_instapayNumberControllers.isEmpty) _addController(_instapayNumberControllers);
@@ -96,9 +90,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   void _addController(List<TextEditingController> list) {
-    setState(() {
-      list.add(TextEditingController());
-    });
+    setState(() => list.add(TextEditingController()));
   }
 
   void _removeController(List<TextEditingController> list, int index) {
@@ -108,18 +100,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     });
   }
 
-  // ✅ دالة اختيار الصورة
   Future<void> _pickImage() async {
     if (!_isTeacher) return; 
-    
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    
-    if (image != null) {
-      setState(() {
-        _selectedImage = File(image.path);
-      });
-    }
+    if (image != null) setState(() => _selectedImage = File(image.path));
   }
 
   @override
@@ -130,7 +115,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _bioController.dispose();
     _specialtyController.dispose();
     _whatsappController.dispose();
-    
     for (var c in _cashNumberControllers) c.dispose();
     for (var c in _instapayNumberControllers) c.dispose();
     for (var c in _instapayLinkControllers) c.dispose();
@@ -138,26 +122,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _saveChanges() async {
+    // ✅ 1. التحقق من صحة الحقول قبل الإرسال
+    if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
     try {
       var box = await StorageService.openBox('auth_box');
       final token = box.get('jwt_token');
       final deviceId = box.get('device_id');
 
-      List<String> cashList = _cashNumberControllers
-          .map((c) => c.text.trim())
-          .where((text) => text.isNotEmpty)
-          .toList();
-
-      List<String> instaNumList = _instapayNumberControllers
-          .map((c) => c.text.trim())
-          .where((text) => text.isNotEmpty)
-          .toList();
-
-      List<String> instaLinkList = _instapayLinkControllers
-          .map((c) => c.text.trim())
-          .where((text) => text.isNotEmpty)
-          .toList();
+      List<String> cashList = _cashNumberControllers.map((c) => c.text.trim()).where((text) => text.isNotEmpty).toList();
+      List<String> instaNumList = _instapayNumberControllers.map((c) => c.text.trim()).where((text) => text.isNotEmpty).toList();
+      List<String> instaLinkList = _instapayLinkControllers.map((c) => c.text.trim()).where((text) => text.isNotEmpty).toList();
 
       Map<String, dynamic> dataToSend = {
         'firstName': _nameController.text, 
@@ -169,16 +145,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         dataToSend['bio'] = _bioController.text;
         dataToSend['specialty'] = _specialtyController.text;
         dataToSend['whatsappNumber'] = _whatsappController.text;
-        
         dataToSend['cashNumbersList'] = cashList;
         dataToSend['instapayNumbersList'] = instaNumList;
         dataToSend['instapayLinksList'] = instaLinkList;
 
-        // ✅ 1. رفع الصورة إذا تم اختيار واحدة جديدة
         if (_selectedImage != null) {
            String newImageUrl = await _teacherService.uploadProfileImage(_selectedImage!);
            dataToSend['profileImage'] = newImageUrl;
-           // تحديث المتغير المحلي للعرض الفوري
            _currentImageUrl = newImageUrl;
         }
       }
@@ -198,7 +171,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
 
       if (res.statusCode == 200 && res.data['success'] == true) {
-        // تحديث الذاكرة
         if (AppState().userData != null) {
           AppState().userData!['first_name'] = _nameController.text;
           AppState().userData!['username'] = _usernameController.text;
@@ -208,7 +180,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           }
         }
         
-        // تحديث التخزين المحلي
         await box.put('first_name', _nameController.text);
         await box.put('username', _usernameController.text);
         await box.put('phone', _phoneController.text);
@@ -220,11 +191,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           await box.put('cash_numbers', cashList);
           await box.put('instapay_numbers', instaNumList);
           await box.put('instapay_links', instaLinkList);
-          
-          // ✅ حفظ رابط الصورة الجديد محلياً
-          if (dataToSend.containsKey('profileImage')) {
-             await box.put('profile_image', dataToSend['profileImage']);
-          }
+          if (dataToSend.containsKey('profileImage')) await box.put('profile_image', dataToSend['profileImage']);
         }
 
         if (mounted) {
@@ -283,167 +250,170 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ✅ قسم الصورة (للمدرس فقط)
-                    if (_isTeacher) ...[
-                      Center(
-                        child: GestureDetector(
-                          onTap: _pickImage,
-                          child: Stack(
-                            children: [
-                              Container(
-                                width: 100, height: 100,
-                                decoration: BoxDecoration(
-                                  color: AppColors.backgroundSecondary,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: AppColors.accentYellow, width: 2),
-                                  image: _selectedImage != null
-                                      ? DecorationImage(image: FileImage(_selectedImage!), fit: BoxFit.cover)
-                                      : (_currentImageUrl != null && _currentImageUrl!.isNotEmpty
-                                          ? DecorationImage(image: NetworkImage(_currentImageUrl!), fit: BoxFit.cover)
-                                          : null),
-                                ),
-                                child: (_selectedImage == null && (_currentImageUrl == null || _currentImageUrl!.isEmpty))
-                                    ? const Icon(Icons.person, size: 50, color: Colors.grey)
-                                    : null,
-                              ),
-                              Positioned(
-                                bottom: 0, right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.accentYellow,
+                child: Form( // ✅ تغليف الحقول بنموذج للتحقق
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_isTeacher) ...[
+                        Center(
+                          child: GestureDetector(
+                            onTap: _pickImage,
+                            child: Stack(
+                              children: [
+                                Container(
+                                  width: 100, height: 100,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.backgroundSecondary,
                                     shape: BoxShape.circle,
+                                    border: Border.all(color: AppColors.accentYellow, width: 2),
+                                    image: _selectedImage != null
+                                        ? DecorationImage(image: FileImage(_selectedImage!), fit: BoxFit.cover)
+                                        : (_currentImageUrl != null && _currentImageUrl!.isNotEmpty
+                                            ? DecorationImage(image: NetworkImage(_currentImageUrl!), fit: BoxFit.cover)
+                                            : null),
                                   ),
-                                  child: const Icon(Icons.camera_alt, size: 16, color: Colors.black),
+                                  child: (_selectedImage == null && (_currentImageUrl == null || _currentImageUrl!.isEmpty))
+                                      ? const Icon(Icons.person, size: 50, color: Colors.grey)
+                                      : null,
                                 ),
-                              ),
-                            ],
+                                Positioned(
+                                  bottom: 0, right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: const BoxDecoration(color: AppColors.accentYellow, shape: BoxShape.circle),
+                                    child: const Icon(Icons.camera_alt, size: 16, color: Colors.black),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Center(child: Text("Tap to change photo", style: TextStyle(color: Colors.grey, fontSize: 10))),
-                      const SizedBox(height: 20),
-                    ],
+                        const SizedBox(height: 10),
+                        const Center(child: Text("Tap to change photo", style: TextStyle(color: Colors.grey, fontSize: 10))),
+                        const SizedBox(height: 20),
+                      ],
 
-                    CustomTextField(
-                      label: "Full Name",
-                      controller: _nameController,
-                      hintText: "Enter your full name",
-                      prefixIcon: LucideIcons.user,
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    CustomTextField(
-                      label: "Phone Number",
-                      controller: _phoneController,
-                      hintText: "01xxxxxxxxx",
-                      prefixIcon: LucideIcons.phone,
-                      keyboardType: TextInputType.phone,
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    CustomTextField(
-                      label: "Username",
-                      controller: _usernameController,
-                      hintText: "Choose a username",
-                      prefixIcon: LucideIcons.atSign,
-                    ),
-                    
-                    if (_isTeacher) ...[
+                      CustomTextField(
+                        label: "Full Name",
+                        controller: _nameController,
+                        hintText: "Enter your full name",
+                        prefixIcon: LucideIcons.user,
+                        validator: (value) => value == null || value.isEmpty ? "Name is required" : null,
+                      ),
                       const SizedBox(height: 20),
-                      const Divider(color: Colors.white10),
-                      const SizedBox(height: 10),
-                      const Text("TEACHER INFO", style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                      const SizedBox(height: 15),
                       
                       CustomTextField(
-                        label: "Specialty / Job Title",
-                        controller: _specialtyController,
-                        hintText: "e.g. Physics Teacher",
-                        prefixIcon: LucideIcons.briefcase,
-                      ),
-                      const SizedBox(height: 20),
-
-                      CustomTextField(
-                        label: "WhatsApp Number (For Students)",
-                        controller: _whatsappController,
-                        hintText: "201xxxxxxxxx",
-                        prefixIcon: LucideIcons.messageCircle,
+                        label: "Phone Number",
+                        controller: _phoneController,
+                        hintText: "01xxxxxxxxx",
+                        prefixIcon: LucideIcons.phone,
                         keyboardType: TextInputType.phone,
+                        validator: (value) => value == null || value.length < 11 ? "Invalid phone number" : null,
                       ),
-                      const Padding(
-                        padding: EdgeInsets.only(top: 6, left: 8, bottom: 20),
-                        child: Text(
-                          "Enter number with country code without '+' (e.g. 201xxxxxxxxx)",
-                          style: TextStyle(color: Colors.white38, fontSize: 11),
-                        ),
-                      ),
-                      
-                      CustomTextField(
-                        label: "Bio / About Me",
-                        controller: _bioController,
-                        hintText: "Tell students about yourself...",
-                        prefixIcon: LucideIcons.fileText,
-                        keyboardType: TextInputType.multiline,
-                        maxLines: 3,
-                      ),
-
-                      const SizedBox(height: 30),
-                      const Divider(color: Colors.white10),
-                      
-                      const SizedBox(height: 10),
-                      const Text("PAYMENT METHODS", style: TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                       const SizedBox(height: 20),
-
-                      // 1. Cash Numbers Section
-                      _buildDynamicList(
-                        title: "Cash Wallet Numbers",
-                        controllers: _cashNumberControllers,
-                        hint: "Enter Wallet Number",
-                        onAdd: () => _addController(_cashNumberControllers),
-                        onRemove: (idx) => _removeController(_cashNumberControllers, idx),
-                        icon: Icons.account_balance_wallet,
-                        isNumeric: true,
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // 2. InstaPay Numbers Section
-                      _buildDynamicList(
-                        title: "InstaPay Numbers",
-                        controllers: _instapayNumberControllers,
-                        hint: "Enter InstaPay Phone Number",
-                        onAdd: () => _addController(_instapayNumberControllers),
-                        onRemove: (idx) => _removeController(_instapayNumberControllers, idx),
-                        icon: Icons.phone_iphone,
-                        isNumeric: true,
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // 3. InstaPay Links/Usernames Section
-                      _buildDynamicList(
-                        title: "InstaPay Links / Usernames",
-                        controllers: _instapayLinkControllers,
-                        hint: "username@instapay or Link",
-                        onAdd: () => _addController(_instapayLinkControllers),
-                        onRemove: (idx) => _removeController(_instapayLinkControllers, idx),
-                        icon: LucideIcons.link,
-                        isNumeric: false,
+                      
+                      // ✅ حقل اسم المستخدم مع القيود المطلوبة
+                      CustomTextField(
+                        label: "Username",
+                        controller: _usernameController,
+                        hintText: "English letters & numbers only",
+                        prefixIcon: LucideIcons.atSign,
+                        // 1. منع الكتابة: يسمح فقط بالحروف الإنجليزية (صغيرة/كبيرة) والأرقام
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                        ],
+                        // 2. التحقق النهائي: للتأكد من عدم وجود مسافات أو رموز
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return "Username is required";
+                          if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(value)) {
+                            return "Only English letters & numbers allowed (No spaces)";
+                          }
+                          return null;
+                        },
                       ),
                       
-                      const SizedBox(height: 40),
+                      if (_isTeacher) ...[
+                        const SizedBox(height: 20),
+                        const Divider(color: Colors.white10),
+                        const SizedBox(height: 10),
+                        const Text("TEACHER INFO", style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                        const SizedBox(height: 15),
+                        
+                        CustomTextField(
+                          label: "Specialty / Job Title",
+                          controller: _specialtyController,
+                          hintText: "e.g. Physics Teacher",
+                          prefixIcon: LucideIcons.briefcase,
+                        ),
+                        const SizedBox(height: 20),
+
+                        CustomTextField(
+                          label: "WhatsApp Number (For Students)",
+                          controller: _whatsappController,
+                          hintText: "201xxxxxxxxx",
+                          prefixIcon: LucideIcons.messageCircle,
+                          keyboardType: TextInputType.phone,
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 6, left: 8, bottom: 20),
+                          child: Text("Enter number with country code without '+' (e.g. 201xxxxxxxxx)", style: TextStyle(color: Colors.white38, fontSize: 11)),
+                        ),
+                        
+                        CustomTextField(
+                          label: "Bio / About Me",
+                          controller: _bioController,
+                          hintText: "Tell students about yourself...",
+                          prefixIcon: LucideIcons.fileText,
+                          keyboardType: TextInputType.multiline,
+                          maxLines: 3,
+                        ),
+
+                        const SizedBox(height: 30),
+                        const Divider(color: Colors.white10),
+                        const SizedBox(height: 10),
+                        const Text("PAYMENT METHODS", style: TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                        const SizedBox(height: 20),
+
+                        _buildDynamicList(
+                          title: "Cash Wallet Numbers",
+                          controllers: _cashNumberControllers,
+                          hint: "Enter Wallet Number",
+                          onAdd: () => _addController(_cashNumberControllers),
+                          onRemove: (idx) => _removeController(_cashNumberControllers, idx),
+                          icon: Icons.account_balance_wallet,
+                          isNumeric: true,
+                        ),
+                        const SizedBox(height: 24),
+
+                        _buildDynamicList(
+                          title: "InstaPay Numbers",
+                          controllers: _instapayNumberControllers,
+                          hint: "Enter InstaPay Phone Number",
+                          onAdd: () => _addController(_instapayNumberControllers),
+                          onRemove: (idx) => _removeController(_instapayNumberControllers, idx),
+                          icon: Icons.phone_iphone,
+                          isNumeric: true,
+                        ),
+                        const SizedBox(height: 24),
+
+                        _buildDynamicList(
+                          title: "InstaPay Links / Usernames",
+                          controllers: _instapayLinkControllers,
+                          hint: "username@instapay or Link",
+                          onAdd: () => _addController(_instapayLinkControllers),
+                          onRemove: (idx) => _removeController(_instapayLinkControllers, idx),
+                          icon: LucideIcons.link,
+                          isNumeric: false,
+                        ),
+                        const SizedBox(height: 40),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
 
-            // --- Save Button ---
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: SizedBox(
