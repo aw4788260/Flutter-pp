@@ -4,7 +4,6 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/storage_service.dart';
-// أو المسار المناسب حسب مكان الملف
 
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({super.key});
@@ -159,6 +158,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         statusColor = AppColors.accentYellow;
         statusIcon = LucideIcons.clock;
     }
+
+    // ✅ استخراج الملاحظة
+    final String? userNote = req['user_note'];
+    final bool hasNote = userNote != null && userNote.trim().isNotEmpty;
     
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -207,10 +210,43 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             "${req['total_price']} EGP", 
             style: const TextStyle(color: AppColors.accentYellow, fontSize: 14, fontWeight: FontWeight.bold),
           ),
+
+          // ✅ عرض الملاحظة هنا
+          if (hasNote)
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(12),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                       Icon(LucideIcons.fileText, size: 12, color: Colors.amber),
+                       SizedBox(width: 4),
+                       Text(
+                        "YOUR NOTE",
+                        style: TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    userNote,
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
           
           if (status == 'rejected' && req['rejection_reason'] != null)
             Container(
-              margin: const EdgeInsets.only(top: 16),
+              margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.all(12),
               width: double.infinity,
               decoration: BoxDecoration(
