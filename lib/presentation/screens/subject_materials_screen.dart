@@ -96,16 +96,16 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       List chapters = List.from(_content!['chapters'] ?? []);
 
       if (result is Map && result['deleted'] == true) {
-         // حذف شابتر
-         chapters.removeWhere((c) => c['id'].toString() == result['id'].toString());
+          // حذف شابتر
+          chapters.removeWhere((c) => c['id'].toString() == result['id'].toString());
       } else if (result is Map<String, dynamic>) {
-         // إضافة أو تحديث
-         int index = chapters.indexWhere((c) => c['id'].toString() == result['id'].toString());
-         if (index != -1) {
-           chapters[index] = result; 
-         } else {
-           chapters.add(result); 
-         }
+          // إضافة أو تحديث
+          int index = chapters.indexWhere((c) => c['id'].toString() == result['id'].toString());
+          if (index != -1) {
+            chapters[index] = result; 
+          } else {
+            chapters.add(result); 
+          }
       }
       _content!['chapters'] = chapters;
     });
@@ -144,6 +144,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                                 border: Border.all(color: Colors.white.withOpacity(0.05)),
                                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                               ),
+                              // 🔥 تم حذف const هنا
                               child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                             ),
                           ),
@@ -153,6 +154,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                             children: [
                               Text(
                                 widget.subjectTitle.toUpperCase(),
+                                // 🔥 تم حذف const هنا
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
@@ -165,6 +167,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 "SUBJECT CONTENTS",
+                                // 🔥 تم حذف const هنا
                                 style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
@@ -206,10 +209,13 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
+                              // 🔥 تم حذف const هنا
                               color: AppColors.accentYellow.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(50),
+                              // 🔥 تم حذف const هنا
                               border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
                             ),
+                            // 🔥 تم حذف const هنا
                             child: Icon(
                               _activeTab == 'chapters' ? LucideIcons.folderPlus : LucideIcons.filePlus, 
                               color: AppColors.accentYellow, size: 22
@@ -327,6 +333,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     children: [
                       Text(
                         (exam['title'] ?? 'Untitled Exam').toString().toUpperCase(),
+                        // 🔥 تم حذف const هنا
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -339,6 +346,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                         children: [
                           Text(
                             "${exam['duration_minutes'] ?? 0} MINS",
+                            // 🔥 تم حذف const هنا
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
@@ -349,6 +357,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                           const SizedBox(width: 8),
                           Text(
                             statusText,
+                            // 🔥 تم حذف const هنا
                             style: TextStyle(
                               fontSize: 8,
                               fontWeight: FontWeight.bold,
@@ -369,7 +378,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: const Icon(LucideIcons.edit, color: AppColors.accentOrange, size: 20),
+                      // 🔥 تم حذف const هنا
+                      icon: Icon(LucideIcons.edit, color: AppColors.accentOrange, size: 20),
                       tooltip: "تعديل الامتحان",
                       onPressed: () {
                         Navigator.push(
@@ -386,7 +396,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                       },
                     ),
                     IconButton(
-                      icon: const Icon(LucideIcons.barChart2, color: AppColors.accentYellow, size: 20),
+                      // 🔥 تم حذف const هنا
+                      icon: Icon(LucideIcons.barChart2, color: AppColors.accentYellow, size: 20),
                       tooltip: "Statistics",
                       onPressed: () {
                         Navigator.push(
@@ -404,6 +415,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                 )
               else
                 IconButton(
+                  // 🔥 تم حذف const هنا
                   icon: Icon(LucideIcons.chevronRight, size: 20, color: statusColor.withOpacity(0.5)),
                   onPressed: () => _openExam(exam, isCompleted, isExpired),
                 ),
@@ -429,7 +441,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: const Text("Error: Cannot load result."), backgroundColor: AppColors.error)
+          // 🔥 تم حذف const هنا
+          SnackBar(content: Text("Error: Cannot load result."), backgroundColor: AppColors.error)
         );
       }
     } else {
@@ -458,7 +471,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         return GestureDetector(
           onTap: () {
             final String courseTitle = _content?['course_title'] ?? 'Unknown Course';
-            
+             
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -500,6 +513,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   child: Center(
                     child: Text(
                       "${index + 1}".padLeft(2, '0'),
+                      // 🔥 تم حذف const هنا
                       style: TextStyle(
                         color: AppColors.accentYellow,
                         fontWeight: FontWeight.bold,
@@ -515,6 +529,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     children: [
                       Text(
                         (chapter['title'] ?? 'Chapter').toString().toUpperCase(),
+                        // 🔥 تم حذف const هنا
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -527,10 +542,12 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                       const SizedBox(height: 4),
                       Row(
                         children: [
+                          // 🔥 تم حذف const هنا
                           Icon(LucideIcons.hash, size: 10, color: AppColors.accentOrange),
                           const SizedBox(width: 4),
                           Text(
                             "${videosCount + pdfsCount} CONTENTS",
+                            // 🔥 تم حذف const هنا
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
@@ -546,6 +563,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                 // 🟢 زر تعديل الشابتر للمعلم
                 if (_isTeacher)
                   IconButton(
+                    // 🔥 تم حذف const هنا
                     icon: Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
                     onPressed: () {
                       Navigator.push(
@@ -564,6 +582,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     },
                   )
                 else
+                  // 🔥 تم حذف const هنا
                   Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
               ],
             ),
@@ -592,6 +611,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
           child: Text(
             title.toUpperCase(),
             textAlign: TextAlign.center,
+            // 🔥 تم حذف const هنا
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
@@ -609,10 +629,12 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // 🔥 تم حذف const هنا
           Icon(icon, size: 48, color: AppColors.textSecondary.withOpacity(0.3)),
           const SizedBox(height: 16),
           Text(
             message.toUpperCase(),
+            // 🔥 تم حذف const هنا
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
