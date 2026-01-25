@@ -123,7 +123,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 "SELECT PLAYER",
                 style: TextStyle(
                   color: AppColors.textPrimary,
@@ -178,7 +178,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+      builder: (_) => Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
     );
 
     try {
@@ -255,7 +255,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+      builder: (_) => Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
     );
 
     try {
@@ -344,7 +344,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+      builder: (_) => Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
     );
 
     try {
@@ -420,7 +420,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 "SELECT DOWNLOAD QUALITY",
                 style: TextStyle(
                   color: AppColors.textPrimary,
@@ -437,7 +437,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: qualities.map((q) {
                       return ListTile(
-                        leading: const Icon(LucideIcons.download, color: AppColors.accentYellow),
+                        leading: Icon(LucideIcons.download, color: AppColors.accentYellow),
                         title: Text(
                           "${q['quality']}p", 
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -471,17 +471,17 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       videoTitle: videoTitle,
       courseName: widget.courseTitle,
       subjectName: widget.subjectTitle,
-      chapterName: widget.chapter['title'] ?? "Chapter",
+      chapterName: _currentChapter['title'] ?? "Chapter",
       downloadUrl: downloadUrl,
       audioUrl: audioUrl,
       quality: quality,   
       duration: duration, 
       onProgress: (p) {},
       onComplete: () {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Completed!"), backgroundColor: AppColors.success));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text("Download Completed!"), backgroundColor: AppColors.success));
       },
       onError: (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text("Download Failed"), backgroundColor: AppColors.error));
       },
     );
   }
@@ -495,15 +495,15 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
       videoTitle: pdfTitle, 
       courseName: widget.courseTitle, 
       subjectName: widget.subjectTitle,
-      chapterName: widget.chapter['title'] ?? "Chapter",
+      chapterName: _currentChapter['title'] ?? "Chapter",
       isPdf: true,
       quality: "PDF", 
       onProgress: (p) {},
       onComplete: () {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF Download Completed!"), backgroundColor: AppColors.success));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text("PDF Download Completed!"), backgroundColor: AppColors.success));
       },
       onError: (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download Failed"), backgroundColor: AppColors.error));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text("Download Failed"), backgroundColor: AppColors.error));
       },
     );
   }
@@ -551,10 +551,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                   decoration: BoxDecoration(
                                     color: AppColors.backgroundSecondary,
                                     borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                    border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                                     boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                                   ),
-                                  child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                                  child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -563,7 +563,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                 children: [
                                   Text(
                                     _currentChapter['title'].toString().toUpperCase(),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                       color: AppColors.textPrimary,
@@ -599,7 +599,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                   MaterialPageRoute(
                                     builder: (_) => ManageContentScreen(
                                       contentType: type,
-                                      parentId: widget.chapter['id'].toString(), // ID الشابتر
+                                      parentId: _currentChapter['id'].toString(), // ID الشابتر
                                     ),
                                   ),
                                 ).then((val) => _handleReturnData(val)); // ✅ تحديث فوري
@@ -629,7 +629,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.backgroundSecondary,
                           borderRadius: BorderRadius.circular(50),
-                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                          border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                         ),
                         child: Row(
                           children: [
@@ -646,7 +646,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               // Content List
               Expanded(
                 child: _isLoading 
-                  ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+                  ? Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
                   : activeTab == 'videos'
                     ? _buildVideosList(videos)
                     : _buildPdfsList(pdfs),
@@ -702,7 +702,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           decoration: BoxDecoration(
             color: AppColors.backgroundSecondary,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
             boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
           ),
           child: Column(
@@ -718,7 +718,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                       ),
-                      child: const Icon(LucideIcons.play, color: AppColors.accentOrange, size: 18),
+                      child: Icon(LucideIcons.play, color: AppColors.accentOrange, size: 18),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -727,7 +727,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         children: [
                           Text(
                             video['title'].toString().toUpperCase(),
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
@@ -742,7 +742,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     // 🟢 زر التعديل (للمعلم فقط)
                     if (_isTeacher)
                       IconButton(
-                        icon: const Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
+                        icon: Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
                         onPressed: () {
                            Navigator.push(
                             context,
@@ -750,7 +750,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                               builder: (_) => ManageContentScreen(
                                 contentType: ContentType.video,
                                 initialData: video,
-                                parentId: widget.chapter['id'].toString(),
+                                parentId: _currentChapter['id'].toString(),
                               ),
                             ),
                           ).then((val) => _handleReturnData(val)); // ✅ تحديث فوري
@@ -759,7 +759,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Colors.white10),
+              Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
               Row(
                 children: [
                   Expanded(
@@ -769,7 +769,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                       () => _showPlayerSelectionDialog(video), 
                     ),
                   ),
-                  Container(width: 1, height: 48, color: Colors.white10),
+                  Container(width: 1, height: 48, color: AppColors.textSecondary.withOpacity(0.1)),
                   
                   Expanded(
                     child: ValueListenableBuilder(
@@ -823,7 +823,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
           decoration: BoxDecoration(
             color: AppColors.backgroundSecondary,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
             boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
           ),
           child: Column(
@@ -839,14 +839,14 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                       ),
-                      child: const Icon(LucideIcons.fileText, color: AppColors.accentYellow, size: 18),
+                      child: Icon(LucideIcons.fileText, color: AppColors.accentYellow, size: 18),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(pdf['title'].toString().toUpperCase(), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                          Text(pdf['title'].toString().toUpperCase(), style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                           const SizedBox(height: 4),
                           Text("STUDY MATERIAL", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.7))),
                         ],
@@ -856,7 +856,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     // 🟢 زر التعديل (للمعلم فقط)
                     if (_isTeacher)
                       IconButton(
-                        icon: const Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
+                        icon: Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
                         onPressed: () {
                            Navigator.push(
                             context,
@@ -864,7 +864,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                               builder: (_) => ManageContentScreen(
                                 contentType: ContentType.pdf,
                                 initialData: pdf,
-                                parentId: widget.chapter['id'].toString(),
+                                parentId: _currentChapter['id'].toString(),
                               ),
                             ),
                           ).then((val) => _handleReturnData(val)); // ✅ تحديث فوري
@@ -873,7 +873,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Colors.white10),
+              Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
               Row(
                 children: [
                   Expanded(
@@ -881,7 +881,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         Navigator.push(context, MaterialPageRoute(builder: (_) => PdfViewerScreen(pdfId: pdfId, title: pdf['title'])));
                     }),
                   ),
-                  Container(width: 1, height: 48, color: Colors.white10),
+                  Container(width: 1, height: 48, color: AppColors.textSecondary.withOpacity(0.1)),
                   Expanded(
                     child: ValueListenableBuilder(
                       valueListenable: Hive.box('downloads_box').listenable(),
@@ -914,7 +914,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         decoration: BoxDecoration(
           color: AppColors.backgroundPrimary,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
         ),
         child: Row(
           children: [
@@ -924,13 +924,13 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                  Text(title, style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10)),
+                  Text(subtitle, style: TextStyle(color: AppColors.textSecondary.withOpacity(0.5), fontSize: 10)),
                 ],
               ),
             ),
-            const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 18),
+            Icon(LucideIcons.chevronRight, color: AppColors.textSecondary.withOpacity(0.6), size: 18),
           ],
         ),
       ),
