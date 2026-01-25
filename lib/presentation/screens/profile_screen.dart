@@ -19,7 +19,7 @@ import 'my_requests_screen.dart';
 import 'teacher/student_requests_screen.dart';
 import 'teacher/manage_students_screen.dart';
 import 'teacher/manage_team_screen.dart';
-import 'teacher/financial_stats_screen.dart'; 
+import 'teacher/financial_stats_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,7 +30,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
-  bool _isTeacher = false; 
+  bool _isTeacher = false;
   String? _profileImage; // ✅ متغير لتخزين رابط الصورة
 
   @override
@@ -82,7 +82,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // 2. مسح البيانات محلياً
       await authBox.clear();
-      
+
       // 3. مسح الذاكرة
       AppState().clear();
 
@@ -165,8 +165,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ? DecorationImage(
                                 image: NetworkImage(
                                   // ✅ إذا كان الرابط يبدأ بـ http نستخدمه، وإلا نقوم ببنائه
-                                  _profileImage!.startsWith('http') 
-                                      ? _profileImage! 
+                                  _profileImage!.startsWith('http')
+                                      ? _profileImage!
                                       : '$_baseUrl/api/public/get-avatar?file=$_profileImage'
                                 ),
                                 fit: BoxFit.cover,
@@ -220,13 +220,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
-                    
+
                     if (!isGuest)
                       GestureDetector(
                         onTap: () {
                           // ✅ تحديث البيانات عند العودة من شاشة التعديل
                           Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen()))
-                              .then((_) => _loadUserData()); 
+                              .then((_) => _loadUserData());
                         },
                         child: Container(
                           padding: const EdgeInsets.all(10),
@@ -265,36 +265,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       // 1. طلبات الاشتراك
                       _buildMenuItem(
-                        context, 
-                        icon: LucideIcons.bellRing, 
-                        title: "Incoming Requests", 
+                        context,
+                        icon: LucideIcons.bellRing,
+                        title: "Incoming Requests",
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentRequestsScreen()))
                       ),
                       Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
-                      
+
                       // 2. إدارة الطلاب
                       _buildMenuItem(
-                        context, 
-                        icon: LucideIcons.users, 
-                        title: "My Students", 
+                        context,
+                        icon: LucideIcons.users,
+                        title: "My Students",
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageStudentsScreen()))
                       ),
                       Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
-                      
+
                       // 3. فريق العمل
                       _buildMenuItem(
-                        context, 
-                        icon: LucideIcons.shieldCheck, 
-                        title: "Manage Team", 
+                        context,
+                        icon: LucideIcons.shieldCheck,
+                        title: "Manage Team",
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageTeamScreen()))
                       ),
                       Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
 
                       // 4. الإحصائيات المالية
                       _buildMenuItem(
-                        context, 
-                        icon: LucideIcons.barChart2, 
-                        title: "Financial Stats", 
+                        context,
+                        icon: LucideIcons.barChart2,
+                        title: "Financial Stats",
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FinancialStatsScreen()))
                       ),
                     ],
@@ -324,7 +324,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => _loadUserData())), // ✅ تحديث عند العودة
                       Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
                       _buildMenuItem(context, icon: LucideIcons.lock, title: "Change Password", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
-                      
+
                       // ⚠️ إظهار "طلباتي" فقط للطالب
                       if (!_isTeacher) ...[
                         Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
@@ -354,24 +354,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   children: [
                     _buildMenuItem(
-                      context, 
-                      icon: LucideIcons.info, 
-                      title: "App Information", 
+                      context,
+                      icon: LucideIcons.info,
+                      title: "App Information",
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevInfoScreen()))
                     ),
                     Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
-                    
+
                     // ✅ زر التبديل بين الوضعين النهاري والليلي
                     _buildMenuItem(
-                      context, 
-                      icon: AppState().isDark ? LucideIcons.moon : LucideIcons.sun, 
-                      title: AppState().isDark ? "Dark Mode / الوضع الليلي" : "Light Mode / الوضع النهاري",
+                      context,
+                      // 🔥 FIX: Use AppState.isDark instead of AppState().isDark
+                      icon: AppState.isDark ? LucideIcons.moon : LucideIcons.sun,
+                      title: AppState.isDark ? "Dark Mode / الوضع الليلي" : "Light Mode / الوضع النهاري",
                       onTap: () {
                         AppState().toggleTheme();
                         setState(() {}); // تحديث فوري للأيقونة
                       },
                       trailing: Switch(
-                        value: AppState().isDark,
+                        // 🔥 FIX: Use AppState.isDark instead of AppState().isDark
+                        value: AppState.isDark,
                         activeColor: AppColors.accentYellow,
                         onChanged: (val) {
                           AppState().toggleTheme();
@@ -386,7 +388,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // --- Logout Button ---
               GestureDetector(
-                onTap: _logout, 
+                onTap: _logout,
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -400,17 +402,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        isGuest ? LucideIcons.logIn : LucideIcons.logOut, 
-                        color: isGuest ? AppColors.backgroundPrimary : AppColors.error, 
+                        isGuest ? LucideIcons.logIn : LucideIcons.logOut,
+                        color: isGuest ? AppColors.backgroundPrimary : AppColors.error,
                         size: 18
                       ),
                       const SizedBox(width: 12),
                       Text(
-                        isGuest ? "LOGIN / REGISTER" : "LOGOUT", 
+                        isGuest ? "LOGIN / REGISTER" : "LOGOUT",
                         style: TextStyle(
-                          fontSize: 12, 
-                          fontWeight: FontWeight.bold, 
-                          color: isGuest ? AppColors.backgroundPrimary : AppColors.error, 
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isGuest ? AppColors.backgroundPrimary : AppColors.error,
                           letterSpacing: 1.5
                         )
                       ),
@@ -449,7 +451,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Expanded(
                 child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
               ),
-              
+
               if (trailing != null)
                 trailing
               else ...[
