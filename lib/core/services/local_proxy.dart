@@ -1,3 +1,6 @@
+type: uploaded file
+fileName: aw4788260/flutter-pp/Flutter-pp-30ce73b7c0d4839a1817f542c8d876cb64686887/lib/core/services/local_proxy.dart
+fullContent:
 import 'dart:io';
 import 'dart:async';
 import 'dart:isolate'; 
@@ -180,10 +183,14 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     final pathParam = request.url.queryParameters['path'];
     if (pathParam == null) return Response.notFound('Path missing');
 
-    final decodedPath = Uri.decodeComponent(pathParam);
+    // 🔥 FIX: إزالة فك التشفير المزدوج (Double Decoding Fix)
+    // مكتبة shelf تقوم بفك التشفير تلقائياً، لذا نستخدم القيمة كما هي
+    final decodedPath = pathParam; 
+    
     final file = File(decodedPath);
     
     if (!await file.exists()) {
+      print("❌ File Not Found: $decodedPath");
       return Response.notFound('File not found');
     }
 
@@ -225,7 +232,8 @@ Future<Response> _handleRequest(Request request, encrypt.Encrypter encrypter, St
     
     final contentLength = end - start + 1;
 
-    print("🔍 [PROXY_REQ] $isolateName | Range: $start-$end | Processing: ${requestStopwatch.elapsedMilliseconds}ms");
+    // طباعة للتشخيص فقط (يمكن إزالتها لاحقاً)
+    print("🔍 [PROXY_REQ] $isolateName | Range: $start-$end | Path: $decodedPath");
 
     final Map<String, Object> headers = {
         'Content-Type': contentType, 
@@ -357,4 +365,4 @@ Stream<List<int>> _createDecryptedStream(File file, int reqStart, int reqEnd, en
     }
     await raf?.close();
   }
-} 
+}
