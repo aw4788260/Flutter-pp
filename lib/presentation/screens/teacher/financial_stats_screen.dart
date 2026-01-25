@@ -12,7 +12,7 @@ class FinancialStatsScreen extends StatefulWidget {
 class _FinancialStatsScreenState extends State<FinancialStatsScreen> {
   final TeacherService _teacherService = TeacherService();
   bool _isLoading = true;
-  
+   
   // Data Variables
   int _totalUniqueStudents = 0;
   double _totalEarnings = 0;
@@ -38,7 +38,7 @@ class _FinancialStatsScreenState extends State<FinancialStatsScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if(mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("خطأ: $e"), backgroundColor: Colors.red));
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("خطأ: $e"), backgroundColor: AppColors.error));
       }
     }
   }
@@ -48,12 +48,12 @@ class _FinancialStatsScreenState extends State<FinancialStatsScreen> {
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       appBar: AppBar(
-        title: const Text("الإحصائيات والأرباح", style: TextStyle(color: AppColors.textPrimary)),
+        title: Text("الإحصائيات والأرباح", style: TextStyle(color: AppColors.textPrimary)),
         backgroundColor: AppColors.backgroundSecondary,
-        iconTheme: const IconThemeData(color: AppColors.accentYellow),
+        iconTheme: IconThemeData(color: AppColors.accentYellow),
       ),
       body: _isLoading 
-          ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+          ? Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -67,12 +67,12 @@ class _FinancialStatsScreenState extends State<FinancialStatsScreen> {
                       Expanded(child: _buildSummaryCard("إجمالي الأرباح", "$_totalEarnings ج.م", Icons.monetization_on, Colors.green)),
                     ],
                   ),
-                  
+                   
                   const SizedBox(height: 25),
-                  
+                   
                   // 2. قسم الكورسات
                   if (_coursesStats.isNotEmpty) ...[
-                    const Text("📊 إحصائيات الكورسات", style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text("📊 إحصائيات الكورسات", style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
                     ..._coursesStats.map((c) => _buildStatTile(c['title'], c['count'], true)).toList(),
                     const SizedBox(height: 20),
@@ -80,7 +80,7 @@ class _FinancialStatsScreenState extends State<FinancialStatsScreen> {
 
                   // 3. قسم المواد
                   if (_subjectsStats.isNotEmpty) ...[
-                    const Text("📚 إحصائيات المواد (فردي)", style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text("📚 إحصائيات المواد (فردي)", style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
                     ..._subjectsStats.map((s) => _buildStatTile(s['title'], s['count'], false)).toList(),
                   ],
@@ -96,15 +96,15 @@ class _FinancialStatsScreenState extends State<FinancialStatsScreen> {
       decoration: BoxDecoration(
         color: AppColors.backgroundSecondary,
         borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5)],
-        border: Border.all(color: Colors.white10)
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5)],
+        border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
       ),
       child: Column(
         children: [
           Icon(icon, color: color, size: 30),
           const SizedBox(height: 10),
-          Text(value, style: const TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-          Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          Text(value, style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(title, style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
         ],
       ),
     );
@@ -117,17 +117,17 @@ class _FinancialStatsScreenState extends State<FinancialStatsScreen> {
       decoration: BoxDecoration(
         color: AppColors.backgroundSecondary,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white10)
+        border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
       ),
       child: Row(
         children: [
           Icon(isCourse ? Icons.school : Icons.menu_book, color: isCourse ? Colors.orange : Colors.purple, size: 20),
           const SizedBox(width: 12),
-          Expanded(child: Text(title, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14))),
+          Expanded(child: Text(title, style: TextStyle(color: AppColors.textPrimary, fontSize: 14))),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(color: AppColors.backgroundPrimary, borderRadius: BorderRadius.circular(8)),
-            child: Text("$count طالب", style: const TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.bold)),
+            child: Text("$count طالب", style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.bold)),
           )
         ],
       ),
