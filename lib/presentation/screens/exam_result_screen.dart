@@ -21,7 +21,7 @@ class ExamResultScreen extends StatefulWidget {
 class _ExamResultScreenState extends State<ExamResultScreen> {
   bool _loading = true;
   Map<String, dynamic>? _resultData;
-  
+   
   // متغيرات الهيدرز
   String? _userId;
   String? _deviceId;
@@ -102,7 +102,7 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
                     'x-device-id': _deviceId ?? '',
                     'x-app-secret': _appSecret,
                   },
-                  placeholder: (context, url) => const Center(
+                  placeholder: (context, url) => Center(
                       child: CircularProgressIndicator(color: AppColors.accentYellow)),
                   errorWidget: (context, url, error) =>
                       const Icon(Icons.error, color: AppColors.error),
@@ -135,13 +135,13 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
+    if (_loading) return Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
     
     if (_resultData == null) {
       return Scaffold(
         backgroundColor: AppColors.backgroundPrimary,
-        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: const IconThemeData(color: Colors.white)),
-        body: const Center(child: Text("Failed to load results", style: TextStyle(color: AppColors.error))),
+        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: IconThemeData(color: AppColors.textPrimary)),
+        body: Center(child: Text("Failed to load results", style: TextStyle(color: AppColors.error))),
       );
     }
 
@@ -155,10 +155,10 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       appBar: AppBar(
-        title: const Text("EXAM RESULTS", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        title: Text("EXAM RESULTS", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
         backgroundColor: AppColors.backgroundSecondary,
         leading: IconButton(
-          icon: const Icon(LucideIcons.x), 
+          icon: Icon(LucideIcons.x, color: AppColors.textPrimary), 
           onPressed: () => Navigator.pop(context), 
         ),
       ),
@@ -188,13 +188,13 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
                   const SizedBox(height: 16),
                   Text(statusMsg, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 2.0)),
                   const SizedBox(height: 8),
-                  Text("Score: ${scoreDetails['score']} / ${scoreDetails['total']}", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  Text("Score: ${scoreDetails['score']} / ${scoreDetails['total']}", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                 ],
               ),
             ),
             
             const SizedBox(height: 32),
-            const Align(
+            Align(
               alignment: Alignment.centerLeft,
               child: Text("DETAILED ANALYSIS", style: TextStyle(color: AppColors.accentYellow, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
             ),
@@ -225,7 +225,7 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
                       children: [
                         Icon(isCorrect ? LucideIcons.checkCircle : LucideIcons.xCircle, color: isCorrect ? AppColors.success : AppColors.error, size: 20),
                         const SizedBox(width: 10),
-                        Text("Question ${index + 1}", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text("Question ${index + 1}", style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -251,7 +251,7 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
                                 'x-device-id': _deviceId ?? '',
                                 'x-app-secret': _appSecret,
                               },
-                              placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)),
+                              placeholder: (context, url) => Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)),
                               errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
                               fit: BoxFit.contain,
                             ),
@@ -259,7 +259,7 @@ class _ExamResultScreenState extends State<ExamResultScreen> {
                         ),
                       ),
 
-                    Text(q['question_text'] ?? "", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                    Text(q['question_text'] ?? "", style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 16),
                     
                     // الخيارات
