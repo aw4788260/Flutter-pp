@@ -24,14 +24,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     // 1. التحقق من تطابق كلمة السر الجديدة قبل الإرسال
     if (_newPassController.text != _confirmPassController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Passwords do not match"), backgroundColor: AppColors.error)
+        SnackBar(content: const Text("Passwords do not match"), backgroundColor: AppColors.error)
       );
       return;
     }
 
     if (_oldPassController.text.isEmpty || _newPassController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill all fields"), backgroundColor: AppColors.error)
+        SnackBar(content: const Text("Please fill all fields"), backgroundColor: AppColors.error)
       );
       return;
     }
@@ -71,7 +71,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         // التحقق من نجاح العملية بناءً على رد السيرفر
         if (res.statusCode == 200 && res.data['success'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Password Updated Successfully"), backgroundColor: AppColors.success)
+            SnackBar(content: const Text("Password Updated Successfully"), backgroundColor: AppColors.success)
           );
           Navigator.pop(context);
         } else {
@@ -119,11 +119,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         border: Border.all(color: Colors.white.withOpacity(0.05)),
                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Text(
+                  Text(
                     "CHANGE PASSWORD",
                     style: TextStyle(
                       fontSize: 20, 
@@ -168,7 +168,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     shadowColor: AppColors.accentYellow.withOpacity(0.2),
                   ),
                   child: _isLoading 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.backgroundPrimary, strokeWidth: 2))
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.backgroundPrimary, strokeWidth: 2))
                     : const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -197,7 +197,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(
             label.toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 10, 
               fontWeight: FontWeight.bold, 
               color: AppColors.accentYellow, 
@@ -214,16 +214,16 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           child: TextField(
             controller: controller,
             obscureText: true,
-            style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
             decoration: InputDecoration(
-              prefixIcon: const Icon(LucideIcons.lock, size: 18, color: AppColors.textSecondary),
+              prefixIcon: Icon(LucideIcons.lock, size: 18, color: AppColors.textSecondary),
               hintText: hint,
               hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.5)),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: AppColors.accentYellow, width: 1),
+                borderSide: BorderSide(color: AppColors.accentYellow, width: 1),
               ),
             ),
           ),
