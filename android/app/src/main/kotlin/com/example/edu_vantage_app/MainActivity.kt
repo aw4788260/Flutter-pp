@@ -2,7 +2,7 @@ package com.example.edu_vantage_app
 
 import android.app.NotificationManager
 import android.content.Context
-import android.media.AudioManager // ✅ مكتبة الصوت الضرورية
+import android.media.AudioManager
 import android.os.Build
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
@@ -13,22 +13,28 @@ class MainActivity: FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // 1. منع تصوير الشاشة (الفيديو يظهر أسود + منع السكرين شوت)
+        // 1. منع تسجيل الفيديو وأخذ لقطات الشاشة (FLAG_SECURE)
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
 
-        // 2. منع التقاط الصوت الداخلي (نفس منطق تطبيق الجافا بالضبط)
-        // يعمل فقط على أندرويد 10 (API 29) وما فوق لأن الخاصية غير موجودة قبله
+        // 2. منع تسجيل الصوت الداخلي (Internal Audio)
+        // يعمل فقط في أندرويد 10 (API 29) وما فوق
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            // القيمة 3 في الجافا تعادل AudioManager.ALLOW_CAPTURE_BY_NONE في الكوتلن
-            audioManager.allowedCapturePolicy = AudioManager.ALLOW_CAPTURE_BY_NONE
+            
+            // استخدام الرقم 3 مباشرة كما في كود الجافا لتجنب خطأ Unresolved reference
+            // الرقم 3 يعني: AudioManager.ALLOW_CAPTURE_BY_NONE
+            audioManager.allowedCapturePolicy = 3 
         }
     }
 
     override fun onDestroy() {
-        // حذف الإشعارات عند إغلاق التطبيق نهائياً
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.cancelAll()
+        // 3. حذف جميع الإشعارات الخاصة بالتطبيق فوراً عند الإغلاق
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancelAll()
+        } catch (e: Exception) {
+            // تجاهل أي خطأ أثناء الإغلاق
+        }
         
         super.onDestroy()
     }
