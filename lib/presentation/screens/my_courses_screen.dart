@@ -22,7 +22,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
   String _searchTerm = '';
   bool _isTeacher = false;
   bool _isUpdating = false;
-  
+   
   // ✅ تعريف خدمة المدرس
   final TeacherService _teacherService = TeacherService();
 
@@ -110,10 +110,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: Colors.white.withOpacity(0.05)),
                         ),
-                        child: const Icon(LucideIcons.lock, color: AppColors.textSecondary, size: 24),
+                        child: Icon(LucideIcons.lock, color: AppColors.textSecondary, size: 24),
                       ),
                       const SizedBox(width: 16),
-                      const Column(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
@@ -126,7 +126,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               height: 1.0,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
                             "GUEST MODE",
                             style: TextStyle(
@@ -151,7 +151,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                         border: Border.all(color: Colors.white.withOpacity(0.05)),
                         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                       ),
-                      child: const Icon(LucideIcons.shoppingCart, color: AppColors.accentYellow, size: 22),
+                      child: Icon(LucideIcons.shoppingCart, color: AppColors.accentYellow, size: 22),
                     ),
                   ),
                 ],
@@ -166,7 +166,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                   children: [
                     Icon(LucideIcons.shieldAlert, size: 64, color: AppColors.textSecondary.withOpacity(0.2)),
                     const SizedBox(height: 24),
-                    const Text(
+                    Text(
                       "LOGIN REQUIRED",
                       style: TextStyle(
                         color: AppColors.textPrimary,
@@ -233,10 +233,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: Colors.white.withOpacity(0.05)),
                         ),
-                        child: const Icon(LucideIcons.bookOpen, color: AppColors.accentYellow, size: 24),
+                        child: Icon(LucideIcons.bookOpen, color: AppColors.accentYellow, size: 24),
                       ),
                       const SizedBox(width: 16),
-                      const Column(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
@@ -249,7 +249,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               height: 1.0,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
                             "MY LESSONS",
                             style: TextStyle(
@@ -263,7 +263,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       ),
                     ],
                   ),
-                  
+                   
                   // Buttons
                   Row(
                     children: [
@@ -290,7 +290,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               borderRadius: BorderRadius.circular(50),
                               border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
                             ),
-                            child: const Icon(LucideIcons.plusSquare, color: AppColors.accentYellow, size: 22),
+                            child: Icon(LucideIcons.plusSquare, color: AppColors.accentYellow, size: 22),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -307,7 +307,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             border: Border.all(color: Colors.white.withOpacity(0.05)),
                             boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                           ),
-                          child: const Icon(LucideIcons.shoppingCart, color: AppColors.accentYellow, size: 22),
+                          child: Icon(LucideIcons.shoppingCart, color: AppColors.accentYellow, size: 22),
                         ),
                       ),
                     ],
@@ -317,7 +317,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
             ),
             
             if (_isUpdating)
-              const Expanded(
+              Expanded(
                 child: Center(
                   child: CircularProgressIndicator(color: AppColors.accentYellow),
                 ),
@@ -341,12 +341,12 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                         itemCount: libraryItems.length,
                         itemBuilder: (context, index) {
                           final item = libraryItems[index];
-                          
+                           
                           final String title = item['title'] ?? 'Unknown';
                           final String instructor = item['instructor'] ?? 'Instructor';
                           final String code = item['code']?.toString() ?? '';
                           final String id = item['id'].toString();
-                          
+                           
                           final String description = item['description'] ?? '';
                           final double localPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
 
@@ -396,7 +396,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                       borderRadius: BorderRadius.circular(12),
                                       boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                     ),
-                                    child: const Icon(
+                                    child: Icon(
                                       LucideIcons.playCircle, 
                                       color: AppColors.accentOrange, 
                                       size: 24
@@ -418,7 +418,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                             ),
                                             child: Text(
                                               "#$code",
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 color: AppColors.accentOrange,
                                                 fontSize: 8,
                                                 fontWeight: FontWeight.bold,
@@ -428,7 +428,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
 
                                         Text(
                                           title.toUpperCase(),
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.textPrimary,
                                             fontSize: 15,
                                             fontWeight: FontWeight.bold,
@@ -454,7 +454,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                       ],
                                     ),
                                   ),
-                                  
+                                   
                                   // 🟢 زر التعديل (داخل البطاقة)
                                   if (_isTeacher)
                                     GestureDetector(
@@ -493,7 +493,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                           shape: BoxShape.circle,
                                           border: Border.all(color: AppColors.accentYellow.withOpacity(0.3)),
                                         ),
-                                        child: const Icon(LucideIcons.edit3, color: AppColors.accentYellow, size: 18),
+                                        child: Icon(LucideIcons.edit3, color: AppColors.accentYellow, size: 18),
                                       ),
                                     )
                                   else
@@ -504,7 +504,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           );
                         },
                       ),
-            ),
+              ),
           ],
         ),
       ),
@@ -543,11 +543,11 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                         border: Border.all(color: Colors.white.withOpacity(0.05)),
                         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Text(
+                  Text(
                     "MARKET",
                     style: TextStyle(
                       color: AppColors.textPrimary,
@@ -559,7 +559,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                 ],
               ),
             ),
-            
+             
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Container(
@@ -571,7 +571,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                 child: TextField(
                   autofocus: false,
                   onChanged: (val) => setState(() => _searchTerm = val),
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                  style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
                   decoration: InputDecoration(
                     prefixIcon: Icon(
                       LucideIcons.search,
@@ -589,7 +589,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            
+             
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -627,7 +627,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Icon(LucideIcons.compass, size: 14, color: AppColors.accentYellow),
+                              Icon(LucideIcons.compass, size: 14, color: AppColors.accentYellow),
                               Icon(LucideIcons.shoppingCart, size: 14, color: AppColors.textSecondary.withOpacity(0.4)),
                             ],
                           ),
@@ -635,7 +635,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                             course.title.toUpperCase(),
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.textPrimary,
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -660,7 +660,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 "${course.fullPrice.toInt()} EGP", 
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.accentYellow,
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
