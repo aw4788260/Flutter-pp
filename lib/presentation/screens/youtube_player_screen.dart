@@ -25,7 +25,7 @@ class YoutubePlayerScreen extends StatefulWidget {
 
 class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
   late YoutubePlayerController _controller;
-  
+   
   // متغيرات العلامة المائية
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
@@ -74,7 +74,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
 
   void _getUserId() {
     String displayText = '';
-    
+     
     if (AppState().userData != null) {
       displayText = AppState().userData!['phone'] ?? '';
     }
@@ -119,14 +119,14 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
     _watermarkTimer?.cancel();
     _controller.removeListener(_playerListener);
     _controller.dispose();
-    
+     
     // ✅ استعادة وضع النظام الطبيعي (إظهار الأشرطة العلوية والسفلية)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
-    
+     
     // ✅ استعادة توجيه الشاشة للوضع الطبيعي (السماح بالتدوير أو العودة للعمودي)
     // يمكنك استخدام DeviceOrientation.portraitUp إذا كنت تريد إجبار الوضع العمودي فقط
     SystemChrome.setPreferredOrientations(DeviceOrientation.values); 
-    
+     
     super.dispose();
   }
 
@@ -141,9 +141,12 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
             child: YoutubePlayer(
               controller: _controller,
               showVideoProgressIndicator: true,
+              // 🔥 تم حذف const هنا
               progressIndicatorColor: AppColors.accentYellow,
-              progressColors: const ProgressBarColors(
+              progressColors: ProgressBarColors(
+                // 🔥 تم حذف const هنا
                 playedColor: AppColors.accentYellow,
+                // 🔥 تم حذف const هنا
                 handleColor: AppColors.accentYellow,
               ),
               bottomActions: [
