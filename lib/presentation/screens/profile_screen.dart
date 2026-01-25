@@ -120,7 +120,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 "MY PROFILE",
                 style: TextStyle(
                   fontSize: 24,
@@ -132,7 +132,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 4),
               Text(
                 _isTeacher ? "TEACHER DASHBOARD" : "MANAGE YOUR ACCOUNT",
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
                   color: AppColors.accentYellow,
@@ -147,7 +147,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.backgroundSecondary,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  // ✅ استخدام لون حدود ديناميكي (يظهر في الفاتح والداكن)
+                  border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
                 ),
                 child: Row(
@@ -178,7 +179,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           : Center(
                               child: Text(
                                 firstLetter,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 28,
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.accentYellow,
@@ -193,7 +194,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           Text(
                             name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: AppColors.textPrimary,
@@ -208,7 +209,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             child: Text(
                               username,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.textSecondary,
@@ -232,9 +233,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           decoration: BoxDecoration(
                             color: AppColors.backgroundPrimary,
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white.withOpacity(0.05)),
+                            border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                           ),
-                          child: const Icon(LucideIcons.edit2, size: 16, color: AppColors.accentYellow),
+                          child: Icon(LucideIcons.edit2, size: 16, color: AppColors.accentYellow),
                         ),
                       ),
                   ],
@@ -246,8 +247,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // 🟢 قسم المعلم (يظهر فقط للمعلم)
               // ========================================================
               if (_isTeacher && !isGuest) ...[
-                const Padding(
-                  padding: EdgeInsets.only(left: 8, bottom: 12),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 12),
                   child: Text(
                     "TEACHER CONTROLS",
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
@@ -269,7 +270,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         title: "Incoming Requests", 
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentRequestsScreen()))
                       ),
-                      const Divider(height: 1, color: Colors.white10),
+                      Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
                       
                       // 2. إدارة الطلاب
                       _buildMenuItem(
@@ -278,7 +279,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         title: "My Students", 
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageStudentsScreen()))
                       ),
-                      const Divider(height: 1, color: Colors.white10),
+                      Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
                       
                       // 3. فريق العمل
                       _buildMenuItem(
@@ -287,7 +288,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         title: "Manage Team", 
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageTeamScreen()))
                       ),
-                      const Divider(height: 1, color: Colors.white10),
+                      Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
 
                       // 4. الإحصائيات المالية
                       _buildMenuItem(
@@ -304,8 +305,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // --- Account Settings (للجميع ما عدا الضيف) ---
               if (!isGuest) ...[
-                const Padding(
-                  padding: EdgeInsets.only(left: 8, bottom: 12),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 12),
                   child: Text(
                     "ACCOUNT SETTINGS",
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
@@ -315,18 +316,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSecondary,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
                       _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => _loadUserData())), // ✅ تحديث عند العودة
-                      const Divider(height: 1, color: Colors.white10),
+                      Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
                       _buildMenuItem(context, icon: LucideIcons.lock, title: "Change Password", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
                       
                       // ⚠️ إظهار "طلباتي" فقط للطالب
                       if (!_isTeacher) ...[
-                        const Divider(height: 1, color: Colors.white10),
+                        Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
                         _buildMenuItem(context, icon: LucideIcons.clipboardList, title: "My Requests", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyRequestsScreen()))),
                       ],
                     ],
@@ -336,8 +337,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
 
               // --- General Settings ---
-              const Padding(
-                padding: EdgeInsets.only(left: 8, bottom: 12),
+              Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 12),
                 child: Text(
                   "GENERAL",
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
@@ -347,7 +348,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.backgroundSecondary,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Column(
@@ -357,6 +358,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       icon: LucideIcons.info, 
                       title: "App Information", 
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevInfoScreen()))
+                    ),
+                    Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
+                    
+                    // ✅ زر التبديل بين الوضعين النهاري والليلي
+                    _buildMenuItem(
+                      context, 
+                      icon: AppState.isDark ? LucideIcons.moon : LucideIcons.sun, 
+                      title: AppState.isDark ? "Dark Mode / الوضع الليلي" : "Light Mode / الوضع النهاري",
+                      onTap: () {
+                        AppState().toggleTheme();
+                        setState(() {}); // تحديث فوري للأيقونة
+                      },
+                      trailing: Switch(
+                        value: AppState.isDark,
+                        activeColor: AppColors.accentYellow,
+                        onChanged: (val) {
+                          AppState().toggleTheme();
+                          setState(() {});
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -405,7 +426,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildMenuItem(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap, String? badge}) {
+  // ✅ تم تعديل الدالة لتقبل Widget في النهاية (trailing) مثل زر التبديل
+  Widget _buildMenuItem(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap, String? badge, Widget? trailing}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -425,16 +447,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
               ),
-              if (badge != null)
-                Container(
-                  margin: const EdgeInsets.only(right: 12),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: AppColors.accentOrange, borderRadius: BorderRadius.circular(50)),
-                  child: Text(badge, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                ),
-              const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
+              
+              if (trailing != null)
+                trailing
+              else ...[
+                if (badge != null)
+                  Container(
+                    margin: const EdgeInsets.only(right: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: AppColors.accentOrange, borderRadius: BorderRadius.circular(50)),
+                    child: Text(badge, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
+              ]
             ],
           ),
         ),
