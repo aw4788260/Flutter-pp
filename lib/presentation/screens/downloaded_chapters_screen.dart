@@ -52,7 +52,7 @@ class DownloadedChaptersScreen extends StatelessWidget {
                         border: Border.all(color: Colors.white.withOpacity(0.05)),
                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -62,7 +62,7 @@ class DownloadedChaptersScreen extends StatelessWidget {
                       children: [
                         Text(
                           subjectTitle.toUpperCase(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: AppColors.textPrimary,
@@ -91,7 +91,7 @@ class DownloadedChaptersScreen extends StatelessWidget {
             // Content List
             Expanded(
               child: groupedChapters.isEmpty
-                  ? Center(child: Text("No chapters found", style: TextStyle(color: Colors.white.withOpacity(0.5))))
+                  ? Center(child: Text("No chapters found", style: TextStyle(color: AppColors.textSecondary.withOpacity(0.5))))
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                       itemCount: groupedChapters.length,
@@ -128,7 +128,7 @@ class DownloadedChaptersScreen extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(12),
                                     boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                                   ),
-                                  child: const Icon(LucideIcons.bookOpen, color: AppColors.accentYellow, size: 18),
+                                  child: Icon(LucideIcons.bookOpen, color: AppColors.accentYellow, size: 18),
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
@@ -137,7 +137,7 @@ class DownloadedChaptersScreen extends StatelessWidget {
                                     children: [
                                       Text(
                                         chapterName.toUpperCase(),
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 15,
                                           fontWeight: FontWeight.bold,
                                           color: AppColors.textPrimary,
