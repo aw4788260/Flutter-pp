@@ -76,7 +76,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
 
       if (mounted && res.statusCode == 200) {
         final data = res.data;
-        
+         
         // التحقق من وضع نموذج الإجابة
         if (data['mode'] == 'model_answer') {
            setState(() {
@@ -110,6 +110,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
            if (e.response?.statusCode == 403) msg = e.response?.data['error'] ?? "Access Denied";
            if (e.response?.statusCode == 409) msg = "Exam already completed";
         }
+        // 🔥 تم حذف const هنا
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppColors.error));
         Navigator.pop(context);
       }
@@ -166,7 +167,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     }
 
     _timer?.cancel();
-     
+      
     // إظهار Loading
     showDialog(
       context: context, 
@@ -203,7 +204,8 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to submit. Try again."), backgroundColor: AppColors.error));
+        // 🔥 تم حذف const هنا
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text("Failed to submit. Try again."), backgroundColor: AppColors.error));
       }
     }
   }
@@ -223,6 +225,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false), // البقاء في الامتحان
+            // 🔥 تم حذف const هنا
             child: Text("Stay", style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
@@ -288,7 +291,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     final String questionId = questionData['id'].toString();
     final String? imageFileId = questionData['image_file_id'];
     final options = (questionData['options'] as List).cast<Map<String, dynamic>>();
-    
+     
     // التحقق مما إذا كان السؤال الحالي معلم عليه
     bool isFlagged = flaggedQuestions.contains(questionId);
 
@@ -330,6 +333,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                         tooltip: "Mark Question",
                       ),
 
+                    // 🔥 تم حذف const هنا
                     Text("Q ${currentIdx + 1}/${_questions.length}", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
                     
                     if (!_isModelAnswerMode)
@@ -342,8 +346,10 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                         ),
                         child: Row(
                           children: [
+                            // 🔥 تم حذف const هنا
                             Icon(LucideIcons.clock, size: 14, color: timeLeft < 60 ? AppColors.error : AppColors.accentYellow),
                             const SizedBox(width: 6),
+                            // 🔥 تم حذف const هنا
                             Text(_formatTime(timeLeft), style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, color: timeLeft < 60 ? AppColors.error : AppColors.textPrimary)),
                           ],
                         ),
@@ -352,7 +358,8 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(color: AppColors.accentYellow.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                        child: const Text("MODEL ANSWER", style: TextStyle(color: AppColors.accentYellow, fontSize: 10, fontWeight: FontWeight.bold)),
+                        // 🔥 تم حذف const هنا
+                        child: Text("MODEL ANSWER", style: TextStyle(color: AppColors.accentYellow, fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
                   ],
                 ),
@@ -478,6 +485,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                           ),
                         ),
                       
+                      // 🔥 تم حذف const هنا
                       Text(
                         questionData['question_text'] ?? "Question Text",
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary, height: 1.4),
@@ -543,6 +551,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                                         : Colors.transparent,
                                   ),
                                   child: (isSelected || isCorrectModel) 
+                                      // 🔥 تم حذف const هنا
                                       ? Icon(Icons.check, size: 16, color: AppColors.backgroundPrimary) 
                                       : null,
                                 ),
@@ -550,6 +559,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                                 Expanded(
                                   child: Text(
                                     opt['option_text'],
+                                    // 🔥 تم حذف const هنا
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: (isSelected || isCorrectModel) ? FontWeight.bold : FontWeight.normal,
@@ -578,6 +588,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                         child: OutlinedButton(
                           onPressed: () => setState(() => currentIdx--),
                           style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), side: const BorderSide(color: Colors.white10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          // 🔥 تم حذف const هنا
                           child: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold).run((s) => Text("BACK", style: s)),
                         ),
                       ),
@@ -597,7 +608,9 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                           }
                         },
                         style: ElevatedButton.styleFrom(
+                          // 🔥 تم حذف const هنا
                           backgroundColor: _isModelAnswerMode ? Colors.grey[800] : AppColors.accentYellow, 
+                          // 🔥 تم حذف const هنا
                           foregroundColor: _isModelAnswerMode ? Colors.white : AppColors.backgroundPrimary, 
                           padding: const EdgeInsets.symmetric(vertical: 16), 
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
