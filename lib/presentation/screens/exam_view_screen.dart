@@ -28,20 +28,20 @@ class ExamViewScreen extends StatefulWidget {
 class _ExamViewScreenState extends State<ExamViewScreen> {
   bool _loading = true;
   List<dynamic> _questions = [];
-  
+   
   // متغير لتحديد ما إذا كنا في وضع "نموذج الإجابة"
   bool _isModelAnswerMode = false;
 
   int currentIdx = 0;
   Map<String, int> userAnswers = {}; 
-  
+   
   // ✅ 1. قائمة لتخزين الأسئلة التي تم وضع علامة عليها (Flagged)
   Set<String> flaggedQuestions = {};
 
   int timeLeft = 0;
   Timer? _timer;
   String? _attemptId;
-  
+   
   String? _userId;
   String? _deviceId;
   String? _token; 
@@ -166,12 +166,12 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
     }
 
     _timer?.cancel();
-    
+     
     // إظهار Loading
     showDialog(
       context: context, 
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+      builder: (_) => Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
     );
 
     try {
@@ -223,7 +223,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false), // البقاء في الامتحان
-            child: const Text("Stay", style: TextStyle(color: AppColors.textSecondary)),
+            child: Text("Stay", style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true), // تسليم وخروج
@@ -260,7 +260,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                   'x-device-id': _deviceId ?? '',
                   'x-app-secret': _appSecret,
                 },
-                placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+                placeholder: (context, url) => Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
                 errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
                 fit: BoxFit.contain,
               ),
@@ -282,7 +282,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
+    if (_loading) return Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
 
     final questionData = _questions[currentIdx];
     final String questionId = questionData['id'].toString();
@@ -330,7 +330,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                         tooltip: "Mark Question",
                       ),
 
-                    Text("Q ${currentIdx + 1}/${_questions.length}", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
+                    Text("Q ${currentIdx + 1}/${_questions.length}", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
                     
                     if (!_isModelAnswerMode)
                       Container(
@@ -344,7 +344,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                           children: [
                             Icon(LucideIcons.clock, size: 14, color: timeLeft < 60 ? AppColors.error : AppColors.accentYellow),
                             const SizedBox(width: 6),
-                            Text(_formatTime(timeLeft), style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, color: timeLeft < 60 ? AppColors.error : Colors.white)),
+                            Text(_formatTime(timeLeft), style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, color: timeLeft < 60 ? AppColors.error : AppColors.textPrimary)),
                           ],
                         ),
                       )
@@ -458,7 +458,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                                       'x-device-id': _deviceId ?? '',
                                       'x-app-secret': _appSecret,
                                     },
-                                    placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+                                    placeholder: (context, url) => Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
                                     errorWidget: (context, url, error) => const Icon(Icons.error, color: AppColors.error),
                                     fit: BoxFit.contain,
                                   ),
@@ -480,7 +480,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                       
                       Text(
                         questionData['question_text'] ?? "Question Text",
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary, height: 1.4),
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary, height: 1.4),
                       ),
                       
                       const SizedBox(height: 32),
@@ -543,7 +543,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                                         : Colors.transparent,
                                   ),
                                   child: (isSelected || isCorrectModel) 
-                                      ? const Icon(Icons.check, size: 16, color: AppColors.backgroundPrimary) 
+                                      ? Icon(Icons.check, size: 16, color: AppColors.backgroundPrimary) 
                                       : null,
                                 ),
                                 const SizedBox(width: 16),
@@ -578,7 +578,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                         child: OutlinedButton(
                           onPressed: () => setState(() => currentIdx--),
                           style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), side: const BorderSide(color: Colors.white10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                          child: const Text("BACK", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+                          child: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold).run((s) => Text("BACK", style: s)),
                         ),
                       ),
                     if (currentIdx > 0) const SizedBox(width: 16),
@@ -618,5 +618,12 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
         ),
       ),
     );
+  }
+}
+
+// Extension Helper for styling (Quick Fix)
+extension on TextStyle {
+  Text run(Text Function(TextStyle) builder) {
+    return builder(this);
   }
 }
