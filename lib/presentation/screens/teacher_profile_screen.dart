@@ -68,8 +68,8 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
-    if (_teacher == null) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: Text("Error loading profile", style: TextStyle(color: Colors.white))));
+    if (_loading) return Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
+    if (_teacher == null) return Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: Text("Error loading profile", style: TextStyle(color: AppColors.textPrimary))));
 
     final courses = List<Map<String, dynamic>>.from(_teacher!['courses'] ?? []);
 
@@ -92,8 +92,9 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSecondary,
                         borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                 ),
@@ -118,7 +119,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                   ),
                   // ✅ عرض الأيقونة فقط إذا لم تكن هناك صورة
                   child: (_teacher!['profile_image'] == null || _teacher!['profile_image'].toString().isEmpty)
-                      ? const Icon(LucideIcons.user, size: 40, color: Colors.white)
+                      ? Icon(LucideIcons.user, size: 40, color: AppColors.textSecondary)
                       : null,
                 ),
               ),
@@ -127,7 +128,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
               Text(
                 _teacher!['name'].toString().toUpperCase(),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
@@ -139,7 +140,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
               Text(
                 _teacher!['specialty'] ?? 'INSTRUCTOR',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.accentOrange,
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
@@ -174,11 +175,11 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.backgroundSecondary,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                 ),
                 child: Column(
                   children: [
-                    const Icon(LucideIcons.quote, color: Colors.white12, size: 32),
+                    Icon(LucideIcons.quote, color: AppColors.textSecondary.withOpacity(0.2), size: 32),
                     const SizedBox(height: 12),
                     Text(
                       _teacher!['bio'] ?? 'No bio available.',
@@ -194,14 +195,14 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
               ),
 
               // --- Courses Section ---
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Text("AVAILABLE COURSES", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.5)),
               ),
               const SizedBox(height: 16),
 
               if (courses.isEmpty)
-                const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No courses found", style: TextStyle(color: Colors.white24))))
+                Center(child: Padding(padding: const EdgeInsets.all(20), child: Text("No courses found", style: TextStyle(color: AppColors.textSecondary.withOpacity(0.5)))))
               else
                 ListView.builder(
                   shrinkWrap: true,
@@ -221,7 +222,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.backgroundSecondary,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                          border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -232,24 +233,24 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                                 children: [
                                   Text(
                                     c['title'] ?? 'Untitled', 
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
+                                    style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16)
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     "${c['price']} EGP", 
-                                    style: const TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold)
+                                    style: TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold)
                                   ),
                                 ],
                               ),
                             ),
-                            const Icon(LucideIcons.chevronRight, color: Colors.white24, size: 20),
+                            Icon(LucideIcons.chevronRight, color: AppColors.textSecondary.withOpacity(0.4), size: 20),
                           ],
                         ),
                       ),
                     );
                   },
                 ),
-                
+              
               const SizedBox(height: 40),
             ],
           ),
