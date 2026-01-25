@@ -6,11 +6,13 @@ class AppTheme {
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
+      // ملاحظة: سيتم تجاوز brightness في main.dart بناءً على الوضع الحالي
       brightness: Brightness.dark,
       scaffoldBackgroundColor: AppColors.backgroundPrimary,
       primaryColor: AppColors.accentYellow,
       
-      colorScheme: const ColorScheme.dark(
+      // ❌ تم إزالة const من هنا لتسمح بتغيير الألوان
+      colorScheme: ColorScheme.dark(
         primary: AppColors.accentYellow,
         onPrimary: AppColors.backgroundPrimary,
         secondary: AppColors.accentOrange,
@@ -48,7 +50,7 @@ class AppTheme {
         ),
       ),
 
-      // ✅ تم حذف CardTheme لتجنب تعارض الأنواع، سيتم الاعتماد على التنسيق المباشر في الـ Widgets
+      // ✅ تم حذف CardTheme لتجنب تعارض الأنواع
       
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -77,9 +79,11 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.accentYellow, width: 1),
+          // ❌ تم إزالة const من هنا لأن accentYellow متغير
+          borderSide: BorderSide(color: AppColors.accentYellow, width: 1),
         ),
-        hintStyle: const TextStyle(color: AppColors.textSecondary),
+        // ❌ تم إزالة const من هنا
+        hintStyle: TextStyle(color: AppColors.textSecondary),
       ),
     );
   }
