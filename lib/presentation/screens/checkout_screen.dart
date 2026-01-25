@@ -139,7 +139,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not launch link"), backgroundColor: AppColors.error),
+          SnackBar(content: const Text("Could not launch link"), backgroundColor: AppColors.error),
         );
       }
     }
@@ -149,10 +149,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Copied to clipboard"), 
+      SnackBar(
+        content: const Text("Copied to clipboard"), 
         backgroundColor: AppColors.success, 
-        duration: Duration(seconds: 1)
+        duration: const Duration(seconds: 1)
       ),
     );
   }
@@ -160,7 +160,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _submitOrder() async {
     if (_receiptImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please upload the payment receipt image"), backgroundColor: AppColors.error),
+        SnackBar(content: const Text("Please upload the payment receipt image"), backgroundColor: AppColors.error),
       );
       return;
     }
@@ -202,13 +202,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               backgroundColor: AppColors.backgroundSecondary,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Column(
-                children: const [
+                children: [
                   Icon(LucideIcons.checkCircle, color: AppColors.success, size: 48),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   Text("REQUEST SENT", style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
                 ],
               ),
-              content: const Text(
+              content: Text(
                 "We have received your request.\nYou will be notified once approved.",
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textSecondary),
@@ -223,7 +223,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       (route) => false,
                     );
                   },
-                  child: const Text("OK", style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold)),
+                  child: Text("OK", style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold)),
                 )
               ],
             ),
@@ -239,7 +239,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Connection Error"), backgroundColor: AppColors.error),
+          SnackBar(content: const Text("Connection Error"), backgroundColor: AppColors.error),
         );
       }
     } finally {
@@ -272,11 +272,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         color: AppColors.backgroundSecondary,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Text(
+                  Text(
                     "CHECKOUT",
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                   ),
@@ -286,7 +286,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
             Expanded(
               child: _isLoadingPaymentData 
-                ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)) 
+                ? Center(child: CircularProgressIndicator(color: AppColors.accentYellow)) 
                 : SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(
@@ -304,9 +304,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         ),
                         child: Column(
                           children: [
-                            const Text("TOTAL AMOUNT", style: TextStyle(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 2.0, fontWeight: FontWeight.bold)),
+                            Text("TOTAL AMOUNT", style: TextStyle(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 2.0, fontWeight: FontWeight.bold)),
                             const SizedBox(height: 12),
-                            Text("${widget.amount} EGP", style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: AppColors.accentYellow)),
+                            Text("${widget.amount} EGP", style: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: AppColors.accentYellow)),
                           ],
                         ),
                       ),
@@ -314,7 +314,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                       // 1. Cash Numbers Section
                       if (cashNumbers.isNotEmpty) ...[
-                        const Text("CASH WALLETS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                        Text("CASH WALLETS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
                         const SizedBox(height: 10),
                         ...cashNumbers.map((num) => _buildCopyableCard("WALLET NUMBER", num.toString(), Icons.account_balance_wallet)),
                         const SizedBox(height: 24),
@@ -322,7 +322,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                       // 2. InstaPay Numbers Section
                       if (instapayNumbers.isNotEmpty) ...[
-                        const Text("INSTAPAY NUMBERS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                        Text("INSTAPAY NUMBERS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
                         const SizedBox(height: 10),
                         ...instapayNumbers.map((num) => _buildCopyableCard("INSTAPAY PHONE", num.toString(), Icons.phone_iphone)),
                         const SizedBox(height: 24),
@@ -330,7 +330,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                       // 3. InstaPay Links Section
                       if (instapayLinks.isNotEmpty) ...[
-                        const Text("INSTAPAY LINKS / USERNAME", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                        Text("INSTAPAY LINKS / USERNAME", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
                         const SizedBox(height: 10),
                         ...instapayLinks.map((link) => _buildLinkCard(link.toString())),
                         const SizedBox(height: 24),
@@ -347,10 +347,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                              borderRadius: BorderRadius.circular(16),
                              border: Border.all(color: AppColors.error.withOpacity(0.3))
                            ),
-                           child: const Column(
+                           child: Column(
                              children: [
                                Icon(LucideIcons.alertCircle, color: AppColors.error, size: 30),
-                               SizedBox(height: 10),
+                               const SizedBox(height: 10),
                                Text("Payment methods unavailable", style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
                                Text("Please contact support or try again later.", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                              ],
@@ -358,7 +358,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                          ),
 
                       // Receipt Upload
-                      const Text("UPLOAD RECEIPT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                      Text("UPLOAD RECEIPT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
                       const SizedBox(height: 16),
                       GestureDetector(
                         onTap: _pickImage,
@@ -380,9 +380,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           child: _receiptImage == null 
                               ? Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
-                                  children: const [
+                                  children: [
                                     Icon(LucideIcons.uploadCloud, color: AppColors.accentYellow, size: 40),
-                                    SizedBox(height: 12),
+                                    const SizedBox(height: 12),
                                     Text("Tap to upload screenshot", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                                   ],
                                 )
@@ -401,7 +401,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       const SizedBox(height: 32),
                       
                       // Notes
-                      const Text("NOTES (OPTIONAL)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
+                      Text("NOTES (OPTIONAL)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.5)),
                       const SizedBox(height: 16),
                       Container(
                         decoration: BoxDecoration(
@@ -411,7 +411,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         ),
                         child: TextField(
                           controller: _noteController,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: AppColors.textPrimary), // ✅ تصحيح لون النص
                           maxLines: 3,
                           decoration: InputDecoration(
                             hintText: "Add any notes...",
@@ -442,7 +442,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     elevation: 0,
                   ),
                   child: _isUploading 
-                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: AppColors.backgroundPrimary, strokeWidth: 2))
+                      ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: AppColors.backgroundPrimary, strokeWidth: 2))
                       : const Text("CONFIRM PAYMENT", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.0)),
                 ),
               ),
@@ -478,17 +478,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                Text(title, style: TextStyle(color: AppColors.textSecondary, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
                 const SizedBox(height: 4),
                 SelectableText(
                   value, 
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'monospace')
+                  style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'monospace')
                 ),
               ],
             ),
           ),
           IconButton(
-            icon: const Icon(LucideIcons.copy, size: 18, color: AppColors.textSecondary),
+            icon: Icon(LucideIcons.copy, size: 18, color: AppColors.textSecondary),
             onPressed: () => _copyToClipboard(value),
             tooltip: "Copy",
           )
@@ -517,19 +517,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   color: AppColors.backgroundPrimary,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(LucideIcons.link, color: AppColors.accentYellow, size: 20),
+                child: Icon(LucideIcons.link, color: AppColors.accentYellow, size: 20),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Text(
                   link,
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w500),
+                  style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w500),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               IconButton(
-                icon: const Icon(LucideIcons.copy, size: 18, color: AppColors.textSecondary),
+                icon: Icon(LucideIcons.copy, size: 18, color: AppColors.textSecondary),
                 onPressed: () => _copyToClipboard(link),
               )
             ],
