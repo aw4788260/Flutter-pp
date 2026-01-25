@@ -31,11 +31,11 @@ class DevInfoScreen extends StatelessWidget {
                         border: Border.all(color: Colors.white.withOpacity(0.05)),
                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Text(
+                  Text(
                     "APP INFORMATION",
                     style: TextStyle(
                       fontSize: 20,
@@ -72,7 +72,7 @@ class DevInfoScreen extends StatelessWidget {
                             child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                           ),
                           
-                          const Text(
+                          Text(
                             "مــــــداد",
                             style: TextStyle(
                               fontSize: 24,
@@ -82,7 +82,7 @@ class DevInfoScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
+                          Text(
                             "Crafted with passion for learners everywhere.",
                             style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                           ),
@@ -110,10 +110,10 @@ class DevInfoScreen extends StatelessWidget {
                     const SizedBox(height: 32),
                     
                     // Legal & Docs
-                    const Align(
+                    Align(
                       alignment: Alignment.centerLeft,
                       child: Padding(
-                        padding: EdgeInsets.only(left: 8, bottom: 12),
+                        padding: const EdgeInsets.only(left: 8, bottom: 12),
                         child: Text("LEGAL & DOCS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0)),
                       ),
                     ),
@@ -159,7 +159,7 @@ class DevInfoScreen extends StatelessWidget {
                                 await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text("Could not open WhatsApp"), backgroundColor: AppColors.error),
+                                  SnackBar(content: const Text("Could not open WhatsApp"), backgroundColor: AppColors.error),
                                 );
                               }
                             }
@@ -171,16 +171,16 @@ class DevInfoScreen extends StatelessWidget {
                     const SizedBox(height: 32),
                     
                     // Developers Info
-                    const Text(
+                    Text(
                       "DEVELOPERS",
                       style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       "A7MeD WaLiD & 5@LiD",
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                     ),
-                    const Text(
+                    Text(
                       "Egypt",
                       style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                     ),
@@ -237,14 +237,14 @@ class DevInfoScreen extends StatelessWidget {
               const SizedBox(width: 16),
               Text(
                 title.toUpperCase(),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
                 ),
               ),
               const Spacer(),
-              const Icon(LucideIcons.chevronRight, color: AppColors.textSecondary, size: 16),
+              Icon(LucideIcons.chevronRight, color: AppColors.textSecondary, size: 16),
             ],
           ),
         ),
