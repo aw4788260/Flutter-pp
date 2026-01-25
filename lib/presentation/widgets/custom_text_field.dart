@@ -43,7 +43,8 @@ class _CustomTextFieldState extends State<CustomTextField> {
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(
             widget.label.toUpperCase(),
-            style: const TextStyle(
+            // 🔥 تم إزالة const هنا لأن AppColors.accentYellow متغير
+            style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.5,
@@ -70,7 +71,8 @@ class _CustomTextFieldState extends State<CustomTextField> {
             keyboardType: widget.keyboardType,
             validator: widget.validator,
             inputFormatters: widget.inputFormatters, // ✅ تمرير الخاصية هنا
-            style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+            // 🔥 تم إزالة const هنا
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
             cursorColor: AppColors.accentYellow,
             
             onTap: () => setState(() => _isFocused = true),
@@ -81,7 +83,8 @@ class _CustomTextFieldState extends State<CustomTextField> {
             
             decoration: InputDecoration(
               hintText: widget.hintText,
-              hintStyle: const TextStyle(color: AppColors.textSecondary),
+              // 🔥 تم إزالة const هنا
+              hintStyle: TextStyle(color: AppColors.textSecondary),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
               prefixIcon: Icon(
