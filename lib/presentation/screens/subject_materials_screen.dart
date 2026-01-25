@@ -33,7 +33,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
   String? _error;
   Map<String, dynamic>? _content;
   bool _isTeacher = false;
-  
+   
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
   @override
@@ -113,8 +113,8 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
-    if (_error != null) return Scaffold(backgroundColor: AppColors.backgroundPrimary, appBar: AppBar(backgroundColor: Colors.transparent, leading: const BackButton(color: AppColors.accentYellow)), body: Center(child: Text(_error!, style: const TextStyle(color: AppColors.error))));
+    if (_loading) return Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
+    if (_error != null) return Scaffold(backgroundColor: AppColors.backgroundPrimary, appBar: AppBar(backgroundColor: Colors.transparent, leading: BackButton(color: AppColors.accentYellow)), body: Center(child: Text(_error!, style: TextStyle(color: AppColors.error))));
 
     final chapters = _content!['chapters'] as List;
     final exams = _content!['exams'] as List;
@@ -144,7 +144,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                                 border: Border.all(color: Colors.white.withOpacity(0.05)),
                                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                               ),
-                              child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                              child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -153,7 +153,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                             children: [
                               Text(
                                 widget.subjectTitle.toUpperCase(),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.textPrimary,
@@ -163,7 +163,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                                 maxLines: 1,
                               ),
                               const SizedBox(height: 4),
-                              const Text(
+                              Text(
                                 "SUBJECT CONTENTS",
                                 style: TextStyle(
                                   fontSize: 9,
@@ -327,7 +327,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     children: [
                       Text(
                         (exam['title'] ?? 'Untitled Exam').toString().toUpperCase(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,
@@ -429,7 +429,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Error: Cannot load result."), backgroundColor: AppColors.error)
+          SnackBar(content: const Text("Error: Cannot load result."), backgroundColor: AppColors.error)
         );
       }
     } else {
@@ -500,7 +500,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   child: Center(
                     child: Text(
                       "${index + 1}".padLeft(2, '0'),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.accentYellow,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
@@ -515,7 +515,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     children: [
                       Text(
                         (chapter['title'] ?? 'Chapter').toString().toUpperCase(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,
@@ -527,11 +527,11 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(LucideIcons.hash, size: 10, color: AppColors.accentOrange),
+                          Icon(LucideIcons.hash, size: 10, color: AppColors.accentOrange),
                           const SizedBox(width: 4),
                           Text(
                             "${videosCount + pdfsCount} CONTENTS",
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
                               color: AppColors.textSecondary,
@@ -546,7 +546,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                 // 🟢 زر تعديل الشابتر للمعلم
                 if (_isTeacher)
                   IconButton(
-                    icon: const Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
+                    icon: Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -564,7 +564,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     },
                   )
                 else
-                  const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
+                  Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
               ],
             ),
           ),
