@@ -37,7 +37,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
   File? _selectedFile;
   String? _selectedFileName;
   String? _uploadedFileUrl;
-  
+   
   bool _isLoading = false;
   double _uploadProgress = 0.0;
 
@@ -107,7 +107,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
     if (widget.contentType == ContentType.pdf && !isEditing && _selectedFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select a PDF file"), backgroundColor: AppColors.error),
+        SnackBar(content: const Text("Please select a PDF file"), backgroundColor: AppColors.error),
       );
       return;
     }
@@ -218,10 +218,10 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.backgroundSecondary,
-        title: const Text("Confirm Delete", style: TextStyle(color: Colors.white)),
-        content: const Text("Are you sure you want to delete this item? This cannot be undone.", style: TextStyle(color: Colors.white70)),
+        title: Text("Confirm Delete", style: TextStyle(color: AppColors.textPrimary)),
+        content: Text("Are you sure you want to delete this item? This cannot be undone.", style: TextStyle(color: AppColors.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text("Cancel", style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
@@ -260,7 +260,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       await AppState().reloadAppInit();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted Successfully"), backgroundColor: AppColors.success));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text("Deleted Successfully"), backgroundColor: AppColors.success));
         // ✅ إرجاع true
         Navigator.pop(context, true);
       }
@@ -289,12 +289,12 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(titleText, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
-        leading: const BackButton(color: AppColors.accentYellow),
+        title: Text(titleText, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+        leading: BackButton(color: AppColors.accentYellow),
         actions: [
           if (isEditing)
             IconButton(
-              icon: const Icon(Icons.delete_outline, color: AppColors.error),
+              icon: Icon(Icons.delete_outline, color: AppColors.error),
               tooltip: "Delete",
               onPressed: _isLoading ? null : _deleteItem,
             ),
@@ -313,20 +313,20 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                         value: _uploadProgress, 
                         color: AppColors.accentYellow,
                         strokeWidth: 6,
-                        backgroundColor: Colors.white10,
+                        backgroundColor: AppColors.textSecondary.withOpacity(0.1),
                       ),
                       Text(
                         "${(_uploadProgress * 100).toInt()}%",
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Text("Uploading File...", style: TextStyle(color: AppColors.textSecondary)),
+                  Text("Uploading File...", style: TextStyle(color: AppColors.textSecondary)),
                 ] else ...[
-                  const CircularProgressIndicator(color: AppColors.accentYellow),
+                  CircularProgressIndicator(color: AppColors.accentYellow),
                   const SizedBox(height: 16),
-                  const Text("Saving Data...", style: TextStyle(color: AppColors.textSecondary)),
+                  Text("Saving Data...", style: TextStyle(color: AppColors.textSecondary)),
                 ]
               ],
             ),
@@ -389,21 +389,21 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSecondary,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white10),
+                        border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                       ),
                       child: ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.picture_as_pdf, color: AppColors.accentOrange, size: 30),
+                        leading: Icon(Icons.picture_as_pdf, color: AppColors.accentOrange, size: 30),
                         title: Text(
                           _selectedFileName ?? "No file selected",
                           style: TextStyle(
-                            color: _selectedFileName == null ? Colors.grey : Colors.white,
+                            color: _selectedFileName == null ? AppColors.textSecondary : AppColors.textPrimary,
                             fontWeight: _selectedFileName == null ? FontWeight.normal : FontWeight.bold,
                             fontSize: 14
                           ),
                         ),
-                        subtitle: const Text("Tap to select PDF", style: TextStyle(color: Colors.grey, fontSize: 11)),
-                        trailing: const Icon(Icons.upload_file, color: AppColors.accentYellow),
+                        subtitle: Text("Tap to select PDF", style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                        trailing: Icon(Icons.upload_file, color: AppColors.accentYellow),
                         onTap: _pickPdfFile,
                       ),
                     ),
@@ -430,8 +430,8 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
                     const SizedBox(height: 16),
                     TextButton.icon(
                       onPressed: _deleteItem,
-                      icon: const Icon(Icons.delete, color: AppColors.error),
-                      label: const Text("DELETE PERMANENTLY", style: TextStyle(color: AppColors.error)),
+                      icon: Icon(Icons.delete, color: AppColors.error),
+                      label: Text("DELETE PERMANENTLY", style: TextStyle(color: AppColors.error)),
                     ),
                   ],
                 ],
