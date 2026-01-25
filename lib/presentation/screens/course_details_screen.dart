@@ -70,8 +70,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
-    if (_courseData == null) return const Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: Text("Course not found", style: TextStyle(color: Colors.white))));
+    if (_loading) return Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)));
+    if (_courseData == null) return Scaffold(backgroundColor: AppColors.backgroundPrimary, body: Center(child: Text("Course not found", style: TextStyle(color: AppColors.textPrimary))));
 
     final course = _courseData!;
     final teacher = course['teacher'] ?? {};
@@ -116,7 +116,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                 color: AppColors.backgroundSecondary,
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                              child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                             ),
                           ),
                         ],
@@ -138,7 +138,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       const SizedBox(height: 12),
                       Text(
                         course['title'].toString().toUpperCase(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w900,
                           color: AppColors.textPrimary,
@@ -169,7 +169,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           decoration: BoxDecoration(
                             color: AppColors.backgroundSecondary,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white.withOpacity(0.05)),
+                            border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min, // تأخذ حجم المحتوى فقط
@@ -187,7 +187,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     "INSTRUCTOR",
                                     style: TextStyle(
                                       color: AppColors.textSecondary,
@@ -199,7 +199,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                   const SizedBox(height: 2),
                                   Text(
                                     teacherName,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: AppColors.textPrimary,
                                       fontSize: 14,
                                       fontWeight: FontWeight.bold,
@@ -208,7 +208,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                 ],
                               ),
                               const SizedBox(width: 16),
-                              const Icon(LucideIcons.chevronRight, size: 16, color: AppColors.textSecondary),
+                              Icon(LucideIcons.chevronRight, size: 16, color: AppColors.textSecondary),
                             ],
                           ),
                         ),
@@ -230,17 +230,17 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           decoration: BoxDecoration(
                             color: AppColors.backgroundSecondary,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white.withOpacity(0.1)),
+                            border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                           ),
                           child: Column(
-                            children: const [
+                            children: [
                               Icon(LucideIcons.lock, color: AppColors.textSecondary, size: 32),
-                              SizedBox(height: 12),
+                              const SizedBox(height: 12),
                               Text(
                                 "TEACHER ACCOUNT",
                                 style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, letterSpacing: 1.5),
                               ),
-                              SizedBox(height: 8),
+                              const SizedBox(height: 8),
                               Text(
                                 "Teachers cannot purchase courses.",
                                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
@@ -251,7 +251,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                         )
                       else ...[
                         // الكود الأصلي لخيارات الشراء (يظهر فقط للطلاب)
-                        const Text("PURCHASE OPTIONS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 2.0)),
+                        Text("PURCHASE OPTIONS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentYellow, letterSpacing: 2.0)),
                         const SizedBox(height: 20),
 
                         // 1. Full Course Option
@@ -265,7 +265,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                 color: AppColors.backgroundSecondary,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: _isFullCourse ? AppColors.accentYellow : Colors.white.withOpacity(0.05),
+                                  color: _isFullCourse ? AppColors.accentYellow : Colors.transparent,
                                   width: _isFullCourse ? 2 : 1,
                                 ),
                                 boxShadow: _isFullCourse ? [BoxShadow(color: AppColors.accentYellow.withOpacity(0.2), blurRadius: 15)] : [],
@@ -276,12 +276,12 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Text("FULL COURSE ACCESS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                      Text("FULL COURSE ACCESS", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
                                       const SizedBox(height: 4),
-                                      Text("Access all subjects & exams", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
+                                      Text("Access all subjects & exams", style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                                     ],
                                   ),
-                                  Text("$fullPrice EGP", style: const TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.w900, fontSize: 18)),
+                                  Text("$fullPrice EGP", style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.w900, fontSize: 18)),
                                 ],
                               ),
                             ),
@@ -296,9 +296,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                               border: Border.all(color: AppColors.success.withOpacity(0.5)),
                             ),
                             child: Column(
-                              children: const [
+                              children: [
                                 Icon(LucideIcons.checkCircle, color: AppColors.success, size: 32),
-                                SizedBox(height: 8),
+                                const SizedBox(height: 8),
                                 Text("COURSE OWNED", style: TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                               ],
                             ),
@@ -306,7 +306,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
 
                         if (subjects.isNotEmpty) ...[
                           const SizedBox(height: 32),
-                          const Text("INDIVIDUAL SUBJECTS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0)),
+                          Text("INDIVIDUAL SUBJECTS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0)),
                           const SizedBox(height: 16),
                           
                           // 2. Individual Subjects List
@@ -343,7 +343,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                         width: 20, height: 20,
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
-                                          border: Border.all(color: isSelected ? AppColors.accentOrange : Colors.white24, width: 2),
+                                          border: Border.all(color: isSelected ? AppColors.accentOrange : AppColors.textSecondary.withOpacity(0.5), width: 2),
                                           color: isSelected ? AppColors.accentOrange : Colors.transparent,
                                         ),
                                       ),
@@ -351,16 +351,16 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                       child: Text(
                                         sub['title'],
                                         style: TextStyle(
-                                          color: (isOwned || isCourseOwned) ? AppColors.textSecondary : Colors.white,
+                                          color: (isOwned || isCourseOwned) ? AppColors.textSecondary : AppColors.textPrimary,
                                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                           decoration: (isOwned || isCourseOwned) ? TextDecoration.lineThrough : null,
                                         ),
                                       ),
                                     ),
                                     if (isOwned || isCourseOwned)
-                                      const Text("OWNED", style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold))
+                                      Text("OWNED", style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold))
                                     else
-                                      Text("${sub['price']} EGP", style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      Text("${sub['price']} EGP", style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
                                   ],
                                 ),
                               ),
@@ -384,9 +384,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: AppColors.backgroundSecondary,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                  border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, offset: const Offset(0, -5))],
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  border: Border(top: BorderSide(color: AppColors.textSecondary.withOpacity(0.1))),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, -5))],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -395,9 +395,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text("TOTAL PAYABLE", style: TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                        Text("TOTAL PAYABLE", style: TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                         const SizedBox(height: 4),
-                        Text("$currentPrice EGP", style: const TextStyle(color: AppColors.accentYellow, fontSize: 24, fontWeight: FontWeight.w900)),
+                        Text("$currentPrice EGP", style: TextStyle(color: AppColors.accentYellow, fontSize: 24, fontWeight: FontWeight.w900)),
                       ],
                     ),
                     ElevatedButton(
