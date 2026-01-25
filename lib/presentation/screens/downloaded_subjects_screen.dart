@@ -13,11 +13,11 @@ class DownloadedSubjectsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // 1. جلب صندوق التخزين
     var box = Hive.box('downloads_box');
-    
+     
     // 2. تصفية وتجميع المواد الخاصة بالكورس الحالي
     // Map<SubjectName, FileCount>
     final Map<String, int> groupedSubjects = {};
-    
+     
     for (var key in box.keys) {
       final item = box.get(key);
       if (item['course'] == courseTitle) {
@@ -46,7 +46,7 @@ class DownloadedSubjectsScreen extends StatelessWidget {
                         border: Border.all(color: Colors.white.withOpacity(0.05)),
                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -56,7 +56,7 @@ class DownloadedSubjectsScreen extends StatelessWidget {
                       children: [
                         Text(
                           courseTitle.toUpperCase(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: AppColors.textPrimary,
@@ -121,7 +121,7 @@ class DownloadedSubjectsScreen extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(12),
                                     boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                                   ),
-                                  child: const Icon(LucideIcons.layers, color: AppColors.accentYellow, size: 18),
+                                  child: Icon(LucideIcons.layers, color: AppColors.accentYellow, size: 18),
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
@@ -130,7 +130,7 @@ class DownloadedSubjectsScreen extends StatelessWidget {
                                     children: [
                                       Text(
                                         subjectName.toUpperCase(),
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 15,
                                           fontWeight: FontWeight.bold,
                                           color: AppColors.textPrimary,
