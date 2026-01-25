@@ -83,8 +83,8 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
 
   /// إعادة تحميل القائمة (مثلاً بعد القبول/الرفض)
   Future<void> _refreshRequests() async {
-     setState(() => _isLoading = true);
-     await _loadRequestsData();
+      setState(() => _isLoading = true);
+      await _loadRequestsData();
   }
 
   Future<void> _handleDecision(String requestId, bool approve) async {
@@ -97,13 +97,14 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
           String reason = "";
           return AlertDialog(
             backgroundColor: AppColors.backgroundSecondary,
-            title: const Text("سبب الرفض", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            title: Text("سبب الرفض", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
             content: TextField(
               onChanged: (val) => reason = val,
-              style: const TextStyle(color: Colors.white),
+              // ✅ تصحيح لون النص ليكون مرئياً في الوضعين
+              style: TextStyle(color: AppColors.textPrimary),
               decoration: InputDecoration(
                 hintText: "اكتب سبب الرفض هنا...",
-                hintStyle: const TextStyle(color: AppColors.textSecondary),
+                hintStyle: TextStyle(color: AppColors.textSecondary),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: AppColors.backgroundPrimary,
@@ -113,7 +114,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx), 
-                child: const Text("إلغاء", style: TextStyle(color: AppColors.textSecondary))
+                child: Text("إلغاء", style: TextStyle(color: AppColors.textSecondary))
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(ctx, reason),
@@ -168,7 +169,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
     // نتأكد للمرة الأخيرة أن البيانات موجودة
     if (_deviceId == null || _token == null) {
        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("خطأ: بيانات المصادقة غير جاهزة"), backgroundColor: AppColors.error),
+          SnackBar(content: const Text("خطأ: بيانات المصادقة غير جاهزة"), backgroundColor: AppColors.error),
        );
        return;
     }
@@ -195,15 +196,15 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                     'x-device-id': _deviceId!, // علامة التعجب لأننا تأكدنا أنه ليس null
                     'x-app-secret': _appSecret,
                   },
-                  placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
+                  placeholder: (context, url) => Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
                   errorWidget: (context, url, error) => Container(
                     color: AppColors.backgroundSecondary,
-                    child: const Column(
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                         Icon(Icons.broken_image_rounded, color: AppColors.error, size: 50),
-                         SizedBox(height: 8),
-                         Text("تعذر تحميل الصورة - تأكد من الاتصال", style: TextStyle(color: AppColors.textSecondary)),
+                          Icon(Icons.broken_image_rounded, color: AppColors.error, size: 50),
+                          const SizedBox(height: 8),
+                          Text("تعذر تحميل الصورة - تأكد من الاتصال", style: TextStyle(color: AppColors.textSecondary)),
                       ],
                     ),
                   ),
@@ -231,14 +232,14 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
       appBar: AppBar(
-        title: const Text("طلبات الاشتراك المعلقة", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+        title: Text("طلبات الاشتراك المعلقة", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
         backgroundColor: AppColors.backgroundSecondary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppColors.accentYellow),
+        iconTheme: IconThemeData(color: AppColors.accentYellow),
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+          ? Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
           : _requests.isEmpty
               ? Center(
                   child: Column(
@@ -246,7 +247,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                     children: [
                       Icon(Icons.inbox_rounded, size: 80, color: AppColors.textSecondary.withOpacity(0.3)),
                       const SizedBox(height: 16),
-                      const Text("لا توجد طلبات معلقة حالياً", style: TextStyle(color: AppColors.textSecondary, fontSize: 18)),
+                      Text("لا توجد طلبات معلقة حالياً", style: TextStyle(color: AppColors.textSecondary, fontSize: 18)),
                     ],
                   ),
                 )
@@ -275,7 +276,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
       decoration: BoxDecoration(
         color: AppColors.backgroundSecondary,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
       ),
       child: Padding(
@@ -295,7 +296,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                     height: 90,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                       color: AppColors.backgroundPrimary,
                     ),
                     child: ClipRRect(
@@ -309,10 +310,10 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                                 'x-app-secret': _appSecret,
                               },
                               fit: BoxFit.cover,
-                              placeholder: (c, u) => const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)),
-                              errorWidget: (c, u, e) => const Icon(Icons.broken_image_rounded, color: AppColors.textSecondary),
+                              placeholder: (c, u) => Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentYellow)),
+                              errorWidget: (c, u, e) => Icon(Icons.broken_image_rounded, color: AppColors.textSecondary),
                             )
-                          : const Center(child: Icon(Icons.receipt_long_rounded, color: AppColors.textSecondary, size: 35)),
+                          : Icon(Icons.receipt_long_rounded, color: AppColors.textSecondary, size: 35),
                     ),
                   ),
                 ),
@@ -327,14 +328,14 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                            Expanded(
                              child: Text(
                                req['user_name'] ?? "اسم غير معروف",
-                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
+                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
                                overflow: TextOverflow.ellipsis,
                              ),
                            ),
                            Container(
                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                              decoration: BoxDecoration(color: AppColors.backgroundPrimary, borderRadius: BorderRadius.circular(8)),
-                             child: Text(dateStr, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                             child: Text(dateStr, style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                            )
                         ],
                       ),
@@ -348,7 +349,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
               ],
             ),
             
-            Divider(height: 24, color: Colors.white.withOpacity(0.1)),
+            Divider(height: 24, color: AppColors.textSecondary.withOpacity(0.1)),
 
             // ================== التفاصيل والسعر والملاحظة ==================
             Row(
@@ -370,17 +371,17 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Row(
+                            Row(
                               children: [
                                 Icon(Icons.shopping_cart_outlined, size: 16, color: AppColors.accentBlue),
-                                SizedBox(width: 6),
+                                const SizedBox(width: 6),
                                 Text("المحتوى المطلوب:", style: TextStyle(color: AppColors.accentBlue, fontSize: 12, fontWeight: FontWeight.bold)),
                               ],
                             ),
                             const SizedBox(height: 6),
                             Text(
                               req['course_title'] ?? 'غير محدد',
-                              style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.3),
+                              style: TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.3),
                             ),
                           ],
                         ),
@@ -410,7 +411,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 userNote,
-                                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.3),
+                                style: TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.3),
                               ),
                             ],
                           ),
@@ -433,13 +434,13 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
                     ),
                     child: Column(
                       children: [
-                        const Text("الإجمالي", style: TextStyle(color: AppColors.success, fontSize: 11)),
+                        Text("الإجمالي", style: TextStyle(color: AppColors.success, fontSize: 11)),
                         const SizedBox(height: 4),
                         Text(
                           "${req['total_price'] ?? 0}", 
-                          style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 18)
+                          style: TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 18)
                         ),
-                        const Text("EGP", style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.bold)),
+                        Text("EGP", style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -495,7 +496,7 @@ class _StudentRequestsScreenState extends State<StudentRequestsScreen> {
         const SizedBox(width: 8),
         Text(
           text,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
         ),
       ],
     );
