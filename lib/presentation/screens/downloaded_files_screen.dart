@@ -19,7 +19,7 @@ class DownloadedFilesScreen extends StatefulWidget {
 
 class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
   final LocalProxyService _proxy = LocalProxyService();
-  
+   
   @override
   void initState() {
     super.initState();
@@ -32,11 +32,11 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
       FirebaseCrashlytics.instance.log("Initializing Downloads Box and Proxy...");
 
       if (!Hive.isBoxOpen('downloads_box')) {
-  await StorageService.openBox('downloads_box');
-}
-      
+        await StorageService.openBox('downloads_box');
+      }
+       
       await _proxy.start();
-      
+       
       if (mounted) setState(() {});
 
     } catch (e, stack) {
@@ -77,12 +77,12 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                           border: Border.all(color: Colors.white.withOpacity(0.05)),
                           boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                         ),
-                        child: const Icon(LucideIcons.downloadCloud, color: AppColors.accentYellow, size: 24),
+                        child: Icon(LucideIcons.downloadCloud, color: AppColors.accentYellow, size: 24),
                       ),
                       const SizedBox(width: 12),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Text(
                             "DOWNLOADS",
                             style: TextStyle(
@@ -93,7 +93,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                               letterSpacing: -0.5,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
                             "LOCAL COURSES",
                             style: TextStyle(
@@ -121,7 +121,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                         ),
                         child: Text(
                           "${progressMap.length} ACTIVE",
-                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accentYellow),
+                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accentYellow),
                         ),
                       );
                     }
@@ -147,14 +147,14 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                   return ValueListenableBuilder<Map<String, double>>(
                     valueListenable: DownloadManager.downloadingProgress,
                     builder: (context, progressMap, child) {
-                      
+                       
                       if (groupedCourses.isEmpty && progressMap.isEmpty) {
-                        return const Center(
+                        return Center(
                           child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 80),
+                            padding: const EdgeInsets.symmetric(vertical: 80),
                             child: Text(
                               "NO STORED FILES",
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white24, letterSpacing: 2.0),
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary.withOpacity(0.5), letterSpacing: 2.0),
                             ),
                           ),
                         );
@@ -167,8 +167,8 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                           children: [
                             // ✅ قسم التحميلات النشطة المعدل
                             if (progressMap.isNotEmpty) ...[
-                              const Padding(
-                                padding: EdgeInsets.only(left: 4, bottom: 12),
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4, bottom: 12),
                                 child: Text(
                                   "ACTIVE DOWNLOADS",
                                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 2.0),
@@ -203,7 +203,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                                           Expanded(
                                             child: Text(
                                               title,
-                                              style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold),
+                                              style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold),
                                               maxLines: 1, overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
@@ -212,7 +212,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                                           // النسبة وزر الإلغاء
                                           Row(
                                             children: [
-                                              Text("$percent%", style: const TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold)),
+                                              Text("$percent%", style: TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold)),
                                               const SizedBox(width: 12),
                                               
                                               // ✅ زر الإلغاء (X)
@@ -227,7 +227,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                                                     color: AppColors.error.withOpacity(0.2),
                                                     shape: BoxShape.circle,
                                                   ),
-                                                  child: const Icon(LucideIcons.x, size: 14, color: AppColors.error),
+                                                  child: Icon(LucideIcons.x, size: 14, color: AppColors.error),
                                                 ),
                                               ),
                                             ],
@@ -287,7 +287,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
                                           children: [
                                             Text(
                                               entry.key.toUpperCase(),
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontSize: 15, 
                                                 fontWeight: FontWeight.bold, 
                                                 color: AppColors.textPrimary, 
@@ -328,7 +328,7 @@ class _DownloadedFilesScreenState extends State<DownloadedFilesScreen> {
       ),
     );
   }
-  
+   
   Widget _buildMetaTag(IconData icon, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
