@@ -32,9 +32,9 @@ class PdfViewerScreen extends StatefulWidget {
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
   final PdfViewerController _pdfController = PdfViewerController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  
+   
   File? _decryptedTempFile; 
-  
+   
   // متغيرات الحالة للعرض
   String? _filePath; 
   Map<String, String>? _onlineHeaders; 
@@ -47,13 +47,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   // --- أدوات الرسم ---
   bool _isDrawingMode = false;
-  
+   
   // 0 = Pen, 1 = Highlighter, 2 = Eraser
   int _selectedTool = 0; 
-  
+   
   // لون واحد موحد لجميع الأدوات
   Color _selectedColor = Colors.red;
-  
+   
   double _penSize = 0.003; 
   double _highlightSize = 0.035; 
   double _eraserSize = 0.04; 
@@ -73,12 +73,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   @override
   void dispose() {
     if (_isOffline) _saveDrawingsToHive();
-    
+     
     // تنظيف الملف المؤقت
     if (_decryptedTempFile != null && _decryptedTempFile!.existsSync()) {
       try { _decryptedTempFile!.deleteSync(); } catch (_) {}
     }
-    
+     
     super.dispose();
   }
 
@@ -165,9 +165,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           _isOffline = true;
           _loadingMessage = "جار فك التشفير...";
         });
-        
+         
         _decryptedTempFile = await FileCryptoService.decryptToTempFile(offlinePath!);
-        
+         
         if (mounted) {
           setState(() {
             _filePath = _decryptedTempFile!.path;
@@ -180,20 +180,20 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           _isOffline = false;
           _loadingMessage = "جار التحميل...";
         });
-        
+         
         var box = await StorageService.openBox('auth_box');
-        
+         
         final String? token = box.get('jwt_token');
         final String? deviceId = box.get('device_id');
-        
+         
         final headers = {
           'Authorization': 'Bearer $token', 
           'x-device-id': deviceId ?? '',
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         };
-        
+         
         final url = 'https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=${widget.pdfId}';
-        
+         
         if (mounted) {
           setState(() {
             _filePath = url;
@@ -217,11 +217,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const CircularProgressIndicator(color: AppColors.accentYellow),
+              // 🔥 تم حذف const هنا
+              CircularProgressIndicator(color: AppColors.accentYellow),
               const SizedBox(height: 16),
               Text(
                 _loadingMessage,
-                style: const TextStyle(color: AppColors.accentYellow, fontSize: 14, fontWeight: FontWeight.bold),
+                // 🔥 تم حذف const هنا
+                style: TextStyle(color: AppColors.accentYellow, fontSize: 14, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -240,27 +242,31 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AppColors.backgroundPrimary,
-      
+       
       endDrawer: Drawer(
         backgroundColor: AppColors.backgroundSecondary,
         width: 250,
         child: Column(
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 40, 16, 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 40, 16, 16),
+              // 🔥 تم حذف const هنا
               child: Text("PAGE INDEX", style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.5)),
             ),
             const Divider(color: Colors.white10),
             Expanded(
               child: _totalPages == 0 
-                ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow)) 
+                // 🔥 تم حذف const هنا
+                ? Center(child: CircularProgressIndicator(color: AppColors.accentYellow)) 
                 : ListView.builder(
                     itemCount: _totalPages,
                     itemBuilder: (context, index) {
                       final pageNum = index + 1;
                       final isCurrent = _pdfController.pageNumber == pageNum;
                       return ListTile(
+                        // 🔥 تم حذف const هنا
                         title: Text("Page $pageNum", style: TextStyle(color: isCurrent ? AppColors.accentYellow : Colors.white, fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal)),
+                        // 🔥 تم حذف const هنا
                         leading: Icon(LucideIcons.fileText, color: isCurrent ? AppColors.accentYellow : Colors.white54, size: 18),
                         onTap: () {
                           _pdfController.goToPage(pageNumber: pageNum);
@@ -295,7 +301,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 ],
               ),
             ),
-            
+             
             // ✅ زر فتح/غلق أدوات الرسم (تم نقله هنا بجوار الحالة)
             if (_isOffline) ...[
               const SizedBox(width: 12),
@@ -304,12 +310,15 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
+                    // 🔥 تم حذف const هنا
                     color: _isDrawingMode ? AppColors.accentYellow : Colors.transparent,
                     shape: BoxShape.circle,
+                    // 🔥 تم حذف const هنا
                     border: Border.all(color: AppColors.accentYellow.withOpacity(0.5))
                   ),
                   child: Icon(
                     LucideIcons.penTool, 
+                    // 🔥 تم حذف const هنا
                     color: _isDrawingMode ? Colors.black : AppColors.accentYellow, 
                     size: 16
                   ),
@@ -320,6 +329,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         ),
         backgroundColor: AppColors.backgroundSecondary,
         leading: BackButton(
+          // 🔥 تم حذف const هنا
           color: AppColors.accentYellow,
           onPressed: () async {
              if(_isOffline) await _saveDrawingsToHive();
@@ -329,7 +339,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         actions: [
           // تم حذف زر القلم من هنا ونقله لليسار
           IconButton(
-            icon: const Icon(LucideIcons.list, color: AppColors.accentYellow),
+            // 🔥 تم حذف const هنا
+            icon: Icon(LucideIcons.list, color: AppColors.accentYellow),
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
           ),
         ],
@@ -398,7 +409,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
-            child: const CircularProgressIndicator(color: AppColors.accentYellow),
+            // 🔥 تم حذف const هنا
+            child: CircularProgressIndicator(color: AppColors.accentYellow),
           ),
         );
       },
@@ -433,7 +445,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                       );
                       setState(() {
                         _activePage = page.pageNumber;
-                        
+                         
                         // ✅ منطق الرسم الموحد
                         double width = _penSize;
                         int colorValue = _selectedColor.value;
@@ -590,6 +602,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   Widget _buildToolButton(IconData icon, int toolIndex) {
     final bool isSelected = _selectedTool == toolIndex;
     return IconButton(
+      // 🔥 تم حذف const هنا
       icon: Icon(icon, color: isSelected ? AppColors.accentYellow : Colors.grey),
       onPressed: () => setState(() => _selectedTool = toolIndex),
     );
@@ -662,7 +675,7 @@ class RelativeSketchPainter extends CustomPainter {
         canvas.drawPoints(PointMode.points, [p], paint);
       }
     }
-    
+     
     canvas.restore();
   }
 
