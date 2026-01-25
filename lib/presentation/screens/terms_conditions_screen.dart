@@ -24,13 +24,13 @@ class TermsConditionsScreen extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSecondary,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       "الشروط والأحكام\nTERMS & CONDITIONS",
                       style: TextStyle(
@@ -54,7 +54,7 @@ class TermsConditionsScreen extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSecondary,
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                   ),
                   child: Column(
                     children: [
@@ -64,7 +64,7 @@ class TermsConditionsScreen extends StatelessWidget {
                         "الحساب شخصي وغير قابل للمشاركة. يتم ربط الحساب بجهازك، وأي محاولة للدخول من جهاز آخر ستؤدي إلى إغلاق الحساب.",
                         "Your account is personal and non-transferable. It is linked to your device, and attempting to log in from another device will lock your account."
                       ),
-                      const Divider(color: Colors.white10, height: 40),
+                      Divider(color: AppColors.textSecondary.withOpacity(0.1), height: 40),
                       
                       _buildSection(
                         "2. الأنشطة المحظورة",
@@ -72,9 +72,8 @@ class TermsConditionsScreen extends StatelessWidget {
                         "يُمنع منعاً باتاً استخدام التطبيق في بيئة Root أو Jailbreak، أو تفعيل خيارات المطور، أو محاولة الهندسة العكسية للتطبيق. يحق لنا إيقاف الخدمة نهائياً دون سابق إنذار في حال اكتشاف ذلك.",
                         "It is strictly prohibited to use the app in a Rooted/Jailbroken environment, enable Developer Options, or attempt reverse engineering. We reserve the right to terminate service immediately without notice if detected."
                       ),
-                       const Divider(color: Colors.white10, height: 40),
+                      Divider(color: AppColors.textSecondary.withOpacity(0.1), height: 40),
 
-                      // ✅ تم التعديل هنا
                       _buildSection(
                         "3. المدفوعات والاسترداد",
                         "3. Payments & Refunds",
@@ -100,13 +99,13 @@ class TermsConditionsScreen extends StatelessWidget {
         Text(
           arTitle,
           textAlign: TextAlign.right,
-          style: const TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold, fontSize: 16),
+          style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 8),
         Text(
           arBody,
           textAlign: TextAlign.right,
-          style: const TextStyle(color: AppColors.textPrimary, height: 1.6, fontSize: 14),
+          style: TextStyle(color: AppColors.textPrimary, height: 1.6, fontSize: 14),
         ),
         
         const SizedBox(height: 16),
@@ -119,7 +118,7 @@ class TermsConditionsScreen extends StatelessWidget {
             children: [
               Text(
                 enTitle,
-                style: const TextStyle(color: AppColors.accentOrange, fontWeight: FontWeight.bold, fontSize: 14),
+                style: TextStyle(color: AppColors.accentOrange, fontWeight: FontWeight.bold, fontSize: 14),
               ),
               const SizedBox(height: 4),
               Text(
