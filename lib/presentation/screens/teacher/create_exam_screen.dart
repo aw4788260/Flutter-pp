@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../../core/constants/app_colors.dart'; // ✅ التأكد من الاستيراد الصحيح
 import '../../../core/services/teacher_service.dart';
 import '../../widgets/custom_text_field.dart';
 
@@ -21,14 +22,14 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
   // بيانات الامتحان الأساسية
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _durationController = TextEditingController();
-  
+   
   bool _randomizeQuestions = true;
   // ✅ 1. إضافة متغير لترتيب الاختيارات عشوائياً
   bool _randomizeOptions = true; 
-  
+   
   DateTime? _startDate; 
-  DateTime? _endDate;    
-  
+  DateTime? _endDate;     
+   
   List<QuestionModel> _questions = [];
   bool _isSubmitting = false;
   bool _isLoadingDetails = false;
@@ -92,7 +93,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
 
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("فشل تحميل بيانات الامتحان: $e"), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("فشل تحميل بيانات الامتحان: $e"), backgroundColor: AppColors.error));
         Navigator.pop(context);
       }
     } finally {
@@ -122,6 +123,14 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
       initialDate: initialDate.isBefore(firstDate) ? firstDate : initialDate,
       firstDate: firstDate,
       lastDate: now.add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(primary: AppColors.accentYellow),
+          ),
+          child: child!,
+        );
+      },
     );
     
     if (date == null) return;
@@ -129,6 +138,14 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(initialDate),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(primary: AppColors.accentYellow),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (time == null) return;
@@ -140,7 +157,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
       if (_endDate != null && dateTime.isAfter(_endDate!)) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("تاريخ البدء لا يمكن أن يكون بعد تاريخ الانتهاء!"), backgroundColor: Colors.red)
+            const SnackBar(content: Text("تاريخ البدء لا يمكن أن يكون بعد تاريخ الانتهاء!"), backgroundColor: AppColors.error)
           );
         }
         return;
@@ -150,7 +167,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
       if (_startDate != null && dateTime.isBefore(_startDate!)) {
         if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("تاريخ الانتهاء لا يمكن أن يكون قبل تاريخ البدء!"), backgroundColor: Colors.red)
+            const SnackBar(content: Text("تاريخ الانتهاء لا يمكن أن يكون قبل تاريخ البدء!"), backgroundColor: AppColors.error)
           );
         }
         return;
@@ -184,21 +201,21 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Text("حذف الامتحان", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-        content: const Text(
+        backgroundColor: AppColors.backgroundSecondary,
+        title: const Text("حذف الامتحان", style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+        content: Text(
           "هل أنت متأكد من حذف هذا الامتحان؟\n\n"
           "⚠️ تحذير: سيتم حذف جميع الأسئلة وجميع نتائج الطلاب المرتبطة بهذا الامتحان بشكل نهائي.",
-          style: TextStyle(color: Colors.black87),
+          style: TextStyle(color: AppColors.textPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text("إلغاء"),
+            child: Text("إلغاء", style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text("حذف نهائي", style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -214,14 +231,14 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("تم حذف الامتحان بنجاح"), backgroundColor: Colors.green),
+          const SnackBar(content: Text("تم حذف الامتحان بنجاح"), backgroundColor: AppColors.success),
         );
         Navigator.pop(context, true); // العودة وتحديث القائمة
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("فشل الحذف: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text("فشل الحذف: $e"), backgroundColor: AppColors.error),
         );
       }
     } finally {
@@ -233,17 +250,17 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
   Future<void> _submitExam() async {
     if (!_formKey.currentState!.validate()) return;
     if (_questions.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("يجب إضافة سؤال واحد على الأقل"), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("يجب إضافة سؤال واحد على الأقل"), backgroundColor: AppColors.error));
       return;
     }
     if (_startDate == null || _endDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("يرجى تحديد وقت بداية ونهاية الامتحان"), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("يرجى تحديد وقت بداية ونهاية الامتحان"), backgroundColor: AppColors.error));
       return;
     }
     
     // تحقق أخير للتأكد قبل الإرسال
     if (_startDate!.isAfter(_endDate!)) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("خطأ: وقت البداية بعد وقت النهاية!"), backgroundColor: Colors.red));
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("خطأ: وقت البداية بعد وقت النهاية!"), backgroundColor: AppColors.error));
        return;
     }
 
@@ -288,7 +305,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(widget.examId != null ? "تم تحديث الامتحان بنجاح" : "تم إنشاء الامتحان بنجاح"), 
-            backgroundColor: Colors.green
+            backgroundColor: AppColors.success
           )
         );
         Navigator.pop(context, true);
@@ -296,7 +313,7 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
 
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("حدث خطأ: $e"), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("حدث خطأ: $e"), backgroundColor: AppColors.error));
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -306,31 +323,35 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoadingDetails) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: AppColors.backgroundPrimary,
+        body: Center(child: CircularProgressIndicator(color: AppColors.accentYellow)),
       );
     }
 
     return Scaffold(
+      backgroundColor: AppColors.backgroundPrimary,
       appBar: AppBar(
-        title: Text(widget.examId != null ? "تعديل الامتحان" : "إنشاء امتحان جديد"),
+        title: Text(widget.examId != null ? "تعديل الامتحان" : "إنشاء امتحان جديد", style: TextStyle(color: AppColors.textPrimary)),
+        backgroundColor: AppColors.backgroundSecondary,
+        iconTheme: IconThemeData(color: AppColors.accentYellow),
         actions: [
           // زر الحذف يظهر فقط عند التعديل
           if (widget.examId != null)
             IconButton(
-              icon: const Icon(Icons.delete_forever, color: Colors.red),
+              icon: const Icon(Icons.delete_forever, color: AppColors.error),
               onPressed: _isSubmitting ? null : _deleteExam,
               tooltip: "حذف الامتحان",
             )
         ],
       ),
       body: _isSubmitting
-          ? const Center(child: Column(
+          ? Center(child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 20),
-                Text("جاري التنفيذ...")
+                CircularProgressIndicator(color: AppColors.accentYellow),
+                const SizedBox(height: 20),
+                Text("جاري التنفيذ...", style: TextStyle(color: AppColors.textPrimary))
               ],
             ))
           : Form(
@@ -358,33 +379,36 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                   const SizedBox(height: 15),
 
                   Card(
+                    color: AppColors.backgroundSecondary,
                     child: Column(
                       children: [
                         SwitchListTile(
-                          title: const Text("ترتيب أسئلة عشوائي"),
-                          subtitle: const Text("يظهر لكل طالب ترتيب أسئلة مختلف"),
+                          title: Text("ترتيب أسئلة عشوائي", style: TextStyle(color: AppColors.textPrimary)),
+                          subtitle: Text("يظهر لكل طالب ترتيب أسئلة مختلف", style: TextStyle(color: AppColors.textSecondary)),
                           value: _randomizeQuestions,
+                          activeColor: AppColors.accentYellow,
                           onChanged: (val) => setState(() => _randomizeQuestions = val),
                         ),
                         // ✅ عنصر التحكم في ترتيب الخيارات عشوائياً
-                        const Divider(height: 1),
+                        Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
                         SwitchListTile(
-                          title: const Text("ترتيب اختيارات عشوائي"),
-                          subtitle: const Text("تغيير أماكن الإجابات داخل كل سؤال"),
+                          title: Text("ترتيب اختيارات عشوائي", style: TextStyle(color: AppColors.textPrimary)),
+                          subtitle: Text("تغيير أماكن الإجابات داخل كل سؤال", style: TextStyle(color: AppColors.textSecondary)),
                           value: _randomizeOptions,
+                          activeColor: AppColors.accentYellow,
                           onChanged: (val) => setState(() => _randomizeOptions = val),
                         ),
-                        const Divider(thickness: 2),
+                        Divider(thickness: 2, color: AppColors.textSecondary.withOpacity(0.1)),
                         ListTile(
                           leading: const Icon(Icons.calendar_today, color: Colors.blue),
-                          title: Text(_startDate == null ? "تاريخ ووقت التفعيل (البداية)" : "يبدأ: ${_formatDate(_startDate!)}"),
-                          subtitle: const Text("اضغط لتحديد البداية"),
+                          title: Text(_startDate == null ? "تاريخ ووقت التفعيل (البداية)" : "يبدأ: ${_formatDate(_startDate!)}", style: TextStyle(color: AppColors.textPrimary)),
+                          subtitle: Text("اضغط لتحديد البداية", style: TextStyle(color: AppColors.textSecondary)),
                           onTap: () => _pickDateTime(true),
                         ),
                         ListTile(
-                          leading: const Icon(Icons.event_busy, color: Colors.red),
-                          title: Text(_endDate == null ? "تاريخ ووقت الإغلاق (النهاية)" : "ينتهي: ${_formatDate(_endDate!)}"),
-                          subtitle: const Text("اضغط لتحديد النهاية"),
+                          leading: const Icon(Icons.event_busy, color: AppColors.error),
+                          title: Text(_endDate == null ? "تاريخ ووقت الإغلاق (النهاية)" : "ينتهي: ${_formatDate(_endDate!)}", style: TextStyle(color: AppColors.textPrimary)),
+                          subtitle: Text("اضغط لتحديد النهاية", style: TextStyle(color: AppColors.textSecondary)),
                           onTap: () => _pickDateTime(false),
                         ),
                       ],
@@ -395,20 +419,24 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("الأسئلة (${_questions.length})", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text("الأسئلة (${_questions.length})", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                       ElevatedButton.icon(
                         onPressed: () => _openQuestionDialog(),
                         icon: const Icon(Icons.add),
                         label: const Text("إضافة سؤال"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.accentYellow,
+                          foregroundColor: AppColors.backgroundPrimary,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
 
                   if (_questions.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Center(child: Text("لم تتم إضافة أسئلة بعد", style: TextStyle(color: Colors.grey))),
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Center(child: Text("لم تتم إضافة أسئلة بعد", style: TextStyle(color: AppColors.textSecondary))),
                     )
                   else
                     ListView.builder(
@@ -418,13 +446,17 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                       itemBuilder: (context, index) {
                         final q = _questions[index];
                         return Card(
+                          color: AppColors.backgroundSecondary,
                           margin: const EdgeInsets.only(bottom: 10),
                           child: ListTile(
-                            leading: CircleAvatar(child: Text("${index + 1}")),
-                            title: Text(q.text, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text("${q.options.length} اختيارات • ${q.imageFile != null ? "صورة جديدة" : (q.imageUrl != null ? "صورة محفوظة" : "نص فقط")}"),
+                            leading: CircleAvatar(
+                                backgroundColor: AppColors.accentYellow,
+                                child: Text("${index + 1}", style: TextStyle(color: AppColors.backgroundPrimary))
+                            ),
+                            title: Text(q.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: AppColors.textPrimary)),
+                            subtitle: Text("${q.options.length} اختيارات • ${q.imageFile != null ? "صورة جديدة" : (q.imageUrl != null ? "صورة محفوظة" : "نص فقط")}", style: TextStyle(color: AppColors.textSecondary)),
                             trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
+                              icon: const Icon(Icons.delete, color: AppColors.error),
                               onPressed: () => setState(() => _questions.removeAt(index)),
                             ),
                             onTap: () => _openQuestionDialog(existingQuestion: q, index: index),
@@ -438,11 +470,11 @@ class _CreateExamScreenState extends State<CreateExamScreen> {
                     onPressed: _submitExam,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 15),
-                      backgroundColor: Colors.blue[800],
+                      backgroundColor: AppColors.accentYellow,
                     ),
                     child: Text(
                       widget.examId != null ? "حفظ التعديلات" : "حفظ ونشر الامتحان", 
-                      style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)
+                      style: TextStyle(fontSize: 18, color: AppColors.backgroundPrimary, fontWeight: FontWeight.bold)
                     ),
                   ),
                 ],
@@ -491,9 +523,9 @@ class QuestionDialog extends StatefulWidget {
 class _QuestionDialogState extends State<QuestionDialog> {
   final _qFormKey = GlobalKey<FormState>();
   final TextEditingController _questionTextController = TextEditingController();
-  
+   
   List<TextEditingController> _optionControllers = [];
-  
+   
   int _correctIndex = 0;
   File? _selectedImage;
   String? _existingImageUrl;
@@ -546,7 +578,7 @@ class _QuestionDialogState extends State<QuestionDialog> {
   void _removeOption(int index) {
     if (_optionControllers.length <= 2) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("يجب أن يحتوي السؤال على خيارين على الأقل"))
+        const SnackBar(content: Text("يجب أن يحتوي السؤال على خيارين على الأقل"), backgroundColor: AppColors.error)
       );
       return;
     }
@@ -570,7 +602,7 @@ class _QuestionDialogState extends State<QuestionDialog> {
     
     if (options.any((o) => o.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("يرجى ملء جميع حقول الخيارات أو حذف الفارغ منها"))
+        const SnackBar(content: Text("يرجى ملء جميع حقول الخيارات أو حذف الفارغ منها"), backgroundColor: AppColors.error)
       );
       return;
     }
@@ -594,7 +626,11 @@ class _QuestionDialogState extends State<QuestionDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.initialQuestion == null ? "سؤال جديد" : "تعديل السؤال"),
+      backgroundColor: AppColors.backgroundSecondary,
+      title: Text(
+          widget.initialQuestion == null ? "سؤال جديد" : "تعديل السؤال",
+          style: TextStyle(color: AppColors.textPrimary)
+      ),
       content: SizedBox(
         width: double.maxFinite,
         child: SingleChildScrollView(
@@ -605,7 +641,13 @@ class _QuestionDialogState extends State<QuestionDialog> {
               children: [
                 TextFormField(
                   controller: _questionTextController,
-                  decoration: const InputDecoration(labelText: "نص السؤال", border: OutlineInputBorder()),
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: "نص السؤال",
+                    labelStyle: TextStyle(color: AppColors.textSecondary),
+                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white.withOpacity(0.1))),
+                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: AppColors.accentYellow)),
+                  ),
                   maxLines: 2,
                   validator: (val) => val!.isEmpty ? "مطلوب" : null,
                 ),
@@ -619,19 +661,19 @@ class _QuestionDialogState extends State<QuestionDialog> {
                             ? "تم اختيار صورة جديدة" 
                             : (_existingImageUrl != null ? "صورة محفوظة مسبقاً" : "لا توجد صورة"),
                         style: TextStyle(
-                          color: _selectedImage != null ? Colors.green : Colors.grey,
+                          color: _selectedImage != null ? AppColors.success : AppColors.textSecondary,
                           fontWeight: _selectedImage != null ? FontWeight.bold : FontWeight.normal
                         ),
                       ),
                     ),
                     IconButton(
                       onPressed: _pickImage,
-                      icon: const Icon(Icons.image),
+                      icon: const Icon(Icons.image, color: AppColors.accentYellow),
                       tooltip: "رفع/تغيير صورة",
                     ),
                     if (_selectedImage != null || _existingImageUrl != null)
                       IconButton(
-                        icon: const Icon(Icons.close, color: Colors.red),
+                        icon: const Icon(Icons.close, color: AppColors.error),
                         tooltip: "حذف الصورة",
                         onPressed: () => setState(() {
                           _selectedImage = null;
@@ -640,16 +682,16 @@ class _QuestionDialogState extends State<QuestionDialog> {
                       )
                   ],
                 ),
-                const Divider(),
+                Divider(color: AppColors.textSecondary.withOpacity(0.1)),
 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text("الخيارات (حدد الصحيحة):", style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text("الخيارات (حدد الصحيحة):", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                     TextButton.icon(
                       onPressed: _addOption,
-                      icon: const Icon(Icons.add_circle, size: 18),
-                      label: const Text("إضافة خيار"),
+                      icon: const Icon(Icons.add_circle, size: 18, color: AppColors.accentYellow),
+                      label: const Text("إضافة خيار", style: TextStyle(color: AppColors.accentYellow)),
                       style: TextButton.styleFrom(padding: EdgeInsets.zero),
                     ),
                   ],
@@ -664,22 +706,26 @@ class _QuestionDialogState extends State<QuestionDialog> {
                         Radio<int>(
                           value: index,
                           groupValue: _correctIndex,
+                          activeColor: AppColors.success,
                           onChanged: (val) => setState(() => _correctIndex = val!),
                         ),
                         Expanded(
                           child: TextFormField(
                             controller: _optionControllers[index],
+                            style: TextStyle(color: AppColors.textPrimary),
                             decoration: InputDecoration(
                               labelText: "الخيار ${index + 1}",
+                              labelStyle: TextStyle(color: AppColors.textSecondary),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                              border: const OutlineInputBorder(),
+                              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white.withOpacity(0.1))),
+                              focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: AppColors.accentYellow)),
                             ),
                             validator: (val) => val!.isEmpty ? "مطلوب" : null,
                           ),
                         ),
                         if (_optionControllers.length > 2)
                           IconButton(
-                            icon: const Icon(Icons.remove_circle, color: Colors.red),
+                            icon: const Icon(Icons.remove_circle, color: AppColors.error),
                             onPressed: () => _removeOption(index),
                             tooltip: "حذف الخيار",
                           ),
@@ -693,8 +739,12 @@ class _QuestionDialogState extends State<QuestionDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
-        ElevatedButton(onPressed: _save, child: const Text("حفظ السؤال")),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text("إلغاء", style: TextStyle(color: AppColors.textSecondary))),
+        ElevatedButton(
+            onPressed: _save,
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
+            child: Text("حفظ السؤال", style: TextStyle(color: AppColors.backgroundPrimary, fontWeight: FontWeight.bold))
+        ),
       ],
     );
   }
