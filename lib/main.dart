@@ -15,6 +15,7 @@ import 'package:audio_session/audio_session.dart';
 import 'core/services/notification_service.dart'; 
 import 'core/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
+import 'core/services/app_state.dart'; // ✅ تم إضافة الاستيراد
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -64,6 +65,9 @@ void main() async {
     SecurityManager.instance.initListeners(); 
     SecurityManager.instance.checkSecurity();
     SecurityManager.instance.startPeriodicCheck();
+
+    // ✅ 1. تهيئة الثيم المحفوظ (ليلي/نهاري)
+    await AppState().initTheme();
 
     runApp(const EduVantageApp());
   }, (error, stack) {
@@ -333,13 +337,27 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey, 
-      debugShowCheckedModeBanner: false,
-      title: 'مــــداد',
-      theme: AppTheme.darkTheme,
-      themeMode: ThemeMode.dark,
-      home: const SplashScreen(),
+    // ✅ 2. تغليف التطبيق بـ ValueListenableBuilder لمراقبة تغيير الثيم
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: AppState().themeNotifier,
+      builder: (context, currentMode, child) {
+        return MaterialApp(
+          navigatorKey: navigatorKey, 
+          debugShowCheckedModeBanner: false,
+          title: 'مــــداد',
+          
+          // الثيم سيعتمد الآن على AppColors الديناميكي
+          // يتم تحديد brightness لضبط أيقونات شريط الحالة (الساعة والبطارية)
+          theme: AppTheme.darkTheme.copyWith(
+            brightness: currentMode == ThemeMode.dark ? Brightness.dark : Brightness.light,
+          ),
+          
+          // إجبار التطبيق على إعادة البناء عند تغيير الثيم
+          themeMode: currentMode, 
+          
+          home: const SplashScreen(),
+        );
+      },
     );
   }
 }
