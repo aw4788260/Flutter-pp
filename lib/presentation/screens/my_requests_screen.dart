@@ -71,11 +71,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: Colors.white.withOpacity(0.05)),
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
@@ -87,7 +87,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           letterSpacing: -0.5,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
                         "TRACK YOUR ORDERS",
                         style: TextStyle(
@@ -106,7 +106,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             // --- List ---
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+                  ? Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
                   : _requests.isEmpty
                       ? Center(
                           child: Column(
@@ -185,7 +185,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                 ),
                 child: Text(
                   "#${req['id']}", 
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold)
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold)
                 ),
               ),
               Row(
@@ -203,12 +203,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           const SizedBox(height: 16),
           Text(
             req['course_title'] ?? 'Unknown Item', 
-            style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
             "${req['total_price']} EGP", 
-            style: const TextStyle(color: AppColors.accentYellow, fontSize: 14, fontWeight: FontWeight.bold),
+            style: TextStyle(color: AppColors.accentYellow, fontSize: 14, fontWeight: FontWeight.bold),
           ),
 
           // ✅ عرض الملاحظة هنا
@@ -225,11 +225,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
-                    children: [
-                       Icon(LucideIcons.fileText, size: 12, color: Colors.amber),
-                       SizedBox(width: 4),
-                       Text(
+                  Row(
+                    children: const [
+                        Icon(LucideIcons.fileText, size: 12, color: Colors.amber),
+                        SizedBox(width: 4),
+                        Text(
                         "YOUR NOTE",
                         style: TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0),
                       ),
@@ -238,7 +238,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                   const SizedBox(height: 4),
                   Text(
                     userNote,
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
                   ),
                 ],
               ),
@@ -256,7 +256,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               ),
               child: Text(
                 "Reason: ${req['rejection_reason']}", 
-                style: const TextStyle(color: AppColors.error, fontSize: 11),
+                style: TextStyle(color: AppColors.error, fontSize: 11),
               ),
             ),
         ],
