@@ -43,17 +43,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isError = false;
   String _errorMessage = "";
   bool _isInitialized = false;
-  
+   
   bool _isVideoLoading = true; 
   bool _isOfflineMode = false;
-  
+   
   bool _isWeakDevice = false; 
 
   int _stabilizingCountdown = 0;
   Timer? _countdownTimer;
-  
+   
   bool _isDisposing = false;
-  
+   
   Timer? _watermarkTimer;
   Alignment _watermarkAlignment = Alignment.topRight;
   String _watermarkText = "";
@@ -85,7 +85,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ]);
 
       await WakelockPlus.enable();
-      
+       
       // Start proxy
       await _startProxyServer();
 
@@ -114,7 +114,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           vo: 'gpu', 
         ),
       );
-      
+       
       // 2. Decoding settings
       if (forceSoftwareDecoding) {
         await (_player.platform as dynamic).setProperty('hwdec', 'no'); 
@@ -182,17 +182,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _playVideo(String url, {Duration? startAt}) async {
     if (_isDisposing) return;
-    
+     
     setState(() {
       _isVideoLoading = true;
       _stabilizingCountdown = 0;
     });
     _countdownTimer?.cancel();
-    
+     
     try {
       String playUrl = url;
       String? audioUrl; 
-      
+       
       _isOfflineMode = false;
 
       // ============================================================
@@ -240,9 +240,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             audioUrl = widget.preReadyAudioUrl;
          }
       }
-      
+       
       await _player.stop();
-      
+       
       final bool isYoutubeSource = playUrl.contains('googlevideo.com');
       final headers = isYoutubeSource ? _youtubeHeaders : _serverHeaders;    
 
@@ -270,7 +270,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           } catch (_) {}
         }
       }
-      
+       
       if (startAt != null && startAt != Duration.zero) {
          await _player.seek(startAt);
       }
@@ -300,7 +300,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _seekDebounceTimer = Timer(const Duration(milliseconds: 600), () async {
       try {
         if (_player.state.duration == Duration.zero) return;
-        
+         
         final currentPos = _player.state.position;
         final targetPos = currentPos + _accumulatedSeekAmount;
 
@@ -364,7 +364,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           shrinkWrap: true,
           children: _sortedQualities.reversed.map((q) => ListTile(
             title: Text(q, style: TextStyle(color: q == _currentQuality ? AppColors.accentYellow : Colors.white)),
-            trailing: q == _currentQuality ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
+            // 🔥 تم حذف const هنا
+            trailing: q == _currentQuality ? Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
             onTap: () {
               Navigator.pop(ctx);
               if (q != _currentQuality) {
@@ -390,7 +391,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           shrinkWrap: true,
           children: speeds.map((s) => ListTile(
             title: Text("${s}x", style: TextStyle(color: s == _currentSpeed ? AppColors.accentYellow : Colors.white)),
-            trailing: s == _currentSpeed ? const Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
+            // 🔥 تم حذف const هنا
+            trailing: s == _currentSpeed ? Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
             onTap: () {
               Navigator.pop(ctx);
               setState(() => _currentSpeed = s);
@@ -405,13 +407,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _startCountdown() {
     setState(() => _stabilizingCountdown = _isWeakDevice ? 6 : 10); 
     _countdownTimer?.cancel();
-    
+     
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_isDisposing) {
         timer.cancel();
         return;
       }
-      
+       
       if (_stabilizingCountdown <= 1) {
         timer.cancel();
         if (mounted) {
@@ -491,7 +493,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _safeExit() async {
     if (_isDisposing) return;
-    
+     
     if (mounted) {
       setState(() {
         _isDisposing = true;
@@ -526,7 +528,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).viewPadding;
-    
+     
     final controlsTheme = MaterialVideoControlsThemeData(
       displaySeekBar: false,
       padding: EdgeInsets.only(
@@ -599,17 +601,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           fit: StackFit.expand,
           children: [
             if (_isDisposing)
-              const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
-            
+              // 🔥 تم حذف const هنا
+              Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+             
             else if (!_isInitialized)
-              const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
-            
+              // 🔥 تم حذف const هنا
+              Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+             
             else if (_isError)
               Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                    // 🔥 تم حذف const هنا
+                    Icon(Icons.error_outline, color: AppColors.error, size: 48),
                     const SizedBox(height: 16),
                     Text(_errorMessage, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
                     const SizedBox(height: 16),
@@ -619,6 +624,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           setState(() => _isError = false);
                           _playVideo(widget.streams[_currentQuality]!);
                       }, 
+                      // 🔥 تم حذف const هنا
                       style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
                       child: const Text("Retry", style: TextStyle(color: Colors.black)),
                     )
@@ -645,13 +651,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (_isVideoLoading || !_isInitialized)
-                        const CircularProgressIndicator(color: AppColors.accentYellow),
+                        // 🔥 تم حذف const هنا
+                        CircularProgressIndicator(color: AppColors.accentYellow),
                         
                       if (_stabilizingCountdown > 0) ...[
                         const SizedBox(height: 24),
                         Text(
                           "Starting in $_stabilizingCountdown",
-                          style: const TextStyle(
+                          style: TextStyle(
+                            // 🔥 تم حذف const هنا
                             color: AppColors.accentYellow, 
                             fontWeight: FontWeight.bold,
                             fontSize: 28, 
