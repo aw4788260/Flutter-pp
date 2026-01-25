@@ -46,7 +46,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(
+      builder: (_) => Center(
         child: CircularProgressIndicator(color: AppColors.accentYellow),
       ),
     );
@@ -118,7 +118,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Error preparing video playback"), backgroundColor: AppColors.error),
+          SnackBar(content: const Text("Error preparing video playback"), backgroundColor: AppColors.error),
         );
       }
     }
@@ -137,7 +137,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to open offline PDF');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error opening PDF"), backgroundColor: AppColors.error),
+        SnackBar(content: const Text("Error opening PDF"), backgroundColor: AppColors.error),
       );
     }
   }
@@ -153,14 +153,14 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
       // التحديث يتم تلقائياً عبر ValueListenableBuilder
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("File removed"), backgroundColor: AppColors.accentOrange)
+          SnackBar(content: const Text("File removed"), backgroundColor: AppColors.accentOrange)
         );
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to delete file');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Failed to delete file"), backgroundColor: AppColors.error)
+          SnackBar(content: const Text("Failed to delete file"), backgroundColor: AppColors.error)
         );
       }
     }
@@ -209,7 +209,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                     children: [
                       GestureDetector(
                         onTap: () => Navigator.pop(context),
-                        child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 24),
+                        child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 24),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -218,7 +218,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                           children: [
                             Text(
                               widget.chapterTitle.toUpperCase(),
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                               maxLines: 1, overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 4),
@@ -370,7 +370,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                     Expanded(
                       child: Text(
                         item['title'].toString(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,
@@ -393,7 +393,7 @@ class _DownloadedChapterContentsScreenState extends State<DownloadedChapterConte
                 ),
                 
                 const SizedBox(height: 12),
-                const Divider(color: Colors.white10, height: 1),
+                Divider(color: Colors.white10, height: 1),
                 const SizedBox(height: 10),
 
                 Row(
