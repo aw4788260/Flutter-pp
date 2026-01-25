@@ -25,7 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
   // نستخدم هذا المتحكم لاسم المستخدم أو رقم الهاتف
   final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
-  
+   
   final FocusNode _userFocus = FocusNode();
   final FocusNode _passFocus = FocusNode();
 
@@ -261,7 +261,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 24),
               
-              const Center(
+              Center(
                 child: Text(
                   "LOGIN",
                   style: TextStyle(
@@ -273,7 +273,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Center(
+              Center(
                 child: Text(
                   "PLEASE LOGIN TO CONTINUE.",
                   style: TextStyle(
@@ -297,7 +297,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: Text(
                     _errorMessage!,
-                    style: const TextStyle(color: AppColors.error, fontSize: 12),
+                    style: TextStyle(color: AppColors.error, fontSize: 12),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -337,7 +337,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   shadowColor: AppColors.accentYellow.withOpacity(0.2),
                 ),
                 child: _isLoading 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.backgroundPrimary))
+                  ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.backgroundPrimary))
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: const [
@@ -364,12 +364,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: _isLoading ? null : _handleGuestLogin,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 20),
-                    side: const BorderSide(color: AppColors.accentYellow),
+                    side: BorderSide(color: AppColors.accentYellow),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(24),
                     ),
                   ),
-                  child: const Text(
+                  child: Text(
                     "BROWSE AS GUEST",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
@@ -386,7 +386,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text(
+                  Text(
                     "New student? ",
                     style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                   ),
@@ -397,7 +397,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         MaterialPageRoute(builder: (context) => const RegisterScreen()),
                       );
                     },
-                    child: const Text(
+                    child: Text(
                       "CREATE ACCOUNT",
                       style: TextStyle(
                         color: AppColors.accentYellow,
@@ -422,7 +422,7 @@ class _LoginScreenState extends State<LoginScreen> {
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         label.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.accentYellow,
           fontSize: 10,
           fontWeight: FontWeight.bold,
@@ -453,7 +453,7 @@ class _LoginScreenState extends State<LoginScreen> {
         controller: controller,
         focusNode: focusNode,
         obscureText: isPassword,
-        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+        style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
         cursorColor: AppColors.accentYellow,
         decoration: InputDecoration(
           hintText: hint,
