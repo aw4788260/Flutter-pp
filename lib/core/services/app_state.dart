@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart'; // ✅ ضروري لـ ThemeMode و ValueNotifier
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../data/models/course_model.dart';
 import '../../core/services/storage_service.dart';
@@ -22,6 +23,36 @@ class AppState {
 
   // ✅ متغير لتحديد هل المستخدم ضيف أم لا
   bool isGuest = false;
+
+  // ============================================================
+  // 🌓 إدارة الثيم (Theme Management) - جديد
+  // ============================================================
+
+  // ✅ 1. إضافة متغير لمراقبة الثيم (ValueNotifier) لتحديث الواجهة فورياً
+  final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
+
+  // ✅ 2. دالة ثابتة (Static Getter) لمعرفة هل الوضع الحالي داكن (تستخدمها AppColors)
+  static bool get isDark => _instance.themeNotifier.value == ThemeMode.dark;
+
+  // ✅ 3. دالة تهيئة الثيم عند فتح التطبيق (تستدعى في main.dart)
+  Future<void> initTheme() async {
+    var box = await StorageService.openBox('settings_box');
+    // القيمة الافتراضية هي الوضع الداكن (true)
+    bool storedIsDark = box.get('is_dark_mode', defaultValue: true);
+    themeNotifier.value = storedIsDark ? ThemeMode.dark : ThemeMode.light;
+  }
+
+  // ✅ 4. دالة التبديل بين الوضعين (عند ضغط الزر)
+  void toggleTheme() async {
+    bool currentIsDark = themeNotifier.value == ThemeMode.dark;
+    
+    // عكس القيمة الحالية
+    themeNotifier.value = currentIsDark ? ThemeMode.light : ThemeMode.dark;
+    
+    // حفظ التفضيل الجديد في التخزين المحلي
+    var box = await StorageService.openBox('settings_box');
+    await box.put('is_dark_mode', !currentIsDark);
+  }
 
   // ============================================================
   // 🟢 Getters مساعدة للتحقق من الصلاحيات بسرعة
