@@ -11,11 +11,12 @@ import 'package:safe_device/safe_device.dart';
 import 'package:screen_protector/screen_protector.dart'; 
 import 'package:lucide_icons/lucide_icons.dart'; 
 import 'package:audio_session/audio_session.dart'; 
+import 'package:hive_flutter/hive_flutter.dart'; // ✅ تأكد من وجود هذا الاستيراد
 
 import 'core/services/notification_service.dart'; 
 import 'core/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
-import 'core/services/app_state.dart'; // ✅ تم إضافة الاستيراد
+import 'core/services/app_state.dart'; 
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -23,10 +24,18 @@ void main() async {
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
+    // ✅✅✅ الحل الجذري: تهيئة Hive أول شيء قبل أي استخدام
+    await Hive.initFlutter();
+
+    // ✅ فتح الصناديق الأساسية لضمان عدم حدوث خطأ عند طلبها لاحقاً
+    await Hive.openBox('auth_box');
+    await Hive.openBox('settings_box');
+    await Hive.openBox('downloads_box');
+    await Hive.openBox('pdf_drawings_db');
+
     MediaKit.ensureInitialized();
 
     // ✅ إعداد جلسة الصوت
-    // ملاحظة: تم إزالة الكود المسبب للخطأ، والاعتماد في منع التسجيل على MainActivity.kt
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration(
       avAudioSessionCategory: AVAudioSessionCategory.playback,
@@ -66,7 +75,7 @@ void main() async {
     SecurityManager.instance.checkSecurity();
     SecurityManager.instance.startPeriodicCheck();
 
-    // ✅ 1. تهيئة الثيم المحفوظ (ليلي/نهاري)
+    // ✅ الآن يمكننا استدعاء AppState بأمان لأن Hive جاهزة
     await AppState().initTheme();
 
     runApp(const EduVantageApp());
@@ -83,7 +92,7 @@ class SecurityManager {
   SecurityManager._internal();
 
   bool _isAlertVisible = false;
-  
+   
   // كاشف للحالة لاستخدامه في Splash Screen لمنع الانتقال
   bool get isBlocked => _isAlertVisible;
 
