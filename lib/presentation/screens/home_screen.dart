@@ -26,7 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // جلب البيانات من مدير الحالة المركزي
   final _allCourses = AppState().allCourses;
   final _user = AppState().userData;
-  
+   
   // ✅ قائمة لتخزين الكورسات العشوائية
   List<dynamic> _randomCourses = []; 
 
@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         _currentSlide = 0;
       }
-      
+       
       if (_pageController.hasClients) {
         _pageController.animateToPage(
           _currentSlide,
@@ -97,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     // ✅ منطق العرض: إذا كان هناك بحث نستخدم _allCourses، وإلا نستخدم _randomCourses
     List<dynamic> coursesToDisplay;
-    
+     
     if (_searchTerm.isEmpty) {
       // إذا لم يكن هناك بحث، اعرض القائمة العشوائية التي جهزناها
       coursesToDisplay = _randomCourses;
@@ -134,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             "WELCOME",
                             style: TextStyle(
                               color: AppColors.accentYellow,
@@ -146,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 4),
                           Text(
                             (_user?['first_name'] ?? "GUEST").toUpperCase(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.textPrimary,
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -155,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      
+                       
                       // زر الطلبات
                       GestureDetector(
                         onTap: () {
@@ -199,7 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: TextField(
                       onChanged: (val) => setState(() => _searchTerm = val),
-                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                      style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
                         prefixIcon: Icon(
                           LucideIcons.search, 
@@ -295,14 +295,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Text(
                           _searchTerm.isEmpty ? "SUGGESTED FOR YOU" : "SEARCH RESULTS", // ✅ تغيير العنوان حسب الحالة
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1.5,
                           ),
                         ),
-                        const Text(
+                        Text(
                           "ACTIVE",
                           style: TextStyle(
                             color: AppColors.accentOrange,
@@ -327,7 +327,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         itemCount: coursesToDisplay.length,
                         itemBuilder: (context, index) {
                           final course = coursesToDisplay[index];
-                          
+                           
                           return GestureDetector(
                             onTap: () {
                                Navigator.push(
@@ -367,7 +367,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         ),
                                         child: Text(
                                           "#${course.code}",
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.accentOrange,
                                             fontSize: 9,
                                             fontWeight: FontWeight.bold,
@@ -375,15 +375,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ),
                                         ),
                                       ),
-                                      const Icon(LucideIcons.chevronRight, color: AppColors.accentYellow, size: 20),
+                                      Icon(LucideIcons.chevronRight, color: AppColors.accentYellow, size: 20),
                                     ],
                                   ),
                                   const SizedBox(height: 12),
-                                  
+                                   
                                   // Title
                                   Text(
                                     course.title.toUpperCase(),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: AppColors.textPrimary,
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -407,11 +407,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                     },
                                     child: Row(
                                       children: [
-                                        const Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
+                                        Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
                                         const SizedBox(width: 8),
                                         Text(
                                           course.instructorName.toUpperCase(),
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.textSecondary,
                                             fontSize: 10,
                                             fontWeight: FontWeight.bold,
