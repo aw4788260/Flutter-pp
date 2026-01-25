@@ -25,7 +25,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   late TextEditingController _usernameController;
-  
+   
   // حقول المدرس الإضافية
   final TextEditingController _bioController = TextEditingController();
   final TextEditingController _specialtyController = TextEditingController();
@@ -41,7 +41,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   bool _isLoading = false;
   bool _isTeacher = false;
-  
+   
   final TeacherService _teacherService = TeacherService(); 
   final String _baseUrl = 'https://courses.aw478260.dpdns.org';
 
@@ -59,13 +59,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   // دالة لفحص الدور ثم استدعاء التحميل المناسب
   Future<void> _checkRoleAndLoad() async {
-     var box = await StorageService.openBox('auth_box');
-     if (mounted) {
-       setState(() {
-         _isTeacher = box.get('role') == 'teacher';
-       });
-       _loadUserData();
-     }
+      var box = await StorageService.openBox('auth_box');
+      if (mounted) {
+        setState(() {
+          _isTeacher = box.get('role') == 'teacher';
+        });
+        _loadUserData();
+      }
   }
 
   // ✅ الدالة الأساسية لجلب البيانات (من السيرفر للمدرس، أو محلياً للطالب)
@@ -300,11 +300,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         border: Border.all(color: Colors.white.withOpacity(0.05)),
                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Text(
+                  Text(
                     "EDIT PROFILE",
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary, letterSpacing: -0.5),
                   ),
@@ -347,7 +347,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   bottom: 0, right: 0,
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
-                                    decoration: const BoxDecoration(color: AppColors.accentYellow, shape: BoxShape.circle),
+                                    decoration: BoxDecoration(color: AppColors.accentYellow, shape: BoxShape.circle),
                                     child: const Icon(Icons.camera_alt, size: 16, color: Colors.black),
                                   ),
                                 ),
@@ -400,7 +400,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         const SizedBox(height: 20),
                         const Divider(color: Colors.white10),
                         const SizedBox(height: 10),
-                        const Text("TEACHER INFO", style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                        Text("TEACHER INFO", style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                         const SizedBox(height: 15),
                         
                         CustomTextField(
@@ -435,7 +435,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         const SizedBox(height: 30),
                         const Divider(color: Colors.white10),
                         const SizedBox(height: 10),
-                        const Text("PAYMENT METHODS", style: TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                        Text("PAYMENT METHODS", style: TextStyle(color: AppColors.accentYellow, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                         const SizedBox(height: 20),
 
                         _buildDynamicList(
@@ -492,7 +492,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     shadowColor: AppColors.accentYellow.withOpacity(0.2),
                   ),
                   child: _isLoading 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.backgroundPrimary))
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.backgroundPrimary))
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
@@ -525,7 +525,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+            Text(title, style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
             InkWell(
               onTap: onAdd,
               child: Container(
