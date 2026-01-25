@@ -364,14 +364,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     // ✅ زر التبديل بين الوضعين النهاري والليلي
                     _buildMenuItem(
                       context, 
-                      icon: AppState.isDark ? LucideIcons.moon : LucideIcons.sun, 
-                      title: AppState.isDark ? "Dark Mode / الوضع الليلي" : "Light Mode / الوضع النهاري",
+                      icon: AppState().isDark ? LucideIcons.moon : LucideIcons.sun, 
+                      title: AppState().isDark ? "Dark Mode / الوضع الليلي" : "Light Mode / الوضع النهاري",
                       onTap: () {
                         AppState().toggleTheme();
                         setState(() {}); // تحديث فوري للأيقونة
                       },
                       trailing: Switch(
-                        value: AppState.isDark,
+                        value: AppState().isDark,
                         activeColor: AppColors.accentYellow,
                         onChanged: (val) {
                           AppState().toggleTheme();
@@ -426,7 +426,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ تم تعديل الدالة لتقبل Widget في النهاية (trailing) مثل زر التبديل
+  // ✅ دالة بناء العناصر مع دعم العنصر الإضافي (trailing)
   Widget _buildMenuItem(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap, String? badge, Widget? trailing}) {
     return Material(
       color: Colors.transparent,
