@@ -13,11 +13,11 @@ class ManageStudentsScreen extends StatefulWidget {
 class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
   final TeacherService _teacherService = TeacherService();
   final TextEditingController _searchController = TextEditingController();
-  
+   
   bool _isLoading = false;
   Map<String, dynamic>? _studentData; // بيانات الطالب
   List<dynamic> _accessList = []; // قائمة الصلاحيات الحالية
-  
+   
   // لتخزين محتوى المعلم (الكورسات والمواد) لاستخدامه في القوائم
   List<dynamic> _myContent = [];
 
@@ -45,7 +45,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
   Future<void> _search() async {
     if (_searchController.text.length < 3) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("أدخل 3 أرقام/حروف على الأقل")),
+        SnackBar(content: Text("أدخل 3 أرقام/حروف على الأقل")),
       );
       return;
     }
@@ -80,14 +80,14 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text("سحب الصلاحية"),
-          content: const Text("هل أنت متأكد من حذف الصلاحية؟ سيتم منع الطالب من الوصول لهذا المحتوى."),
+          title: Text("سحب الصلاحية"),
+          content: Text("هل أنت متأكد من حذف الصلاحية؟ سيتم منع الطالب من الوصول لهذا المحتوى."),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("إلغاء")),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text("إلغاء")),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text("تأكيد السحب"),
+              child: Text("تأكيد السحب"),
             ),
           ],
         ),
@@ -168,7 +168,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     // التأكد من تحميل البيانات أولاً
     if (_myContent.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("جارِ تحميل بيانات الكورسات... حاول مرة أخرى بعد قليل."))
+        SnackBar(content: Text("جارِ تحميل بيانات الكورسات... حاول مرة أخرى بعد قليل."))
       );
       _fetchMyContent();
       return;
@@ -194,7 +194,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: const Text("اختر الصلاحيات لمنحها"),
+            title: Text("اختر الصلاحيات لمنحها"),
             content: SizedBox(
               width: double.maxFinite,
               child: ListView.builder(
@@ -206,7 +206,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                   
                   // إذا كان الطالب يمتلك الكورس بالفعل، لا نعرضه نهائياً في القائمة
                   if (ownedCourseIds.contains(courseId)) {
-                    return const SizedBox.shrink();
+                    return SizedBox.shrink();
                   }
 
                   // تصفية المواد داخل الكورس: نعرض فقط المواد التي لا يملكها الطالب
@@ -241,7 +241,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                           Expanded(
                             child: Text(
                               course['title'], 
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
@@ -283,7 +283,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx), 
-                child: const Text("إلغاء")
+                child: Text("إلغاء")
               ),
               ElevatedButton(
                 onPressed: (selectedCourses.isEmpty && selectedSubjects.isEmpty)
@@ -304,7 +304,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("إدارة الطلاب (طلابي)")),
+      appBar: AppBar(title: Text("إدارة الطلاب (طلابي)")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -317,7 +317,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: "رقم الهاتف أو اسم المستخدم",
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: Icon(Icons.search),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 10),
                     ),
@@ -331,7 +331,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: const Text("بحث"),
+                  child: Text("بحث"),
                 ),
               ],
             ),
@@ -339,7 +339,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
 
             // --- محتوى النتائج ---
             if (_isLoading)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
+              Expanded(child: Center(child: CircularProgressIndicator()))
             else if (_studentData != null)
               Expanded(
                 child: ListView(
@@ -354,7 +354,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                       ),
                       child: Row(
                         children: [
-                          const CircleAvatar(
+                          CircleAvatar(
                             backgroundColor: Colors.white,
                             child: Icon(Icons.person, color: Colors.blue),
                           ),
@@ -364,10 +364,10 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                             children: [
                               Text(
                                 _studentData!['first_name'] ?? "بدون اسم",
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                               ),
                               Text("📞 ${_studentData!['phone']}"),
-                              Text("👤 ${_studentData!['username']}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                              Text("👤 ${_studentData!['username']}", style: TextStyle(fontSize: 12, color: Colors.grey)),
                             ],
                           ),
                         ],
@@ -379,11 +379,11 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("الصلاحيات الحالية:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text("الصلاحيات الحالية:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         TextButton.icon(
                           onPressed: _showAddAccessDialog, // ✅ استدعاء النافذة الجديدة
-                          icon: const Icon(Icons.playlist_add_check, size: 24),
-                          label: const Text("إدارة الصلاحيات"),
+                          icon: Icon(Icons.playlist_add_check, size: 24),
+                          label: Text("إدارة الصلاحيات"),
                         ),
                       ],
                     ),
@@ -391,8 +391,8 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
 
                     // قائمة الصلاحيات
                     if (_accessList.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(20),
+                      Padding(
+                        padding: const EdgeInsets.all(20),
                         child: Center(child: Text("هذا الطالب لا يملك أي صلاحيات حالياً")),
                       )
                     else
@@ -408,7 +408,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                             title: Text(item['title'] ?? "غير معرّف"),
                             subtitle: Text(item['subtitle'] ?? (isCourse ? "كورس كامل" : "مادة فردية")),
                             trailing: IconButton(
-                              icon: const Icon(Icons.delete_forever, color: Colors.red),
+                              icon: Icon(Icons.delete_forever, color: Colors.red),
                               tooltip: "سحب الصلاحية",
                               onPressed: () => _toggleAccess(
                                 item['type'], 
@@ -423,7 +423,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                 ),
               )
             else
-              const Expanded(
+              Expanded(
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
