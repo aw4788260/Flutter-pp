@@ -24,13 +24,13 @@ class PrivacyPolicyScreen extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSecondary,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                       ),
-                      child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                      child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       "سياسة الخصوصية\nPRIVACY POLICY",
                       style: TextStyle(
@@ -54,7 +54,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSecondary,
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                   ),
                   child: Column(
                     children: [
@@ -64,7 +64,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                         "نقوم بجمع 'معرف الجهاز' (Device ID) لربط حسابك بجهاز واحد فقط لضمان الأمان. كما نستخدم خدمة الإشعارات (Notifications) لعرض حالة تحميل الدروس في الخلفية لضمان استمرار التحميل عند الخروج من التطبيق.",
                         "We collect your 'Device ID' to link your account to a single device for security. We also use Notifications to display download progress in the background, ensuring downloads continue even when the app is minimized."
                       ),
-                      const Divider(color: Colors.white10, height: 40),
+                      Divider(color: AppColors.textSecondary.withOpacity(0.1), height: 40),
                       
                       _buildSection(
                         "2. متطلبات الأمان للجهاز",
@@ -72,7 +72,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                         "لضمان حماية المحتوى، لا يمكن استخدام التطبيق على الأجهزة التي تم كسر حمايتها (Root/Jailbreak) أو الأجهزة التي تم تفعيل 'خيارات المطور' (Developer Options) بها. سيقوم التطبيق بالتحقق من ذلك وإيقاف العمل تلقائياً.",
                         "To ensure content protection, the app cannot be used on Rooted/Jailbroken devices or devices with 'Developer Options' enabled. The app will automatically verify this and stop working if detected."
                       ),
-                      const Divider(color: Colors.white10, height: 40),
+                      Divider(color: AppColors.textSecondary.withOpacity(0.1), height: 40),
 
                       _buildSection(
                         "3. حماية المحتوى",
@@ -99,13 +99,13 @@ class PrivacyPolicyScreen extends StatelessWidget {
         Text(
           arTitle,
           textAlign: TextAlign.right,
-          style: const TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold, fontSize: 16),
+          style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 8),
         Text(
           arBody,
           textAlign: TextAlign.right,
-          style: const TextStyle(color: AppColors.textPrimary, height: 1.6, fontSize: 14),
+          style: TextStyle(color: AppColors.textPrimary, height: 1.6, fontSize: 14),
         ),
         
         const SizedBox(height: 16),
@@ -118,7 +118,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             children: [
               Text(
                 enTitle,
-                style: const TextStyle(color: AppColors.accentOrange, fontWeight: FontWeight.bold, fontSize: 14),
+                style: TextStyle(color: AppColors.accentOrange, fontWeight: FontWeight.bold, fontSize: 14),
               ),
               const SizedBox(height: 4),
               Text(
