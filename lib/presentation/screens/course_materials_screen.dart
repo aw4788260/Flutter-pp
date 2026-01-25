@@ -142,7 +142,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                               border: Border.all(color: Colors.white.withOpacity(0.05)),
                               boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                             ),
-                            child: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
+                            child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -151,7 +151,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                           children: [
                             Text(
                               widget.courseTitle.toUpperCase(),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.textPrimary,
@@ -161,7 +161,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 4),
-                            const Text(
+                            Text(
                               "CHOOSE SUBJECT",
                               style: TextStyle(
                                 fontSize: 9,
@@ -202,7 +202,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                             borderRadius: BorderRadius.circular(50),
                             border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
                           ),
-                          child: const Icon(LucideIcons.plus, color: AppColors.accentYellow, size: 22),
+                          child: Icon(LucideIcons.plus, color: AppColors.accentYellow, size: 22),
                         ),
                       ),
                   ],
@@ -212,7 +212,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
               // --- Content Area ---
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+                    ? Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
                     : _ownedSubjects.isEmpty
                         ? Center(
                             child: Column(
@@ -303,10 +303,10 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                                                   }
                                                 });
                                               },
-                                              child: const Icon(LucideIcons.edit2, size: 20, color: AppColors.accentYellow),
+                                              child: Icon(LucideIcons.edit2, size: 20, color: AppColors.accentYellow),
                                             )
                                           else
-                                            const Icon(LucideIcons.playCircle, size: 20, color: AppColors.accentOrange),
+                                            Icon(LucideIcons.playCircle, size: 20, color: AppColors.accentOrange),
                                         ],
                                       ),
 
@@ -315,7 +315,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                                         subject['title'].toString().toUpperCase(),
                                         maxLines: 3,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
                                           color: AppColors.textPrimary,
@@ -356,11 +356,11 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                                           ),
                                           Container(
                                             width: 24, height: 24,
-                                            decoration: const BoxDecoration(
+                                            decoration: BoxDecoration(
                                               color: AppColors.backgroundPrimary,
                                               shape: BoxShape.circle,
                                             ),
-                                            child: const Icon(LucideIcons.chevronRight, size: 14, color: AppColors.accentOrange),
+                                            child: Icon(LucideIcons.chevronRight, size: 14, color: AppColors.accentOrange),
                                           ),
                                         ],
                                       ),
