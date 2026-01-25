@@ -144,18 +144,21 @@ class AppState {
     try {
       var box = await StorageService.openBox('auth_box');
       String? token = box.get('jwt_token');
+      // ✅ 1. جلب معرف الجهاز
+      String? deviceId = box.get('device_id'); 
       
       // التأكد من وجود التوكن قبل الطلب (للمستخدم المسجل فقط)
       if (token == null || isGuest) return;
 
       // ✅ التعديل هنا: إضافة timestamp لمنع الكاش وإجبار السيرفر على جلب بيانات جديدة
       final response = await Dio().get(
-        'https://courses.aw478260.dpdns.org/api/public/get-app-init-data', // تأكد من الرابط الصحيح (init أم get-app-init-data)
+        'https://courses.aw478260.dpdns.org/api/public/get-app-init-data', 
         queryParameters: {
           't': DateTime.now().millisecondsSinceEpoch, // 👈 هذا السطر يمنع الكاش
         },
         options: Options(headers: {
           'Authorization': 'Bearer $token',
+          'x-device-id': deviceId, // ✅ 2. إرسال معرف الجهاز (بدونه يعتبرك السيرفر ضيفاً)
           'x-app-secret': const String.fromEnvironment('APP_SECRET'),
         }),
       );
