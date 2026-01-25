@@ -27,7 +27,7 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
   late AnimationController _bounceController;
   late Animation<double> _bounceAnimation;
-  
+   
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
 
@@ -100,7 +100,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         child: AlertDialog(
           backgroundColor: AppColors.backgroundSecondary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text(
+          title: Text(
             "Welcome / مرحباً بك",
             style: TextStyle(color: AppColors.accentYellow, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
@@ -109,29 +109,29 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   "يرجى الموافقة على الشروط والأحكام وسياسة الخصوصية للمتابعة.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   "Please accept our Terms & Privacy Policy to continue.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                 ),
                 const SizedBox(height: 16),
                 
                 ListTile(
                   dense: true,
-                  leading: const Icon(LucideIcons.fileText, color: AppColors.accentOrange, size: 20),
-                  title: const Text("Terms & Conditions", style: TextStyle(color: Colors.white)),
+                  leading: Icon(LucideIcons.fileText, color: AppColors.accentOrange, size: 20),
+                  title: Text("Terms & Conditions", style: TextStyle(color: AppColors.textPrimary)),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsConditionsScreen())),
                 ),
                 ListTile(
                   dense: true,
-                  leading: const Icon(LucideIcons.shield, color: AppColors.accentOrange, size: 20),
-                  title: const Text("Privacy Policy", style: TextStyle(color: Colors.white)),
+                  leading: Icon(LucideIcons.shield, color: AppColors.accentOrange, size: 20),
+                  title: Text("Privacy Policy", style: TextStyle(color: AppColors.textPrimary)),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
                 ),
               ],
@@ -140,8 +140,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           actions: [
             OutlinedButton(
               onPressed: () => Navigator.pop(context, false),
-              style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.error)),
-              child: const Text("DECLINE", style: TextStyle(color: AppColors.error)),
+              style: OutlinedButton.styleFrom(side: BorderSide(color: AppColors.error)),
+              child: Text("DECLINE", style: TextStyle(color: AppColors.error)),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
@@ -282,12 +282,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
            final userData = response.data['user'];
            
            if (userData['role'] != null) {
-              await box.put('role', userData['role']);
+             await box.put('role', userData['role']);
            }
            
            // ✅ حفظ صورة البروفايل إذا كانت موجودة (للمدرسين)
            if (userData['profile_image'] != null) {
-              await box.put('profile_image', userData['profile_image']);
+             await box.put('profile_image', userData['profile_image']);
            }
         }
 
@@ -336,10 +336,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
          if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(
-               content: Text("No Internet. Entering Offline Mode."),
+             SnackBar(
+               content: const Text("No Internet. Entering Offline Mode."),
                backgroundColor: AppColors.accentOrange,
-               duration: Duration(seconds: 3),
+               duration: const Duration(seconds: 3),
              ),
            );
            
@@ -413,7 +413,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
               
               const SizedBox(height: 20),
 
-              const Text(
+              Text(
                 "EMPOWERING YOUR GROWTH",
                 style: TextStyle(
                   fontSize: 10,
@@ -432,7 +432,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     width: 160,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
+                      color: AppColors.textSecondary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(2),
                     ),
                     child: AnimatedBuilder(
