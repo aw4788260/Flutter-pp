@@ -108,11 +108,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'password': password,
         },
         options: Options(
-    headers: {
-      'x-app-secret': const String.fromEnvironment('APP_SECRET'), // ✅ إضافة مباشرة
-    },
-    validateStatus: (status) => status! < 500
-  ),
+          headers: {
+            'x-app-secret': const String.fromEnvironment('APP_SECRET'),
+          },
+          validateStatus: (status) => status! < 500
+        ),
       );
 
       final data = response.data;
@@ -120,8 +120,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (response.statusCode == 200 && data['success'] == true) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Account created successfully. Please login."),
+            SnackBar(
+              content: const Text("Account created successfully. Please login."),
               backgroundColor: AppColors.success,
             ),
           );
@@ -154,21 +154,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 16),
               
               // Back Button
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundSecondary,
-                  borderRadius: BorderRadius.circular(50),
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
-                ),
-                child: IconButton(
-                  icon: const Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
-                  onPressed: () => Navigator.pop(context),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundSecondary,
+                    borderRadius: BorderRadius.circular(50),
+                    border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
+                  ),
+                  child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                 ),
               ),
 
               // Header
-              const Text(
+              Text(
                 "CREATE ACCOUNT",
                 style: TextStyle(
                   fontSize: 24, 
@@ -178,7 +179,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 "FILL IN THE DETAILS TO JOIN US.",
                 style: TextStyle(
                   fontSize: 10,
@@ -201,12 +202,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(LucideIcons.alertCircle, color: AppColors.error, size: 16),
+                      Icon(LucideIcons.alertCircle, color: AppColors.error, size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _errorMessage!,
-                          style: const TextStyle(color: AppColors.error, fontSize: 12),
+                          style: TextStyle(color: AppColors.error, fontSize: 12),
                         ),
                       ),
                     ],
@@ -281,10 +282,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       borderRadius: BorderRadius.circular(24),
                     ),
                     elevation: 10,
-                    shadowColor: AppColors.accentYellow.withOpacity(0.2),
                   ),
                   child: _isLoading 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.backgroundPrimary))
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.backgroundPrimary))
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
@@ -310,7 +310,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
+                    Text(
                       "Already have an account? ",
                       style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
@@ -321,7 +321,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           MaterialPageRoute(builder: (context) => const LoginScreen()),
                         );
                       },
-                      child: const Text(
+                      child: Text(
                         "SIGN IN",
                         style: TextStyle(
                           color: AppColors.accentYellow,
@@ -348,7 +348,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         label.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.accentYellow,
           fontSize: 10,
           fontWeight: FontWeight.bold,
@@ -375,7 +375,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         border: Border.all(
           color: focusNode.hasFocus 
               ? AppColors.accentYellow.withOpacity(0.5) 
-              : Colors.white.withOpacity(0.05),
+              : AppColors.textSecondary.withOpacity(0.1),
         ),
       ),
       child: TextField(
@@ -383,7 +383,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         focusNode: focusNode,
         obscureText: isPassword,
         keyboardType: inputType,
-        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+        style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
         cursorColor: AppColors.accentYellow,
         decoration: InputDecoration(
           hintText: hint,
