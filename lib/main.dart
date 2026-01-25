@@ -25,7 +25,7 @@ void main() async {
 
     MediaKit.ensureInitialized();
 
-    // ✅ 2. إعداد جلسة الصوت (تم التصحيح)
+    // ✅ 2. إعداد جلسة الصوت (تم التعديل لمنع التقاط الصوت)
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration(
       avAudioSessionCategory: AVAudioSessionCategory.playback,
@@ -37,16 +37,16 @@ void main() async {
         contentType: AndroidAudioContentType.movie,
         flags: AndroidAudioFlags.none,
         usage: AndroidAudioUsage.media,
-        // ❌ تم حذف المعامل الخاطئ من هنا
+        // 👇👇 هذا السطر هو المسؤول عن منع تسجيل الصوت الداخلي 👇👇
+        allowedCapturePolicy: AndroidAudioAllowedCapturePolicy.allowNone,
       ),
       androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
       androidWillPauseWhenDucked: true,
     ));
 
-    // ✅ 3. منع تسجيل الصوت باستخدام AndroidAudioManager مباشرة
+    // ✅ 3. منع تسجيل الصوت باستخدام AndroidAudioManager مباشرة (زيادة تأكيد)
     if (Platform.isAndroid) {
       try {
-        // استخدام الاسم الصحيح للـ Enum: AndroidAudioCapturePolicy.allowNone
         await AndroidAudioManager().setAllowedCapturePolicy(AndroidAudioCapturePolicy.allowNone);
       } catch (e) {
         debugPrint("Error setting audio capture policy: $e");
