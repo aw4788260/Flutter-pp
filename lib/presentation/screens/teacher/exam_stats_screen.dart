@@ -19,7 +19,7 @@ class ExamStatsScreen extends StatefulWidget {
 class _ExamStatsScreenState extends State<ExamStatsScreen> {
   final TeacherService _teacherService = TeacherService();
   bool _isLoading = true;
-  
+   
   // متغيرات البيانات
   double _averageScore = 0;       // متوسط الدرجات الرقمية (مثلاً 18.5)
   double _averagePercentage = 0;  // متوسط النسب المئوية (مثلاً 92.5)
@@ -60,14 +60,14 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
       appBar: AppBar(
         title: Text(
           "إحصائيات: ${widget.examTitle}", 
-          style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)
+          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)
         ),
         backgroundColor: AppColors.backgroundSecondary,
-        iconTheme: const IconThemeData(color: AppColors.accentYellow),
+        iconTheme: IconThemeData(color: AppColors.accentYellow),
         elevation: 0,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
+          ? Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -101,14 +101,14 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                   Container(
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(bottom: 15),
-                    child: const Row(
+                    child: Row(
                       children: [
-                         Icon(Icons.emoji_events, color: AppColors.accentYellow),
-                         SizedBox(width: 8),
-                         Text(
-                          "لوحة الشرف (Top 10)",
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                        ),
+                          Icon(Icons.emoji_events, color: AppColors.accentYellow),
+                          const SizedBox(width: 8),
+                          Text(
+                           "لوحة الشرف (Top 10)",
+                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                         ),
                       ],
                     ),
                   ),
@@ -122,10 +122,10 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                         borderRadius: BorderRadius.circular(15),
                         border: Border.all(color: Colors.white10),
                       ),
-                      child: const Column(
+                      child: Column(
                         children: [
                           Icon(Icons.hourglass_empty, size: 50, color: AppColors.textSecondary),
-                          SizedBox(height: 15),
+                          const SizedBox(height: 15),
                           Text(
                             "لا توجد محاولات مكتملة حتى الآن", 
                             style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
@@ -172,7 +172,8 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                               child: Text(
                                 "${index + 1}",
                                 style: TextStyle(
-                                  color: (isFirst || isSecond || isThird) ? Colors.black87 : Colors.white,
+                                  // ✅ تعديل لون النص بناءً على الخلفية لضمان القراءة
+                                  color: (isFirst || isSecond || isThird) ? Colors.black87 : AppColors.textPrimary,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16
                                 ),
@@ -180,7 +181,7 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                             ),
                             title: Text(
                               student['name'] ?? "طالب غير معروف",
-                              style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontSize: 16),
+                              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontSize: 16),
                             ),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,11 +190,11 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                                 // ✅ عرض التاريخ
                                 Row(
                                   children: [
-                                    const Icon(Icons.calendar_today, size: 12, color: AppColors.textSecondary),
+                                    Icon(Icons.calendar_today, size: 12, color: AppColors.textSecondary),
                                     const SizedBox(width: 4),
                                     Text(
                                       student['date']?.toString().split('T')[0] ?? "",
-                                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                                     ),
                                   ],
                                 ),
@@ -201,11 +202,11 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                                 // ✅ عرض رقم الهاتف
                                 Row(
                                   children: [
-                                    const Icon(Icons.phone_android, size: 12, color: AppColors.accentBlue),
+                                    Icon(Icons.phone_android, size: 12, color: AppColors.accentBlue),
                                     const SizedBox(width: 4),
                                     Text(
                                       student['phone'] ?? "غير متوفر",
-                                      style: const TextStyle(color: AppColors.accentBlue, fontSize: 12, fontWeight: FontWeight.bold),
+                                      style: TextStyle(color: AppColors.accentBlue, fontSize: 12, fontWeight: FontWeight.bold),
                                     ),
                                   ],
                                 ),
@@ -225,7 +226,7 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
                                   // ✅ عرض النسبة المئوية بخط عريض
                                   Text(
                                     "${student['percentage'] ?? 0}%",
-                                    style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 15),
+                                    style: TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 15),
                                   ),
                                   // ✅ عرض الدرجة بخط أصغر
                                   Text(
@@ -269,12 +270,12 @@ class _ExamStatsScreenState extends State<ExamStatsScreen> {
           const SizedBox(height: 12),
           Text(
             value, 
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary)
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary)
           ),
           const SizedBox(height: 4),
           Text(
             title, 
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12)
           ),
         ],
       ),
