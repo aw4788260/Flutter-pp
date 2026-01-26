@@ -369,7 +369,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         List<dynamic> rawQualities = data['availableQualities'] ?? [];
 
         if (rawQualities.isNotEmpty) {
-          
+           
           String? bestAudioUrl;
           try {
             final audioObj = rawQualities.firstWhere((q) => q['type'] == 'audio_only', orElse: () => null);
@@ -406,7 +406,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration, String? audioUrl) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.backgroundSecondary,
+      backgroundColor: Colors.white, // ✅ خلفية بيضاء
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -422,8 +422,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
             children: [
               Text(
                 "SELECT DOWNLOAD QUALITY",
-                style: TextStyle(
-                  color: AppColors.textPrimary,
+                style: const TextStyle(
+                  color: Colors.black, // ✅ نص أسود
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.0,
@@ -437,15 +437,15 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: qualities.map((q) {
                       return ListTile(
-                        leading: Icon(LucideIcons.download, color: AppColors.accentYellow),
+                        leading: const Icon(LucideIcons.download, color: Colors.black), // ✅ أيقونة سوداء
                         title: Text(
                           "${q['quality']}p", 
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold), // ✅ نص أسود
                         ),
-                        trailing: const Icon(LucideIcons.chevronRight, color: Colors.white54, size: 16),
+                        trailing: const Icon(LucideIcons.chevronRight, color: Colors.black54, size: 16), // ✅ سهم رمادي غامق
                         onTap: () {
                           Navigator.pop(context);
-                          
+                           
                           String? targetAudio = (q['type'] == 'video_only') ? audioUrl : null;
 
                           _startVideoDownload(videoId, title, q['url'], targetAudio, "${q['quality']}p", duration);
@@ -465,7 +465,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
   void _startVideoDownload(String videoId, String videoTitle, String? downloadUrl, String? audioUrl, String quality, String duration) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started...")));
     FirebaseCrashlytics.instance.log("⬇️ Starting download: $videoTitle ($quality)");
-    
+     
     DownloadManager().startDownload(
       lessonId: videoId,
       videoTitle: videoTitle,
@@ -539,58 +539,71 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              GestureDetector(
-                                onTap: () {
-                                  // ✅ عند الضغط على زر الرجوع العلوي، نرجع البيانات أيضاً
-                                  Navigator.pop(context, _currentChapter);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.backgroundSecondary,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
-                                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                          // ✅ استخدام Expanded للجزء الأيسر لضمان عدم دفع الزر الأيمن للخارج
+                          Expanded(
+                            child: Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: () {
+                                    // ✅ عند الضغط على زر الرجوع العلوي، نرجع البيانات أيضاً
+                                    Navigator.pop(context, _currentChapter);
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.backgroundSecondary,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
+                                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                                    ),
+                                    child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                                   ),
-                                  child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                                 ),
-                              ),
-                              const SizedBox(width: 16),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _currentChapter['title'].toString().toUpperCase(),
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textPrimary,
-                                      overflow: TextOverflow.ellipsis,
-                                      letterSpacing: -0.5,
-                                    ),
-                                    maxLines: 1,
+                                const SizedBox(width: 16),
+                                
+                                // ✅ Expanded للنص ليأخذ المساحة المتبقية فقط
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // ✅ جعل العنوان الرئيسي قابلاً للسحب (Scrollable)
+                                      SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: Text(
+                                          _currentChapter['title'].toString().toUpperCase(),
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.textPrimary,
+                                            // تم إزالة overflow: ellipsis للسماح بالسحب
+                                            letterSpacing: -0.5,
+                                          ),
+                                          maxLines: 1,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      // النص الفرعي يبقى كما هو (يقتطع عند النهاية)
+                                      Text(
+                                        "${widget.courseTitle} > ${widget.subjectTitle}",
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.accentYellow.withOpacity(0.8),
+                                          letterSpacing: 1.0,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    "${widget.courseTitle} > ${widget.subjectTitle}",
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.accentYellow.withOpacity(0.8),
-                                      letterSpacing: 1.0,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
                           ),
 
                           // 🟢 زر الإضافة (يظهر للمعلم فقط)
-                          if (_isTeacher)
+                          if (_isTeacher) ...[
+                            const SizedBox(width: 10), // مسافة أمان
                             GestureDetector(
                               onTap: () {
                                 ContentType type = activeTab == 'videos' ? ContentType.video : ContentType.pdf;
@@ -617,6 +630,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                 ),
                               ),
                             ),
+                          ],
                         ],
                       ),
                     ),
