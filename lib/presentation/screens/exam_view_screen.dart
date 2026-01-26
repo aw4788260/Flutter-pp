@@ -580,7 +580,7 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
                         child: OutlinedButton(
                           onPressed: () => setState(() => currentIdx--),
                           style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), side: const BorderSide(color: Colors.white10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                          child: Text("BACK", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold).run((s) => Text("BACK", style: s))),
+                          child: Text("BACK", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
                         ),
                       ),
                     if (currentIdx > 0) const SizedBox(width: 16),
@@ -620,12 +620,5 @@ class _ExamViewScreenState extends State<ExamViewScreen> {
         ),
       ),
     );
-  }
-}
-
-// Extension Helper for styling (Quick Fix)
-extension on TextStyle {
-  Text run(Text Function(TextStyle) builder) {
-    return builder(this);
   }
 }
