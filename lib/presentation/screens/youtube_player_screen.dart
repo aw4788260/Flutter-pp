@@ -99,7 +99,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> with WidgetsB
       
       // الاستماع لأي محاولة تسجيل
       _recordingSubscription = _protectionService.recordingStateStream.listen((isRecording) {
-        if (isRecording && !_isRecordingDetected) {
+        if (isRecording) {
           _handleRecordingDetected();
         }
       });
@@ -108,15 +108,18 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> with WidgetsB
     }
   }
 
-  // ✅ التعامل مع اكتشاف التسجيل
+  // ✅ التعامل مع اكتشاف التسجيل (تم التعديل لإيقاف الصوت)
   void _handleRecordingDetected() {
     if (!mounted) return;
+    
+    // حتى إذا تم الكشف مسبقاً، نتأكد من تطبيق الإيقاف مرة أخرى
     setState(() => _isRecordingDetected = true);
     
-    // إيقاف الفيديو
-    _controller.pause();
+    // 🛑 كتم الصوت وإيقاف الفيديو فوراً
+    _controller.mute(); // كتم الصوت
+    _controller.pause(); // إيقاف الفيديو
     
-    FirebaseCrashlytics.instance.log("🚨 Security: Screen Recording Detected on YouTube Player!");
+    FirebaseCrashlytics.instance.log("🚨 Security: Screen Recording Detected on YouTube Player! Muted & Paused.");
   }
 
   // ✅ إعادة تفعيل الحماية عند العودة للتطبيق
@@ -126,12 +129,24 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> with WidgetsB
       _controller.pause();
     } else if (state == AppLifecycleState.resumed) {
       _protectionService.blockAudioCapture();
+      
+      // إذا كان هناك تسجيل، نعيد تطبيق الحظر (كتم وإيقاف)
+      if (_isRecordingDetected) {
+         _controller.mute();
+         _controller.pause();
+      }
     }
   }
 
   void _playerListener() {
     if (_controller.value.hasError) {
       FirebaseCrashlytics.instance.log("Youtube Player Error: ${_controller.value.errorCode}");
+    }
+    
+    // ✅ حارس إضافي: إذا كان الفيديو يعمل وهناك تسجيل، أوقفه
+    if (_isRecordingDetected && _controller.value.isPlaying) {
+       _controller.pause();
+       _controller.mute();
     }
   }
 
