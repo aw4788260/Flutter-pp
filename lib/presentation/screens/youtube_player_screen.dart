@@ -6,6 +6,11 @@ import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+// ✅ مكتبات الحماية
+import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+import '../../core/services/audio_protection_service.dart';
+
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 
@@ -23,8 +28,14 @@ class YoutubePlayerScreen extends StatefulWidget {
   State<YoutubePlayerScreen> createState() => _YoutubePlayerScreenState();
 }
 
-class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
+// ✅ إضافة Mixin لمراقبة حالة التطبيق
+class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> with WidgetsBindingObserver {
   late YoutubePlayerController _controller;
+  
+  // ✅ متغيرات الحماية
+  final AudioProtectionService _protectionService = AudioProtectionService();
+  StreamSubscription? _recordingSubscription;
+  bool _isRecordingDetected = false;
    
   // متغيرات العلامة المائية
   Timer? _watermarkTimer;
@@ -34,6 +45,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // ✅ تفعيل المراقب
     
     // ✅ 1. تفعيل وضع ملء الشاشة الأفقي
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -42,11 +54,17 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
       DeviceOrientation.landscapeRight,
     ]);
 
-    // ✅ 2. جلب رقم الهاتف وبدء التحريك
+    // ✅ 2. تفعيل Wakelock لمنع انطفاء الشاشة
+    WakelockPlus.enable();
+
+    // ✅ 3. تفعيل الحماية الأمنية
+    _initializeProtection();
+
+    // ✅ 4. جلب رقم الهاتف وبدء التحريك
     _getUserId();
     _startWatermarkAnimation();
 
-    // ✅ 3. إعداد المشغل
+    // ✅ 5. إعداد المشغل
     try {
       _controller = YoutubePlayerController(
         initialVideoId: widget.videoId,
@@ -66,6 +84,50 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
     }
   }
 
+  // ✅ دالة تفعيل الحماية
+  Future<void> _initializeProtection() async {
+    try {
+      // منع Screenshot & Screen Recording
+      await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      
+      // حظر التقاط الصوت
+      await _protectionService.blockAudioCapture();
+      
+      // بدء مراقبة تطبيقات التسجيل
+      await _protectionService.startMonitoring();
+      
+      // الاستماع لأي محاولة تسجيل
+      _recordingSubscription = _protectionService.recordingStateStream.listen((isRecording) {
+        if (isRecording && !_isRecordingDetected) {
+          _handleRecordingDetected();
+        }
+      });
+    } catch (e) {
+      FirebaseCrashlytics.instance.recordError(e, null, reason: 'Protection Init Error');
+    }
+  }
+
+  // ✅ التعامل مع اكتشاف التسجيل
+  void _handleRecordingDetected() {
+    if (!mounted) return;
+    setState(() => _isRecordingDetected = true);
+    
+    // إيقاف الفيديو
+    _controller.pause();
+    
+    FirebaseCrashlytics.instance.log("🚨 Security: Screen Recording Detected on YouTube Player!");
+  }
+
+  // ✅ إعادة تفعيل الحماية عند العودة للتطبيق
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _controller.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      _protectionService.blockAudioCapture();
+    }
+  }
+
   void _playerListener() {
     if (_controller.value.hasError) {
       FirebaseCrashlytics.instance.log("Youtube Player Error: ${_controller.value.errorCode}");
@@ -74,7 +136,7 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
 
   void _getUserId() {
     String displayText = '';
-     
+      
     if (AppState().userData != null) {
       displayText = AppState().userData!['phone'] ?? '';
     }
@@ -116,22 +178,25 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // ✅ إزالة المراقب
+    _recordingSubscription?.cancel();
+    _protectionService.stopMonitoring();
+    WakelockPlus.disable(); // ✅ إيقاف Wakelock
+    
     _watermarkTimer?.cancel();
     _controller.removeListener(_playerListener);
     _controller.dispose();
-     
-    // ✅ استعادة وضع النظام الطبيعي (إظهار الأشرطة العلوية والسفلية)
+      
+    // استعادة وضع النظام الطبيعي
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
-     
-    // ✅ استعادة توجيه الشاشة للوضع الطبيعي (السماح بالتدوير أو العودة للعمودي)
-    // يمكنك استخدام DeviceOrientation.portraitUp إذا كنت تريد إجبار الوضع العمودي فقط
     SystemChrome.setPreferredOrientations(DeviceOrientation.values); 
-     
+      
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // استخدام PopScope لمنع الرجوع في حالة التحذير الأمني إذا أردت، أو تركها للتحكم اليدوي
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -141,12 +206,9 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
             child: YoutubePlayer(
               controller: _controller,
               showVideoProgressIndicator: true,
-              // 🔥 تم حذف const هنا
               progressIndicatorColor: AppColors.accentYellow,
               progressColors: ProgressBarColors(
-                // 🔥 تم حذف const هنا
                 playedColor: AppColors.accentYellow,
-                // 🔥 تم حذف const هنا
                 handleColor: AppColors.accentYellow,
               ),
               bottomActions: [
@@ -218,6 +280,48 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
               ),
             ),
           ),
+
+          // 4. ✅ شاشة التحذير الحمراء عند اكتشاف التسجيل (فوق كل شيء)
+          if (_isRecordingDetected)
+            Container(
+              color: Colors.red.shade900,
+              width: double.infinity,
+              height: double.infinity,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.block, color: Colors.white, size: 80),
+                  const SizedBox(height: 24),
+                  const Text(
+                    "SECURITY ALERT",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2.0
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Screen Recording Detected.\nPlayback has been disabled.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white70, fontSize: 16),
+                  ),
+                  const SizedBox(height: 32),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context); // الخروج من الشاشة
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.red.shade900,
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                    ),
+                    child: const Text("CLOSE PLAYER", style: TextStyle(fontWeight: FontWeight.bold)),
+                  )
+                ],
+              ),
+            ),
         ],
       ),
     );
