@@ -43,7 +43,8 @@ class AppState {
   }
 
   // ✅ 4. دالة التبديل بين الوضعين (عند ضغط الزر)
-  void toggleTheme() async {
+  // ⚠️ تم التعديل هنا: تغيير void إلى Future<void> لإصلاح خطأ الـ await
+  Future<void> toggleTheme() async {
     bool currentIsDark = themeNotifier.value == ThemeMode.dark;
     
     // عكس القيمة الحالية
