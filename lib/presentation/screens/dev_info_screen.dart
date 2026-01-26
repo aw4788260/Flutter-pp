@@ -94,12 +94,12 @@ class DevInfoScreen extends StatelessWidget {
                             children: [
                               _buildSocialBtn(
                                 icon: LucideIcons.send, 
-                                url: "https://t.me/A7MeDWaLiD0",
+                                url: "https://t.me/+201559725431", // تم تحديث التليجرام
                               ),
                               const SizedBox(width: 24),
                               _buildSocialBtn(
                                 icon: LucideIcons.messageCircle, 
-                                url: "https://wa.me/201224984810", // رقم المطور
+                                url: "https://wa.me/201559725404", // تم تحديث الواتساب
                               ),
                             ],
                           )
