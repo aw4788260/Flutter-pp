@@ -98,8 +98,9 @@ class SecurityManager {
   static final SecurityManager instance = SecurityManager._internal();
   SecurityManager._internal();
 
-  // ✅ المتغير العام الذي سيتحكم في إظهار الشاشة الحمراء لكل التطبيق
-  final ValueNotifier<bool> isSecurityBreached = ValueNotifier(false);
+  // ✅ التعديل: استبدال المتغير البولياني بمتغير نصي يحمل سبب الحظر
+  // إذا كان null فهذا يعني أن الوضع آمن. إذا كان يحتوي على نص فهذا هو سبب الحظر.
+  final ValueNotifier<String?> securityBreachReason = ValueNotifier(null);
 
   // ✅ الاعتماد على خدمة الحماية الخاصة التي نجحت في المشغل
   final AudioProtectionService _audioProtection = AudioProtectionService();
@@ -108,7 +109,7 @@ class SecurityManager {
     // 1. تشغيل المراقبة من خدمتك الخاصة (AudioProtectionService)
     _audioProtection.startMonitoring();
 
-    // 2. الاستماع للـ Stream القادم من خدمتك (هذا هو المنطق الناجح)
+    // 2. الاستماع للـ Stream القادم من خدمتك
     _audioProtection.recordingStateStream.listen((isRecording) {
       if (isRecording) {
         _triggerBreach("تم اكتشاف تسجيل للشاشة أو الصوت!");
@@ -117,26 +118,32 @@ class SecurityManager {
 
     // 3. (إضافي) الاستماع لمكتبة ScreenProtector كطبقة حماية ثانية
     ScreenProtector.addListener(() {
-      // Screenshot detected
+      // Screenshot callback
     }, (isCapturing) {
       if (isCapturing) _triggerBreach("تم اكتشاف تصوير للشاشة!");
     });
   }
 
-  // ✅ This method was missing and caused build errors in splash_screen.dart
-  // We implement it to check for jailbreak/dev mode and return true if safe, false if breached
+  // فحص الأمان للروت وخيارات المطور
   Future<bool> checkSecurity() async {
-    // If already breached, return false immediately
-    if (isSecurityBreached.value) return false;
+    // إذا كان هناك سبب مسجل بالفعل، نعتبر الجهاز مخترقاً ولا نعيد الفحص
+    if (securityBreachReason.value != null) return false;
 
     try {
       bool isJailBroken = await SafeDevice.isJailBroken;
       bool isDevMode = await SafeDevice.isDevelopmentModeEnable;
       
-      if (isJailBroken || isDevMode) {
-        _triggerBreach(isJailBroken ? "الجهاز مكسور الحماية (Root)" : "خيارات المطور مفعلة");
+      // ✅ تحديد السبب بدقة
+      if (isJailBroken) {
+        _triggerBreach("الجهاز مكسور الحماية (Root)");
         return false;
       }
+      
+      if (isDevMode) {
+        _triggerBreach("خيارات المطور مفعلة (Developer Options)");
+        return false;
+      }
+
     } catch (e) {
       debugPrint("Security Check Error: $e");
     }
@@ -150,11 +157,12 @@ class SecurityManager {
     });
   }
 
-  // ✅ دالة تفعيل الإنذار العام
+  // ✅ دالة تفعيل الإنذار تستقبل السبب وتخزنه للعرض
   void _triggerBreach(String reason) {
-    if (!isSecurityBreached.value) {
+    // فقط قم بتحديث السبب إذا لم يكن هناك سبب مسجل مسبقاً (لتجنب الكتابة فوق السبب الأول)
+    if (securityBreachReason.value == null) {
       debugPrint("🚨 SECURITY BREACH: $reason");
-      isSecurityBreached.value = true; // هذا سيُظهر الشاشة الحمراء فوراً
+      securityBreachReason.value = reason; // تخزين السبب ليعرض في الشاشة
       
       // ✅ محاولة إيقاف الصوت فوراً عبر إعادة تفعيل الحظر
       _audioProtection.blockAudioCapture();
@@ -278,14 +286,14 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
               children: [
                 if (child != null) child, // التطبيق الطبيعي
                 
-                // ✅ الاستماع للمتغير العام من SecurityManager
-                ValueListenableBuilder<bool>(
-                  valueListenable: SecurityManager.instance.isSecurityBreached,
-                  builder: (context, isBreached, _) {
-                    // إذا لم يكن هناك اختراق، نخفي الطبقة
-                    if (!isBreached) return const SizedBox.shrink();
+                // ✅ التعديل: الاستماع لمتغير النص (String?) بدلاً من البوليان
+                ValueListenableBuilder<String?>(
+                  valueListenable: SecurityManager.instance.securityBreachReason,
+                  builder: (context, breachReason, _) {
+                    // إذا كان السبب null (لا يوجد اختراق)، نخفي الطبقة
+                    if (breachReason == null) return const SizedBox.shrink();
 
-                    // 🛑 إذا حدث اختراق، نظهر الشاشة الحمراء فوراً
+                    // 🛑 إذا وجد نص، نظهر الشاشة الحمراء مع السبب المحدد
                     return Material(
                       type: MaterialType.transparency,
                       child: Container(
@@ -308,12 +316,19 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
                               ),
                             ),
                             const SizedBox(height: 16),
-                            const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 32.0),
+                            
+                            // ✅ عرض سبب المشكلة الفعلي القادم من SecurityManager
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 32.0),
                               child: Text(
-                                "Screen Recording Detected.\nApp functionality has been disabled.",
+                                breachReason, // هنا سيظهر النص المحدد (مثلاً: خيارات المطور مفعلة)
                                 textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.white70, fontSize: 16, decoration: TextDecoration.none),
+                                style: const TextStyle(
+                                  color: Colors.white, 
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  decoration: TextDecoration.none
+                                ),
                               ),
                             ),
                             const SizedBox(height: 32),
@@ -330,12 +345,12 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
                               child: const Column(
                                 children: [
                                   Text(
-                                    "⚠️ تحذير نهائي",
+                                    "⚠️ تنويه",
                                     style: TextStyle(color: Colors.yellow, fontSize: 20, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
                                   ),
                                   SizedBox(height: 8),
                                   Text(
-                                    "تسجيل المحتوى مخالف لشروط الاستخدام.\nتكرار هذا الأمر سيؤدي إلى حظر حسابك نهائياً وحذف جميع بياناتك دون سابق إنذار.",
+                                    "يرجى إغلاق التطبيقات المخالفة أو إيقاف خيارات المطور لضمان عمل التطبيق بأمان.",
                                     textAlign: TextAlign.center,
                                     style: TextStyle(color: Colors.white, fontSize: 14, decoration: TextDecoration.none),
                                     textDirection: TextDirection.rtl,
