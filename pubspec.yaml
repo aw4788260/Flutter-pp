@@ -30,7 +30,7 @@ dependencies:
   android_id: ^0.5.1
   wakelock_plus: ^1.4.0        # لإبقاء الشاشة تعمل
   pdfrx: ^2.2.24
-  file_picker: ^10.3.8
+  file_picker: ^10.3.9
   connectivity_plus: ^6.0.3
   shared_preferences: ^2.2.3
   
