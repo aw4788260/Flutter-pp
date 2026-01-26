@@ -1,4 +1,4 @@
-package com.example.edu_vantage_app
+package medaad.app
 
 import android.os.Bundle
 import android.app.NotificationManager
