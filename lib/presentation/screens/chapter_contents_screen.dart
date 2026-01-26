@@ -804,7 +804,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         if (isDownloaded) {
                            return _buildStatusButton("SAVED ${sizeStr != null ? '($sizeStr)' : ''}", AppColors.success, LucideIcons.checkCircle);
                         }
-                        else if (isDownloading) return _buildStatusButton("LOADING...", AppColors.accentYellow, LucideIcons.loader);
+                        // ✅ التغيير هنا: عرض Processing بدلاً من Loading
+                        else if (isDownloading) {
+                           return _buildStatusButton("PROCESSING...", AppColors.accentYellow, LucideIcons.loader);
+                        }
                         else return _buildActionButton(
                           "Download", 
                           AppColors.textSecondary, 
@@ -904,7 +907,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         bool isDownloading = DownloadManager().isFileDownloading(pdfId);
 
                         if (isDownloaded) return _buildStatusButton("SAVED", AppColors.success, LucideIcons.checkCircle);
-                        else if (isDownloading) return _buildStatusButton("LOADING...", AppColors.accentYellow, LucideIcons.loader);
+                        // ✅ التغيير هنا: عرض Processing بدلاً من Loading
+                        else if (isDownloading) return _buildStatusButton("PROCESSING...", AppColors.accentYellow, LucideIcons.loader);
                         else return _buildActionButton("Download", AppColors.textSecondary, () => _startPdfDownload(pdfId, pdf['title']));
                       },
                     ),
