@@ -10,6 +10,10 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:device_info_plus/device_info_plus.dart'; 
+// ✅ مكتبات الحماية الجديدة
+import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
+import '../../core/services/audio_protection_service.dart';
+
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/local_proxy.dart';
@@ -30,11 +34,17 @@ class VideoPlayerScreen extends StatefulWidget {
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+// ✅ إضافة Mixin لمراقبة حالة التطبيق (الخروج والعودة)
+class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindingObserver {
   late final Player _player;
   late final VideoController _controller;
 
   final LocalProxyService _proxyService = LocalProxyService();
+  
+  // ✅ متغيرات الحماية الجديدة
+  final AudioProtectionService _protectionService = AudioProtectionService();
+  StreamSubscription? _recordingSubscription;
+  bool _isRecordingDetected = false;
 
   String _currentQuality = "";
   List<String> _sortedQualities = [];
@@ -70,7 +80,55 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // ✅ تفعيل المراقب
+    _initializeProtection(); // ✅ تفعيل الحماية فوراً
     _initializePlayerScreen();
+  }
+
+  // ✅ دالة تفعيل الحماية
+  Future<void> _initializeProtection() async {
+    try {
+      // 1. منع Screenshot & Screen Recording (طبقة النظام)
+      await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      
+      // 2. حظر التقاط الصوت (Android 10+)
+      await _protectionService.blockAudioCapture();
+      
+      // 3. بدء مراقبة تطبيقات التسجيل
+      await _protectionService.startMonitoring();
+      
+      // 4. الاستماع لأي تغيير في حالة التسجيل
+      _recordingSubscription = _protectionService.recordingStateStream.listen((isRecording) {
+        if (isRecording && !_isRecordingDetected) {
+          _handleRecordingDetected();
+        }
+      });
+      
+      debugPrint("🛡️ Protection Enabled");
+    } catch (e) {
+      FirebaseCrashlytics.instance.recordError(e, null, reason: 'Protection Init Error');
+    }
+  }
+
+  // ✅ دالة التعامل مع اكتشاف التسجيل
+  void _handleRecordingDetected() {
+    if (!mounted) return;
+    setState(() => _isRecordingDetected = true);
+    
+    // إيقاف الفيديو فوراً
+    _player.pause();
+    
+    FirebaseCrashlytics.instance.log("🚨 Security: Screen Recording Detected!");
+  }
+
+  // ✅ إعادة تفعيل الحماية عند العودة للتطبيق
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _player.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      _protectionService.blockAudioCapture();
+    }
   }
 
   Future<void> _initializePlayerScreen() async {
@@ -109,7 +167,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       _player = Player(
         configuration: PlayerConfiguration(
-          // Reduce buffer to 3MB for weak devices to speed up start after seek
           bufferSize: _isWeakDevice ? 3 * 1024 * 1024 : 32 * 1024 * 1024,
           vo: 'gpu', 
         ),
@@ -199,7 +256,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // 🔄 Routing Logic (Online + Offline + Combined Links)
       // ============================================================
 
-      // 1. Handle combined links (video | audio)
       if (url.contains('|')) {
         final parts = url.split('|');
         playUrl = parts[0];
@@ -208,14 +264,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       }
 
-      // 2. Handle Local Files (Offline)
       if (!playUrl.startsWith('http')) {
         _isOfflineMode = true;
         final file = File(playUrl);
         if (!await file.exists()) throw Exception("Offline file missing");
         playUrl = 'http://127.0.0.1:${_proxyService.videoPort}/video?path=${Uri.encodeComponent(file.path)}&ext=.mp4&token=${_proxyService.authToken}';
 
-        // Find local audio
         if (audioUrl == null && Hive.isBoxOpen('downloads_box')) {
            final box = Hive.box('downloads_box');
            try {
@@ -233,9 +287,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
            } catch (_) {}
         }
       } 
-      // 3. Handle Online (Online HTTP/HTTPS)
       else {
-         // If online, use preReadyAudioUrl if not already set
          if (audioUrl == null && widget.preReadyAudioUrl != null) {
             audioUrl = widget.preReadyAudioUrl;
          }
@@ -251,7 +303,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         play: false 
       );
 
-      // Load Audio
       if (audioUrl != null) {
         int delayMs = _isWeakDevice ? 2500 : 500; 
         await Future.delayed(Duration(milliseconds: delayMs));
@@ -291,7 +342,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // ✅ Seek Function (Debounce only without smooth)
   Future<void> _seekRelative(Duration amount) async {
     _accumulatedSeekAmount += amount;
 
@@ -364,7 +414,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           shrinkWrap: true,
           children: _sortedQualities.reversed.map((q) => ListTile(
             title: Text(q, style: TextStyle(color: q == _currentQuality ? AppColors.accentYellow : Colors.white)),
-            // 🔥 تم حذف const هنا
             trailing: q == _currentQuality ? Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
             onTap: () {
               Navigator.pop(ctx);
@@ -391,7 +440,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           shrinkWrap: true,
           children: speeds.map((s) => ListTile(
             title: Text("${s}x", style: TextStyle(color: s == _currentSpeed ? AppColors.accentYellow : Colors.white)),
-            // 🔥 تم حذف const هنا
             trailing: s == _currentSpeed ? Icon(LucideIcons.check, color: AppColors.accentYellow) : null,
             onTap: () {
               Navigator.pop(ctx);
@@ -519,6 +567,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // ✅ إزالة المراقب
+    _recordingSubscription?.cancel(); // ✅ إلغاء الاشتراك
+    _protectionService.stopMonitoring(); // ✅ إيقاف الخدمة
+
     if (!_isDisposing) {
        _safeExit();
     }
@@ -601,11 +653,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           fit: StackFit.expand,
           children: [
             if (_isDisposing)
-              // 🔥 تم حذف const هنا
               Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
              
             else if (!_isInitialized)
-              // 🔥 تم حذف const هنا
               Center(child: CircularProgressIndicator(color: AppColors.accentYellow))
              
             else if (_isError)
@@ -613,7 +663,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // 🔥 تم حذف const هنا
                     Icon(Icons.error_outline, color: AppColors.error, size: 48),
                     const SizedBox(height: 16),
                     Text(_errorMessage, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
@@ -624,7 +673,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           setState(() => _isError = false);
                           _playVideo(widget.streams[_currentQuality]!);
                       }, 
-                      // 🔥 تم حذف const هنا
                       style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentYellow),
                       child: const Text("Retry", style: TextStyle(color: Colors.black)),
                     )
@@ -651,7 +699,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (_isVideoLoading || !_isInitialized)
-                        // 🔥 تم حذف const هنا
                         CircularProgressIndicator(color: AppColors.accentYellow),
                         
                       if (_stabilizingCountdown > 0) ...[
@@ -659,7 +706,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         Text(
                           "Starting in $_stabilizingCountdown",
                           style: TextStyle(
-                            // 🔥 تم حذف const هنا
                             color: AppColors.accentYellow, 
                             fontWeight: FontWeight.bold,
                             fontSize: 28, 
@@ -705,6 +751,48 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       ),
                     ),
                   ),
+                ),
+              ),
+
+            // ✅ شاشة التحذير الحمراء عند اكتشاف التسجيل
+            if (_isRecordingDetected)
+              Container(
+                color: Colors.red.shade900, // لون أحمر داكن
+                width: double.infinity,
+                height: double.infinity,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.block, color: Colors.white, size: 80),
+                    const SizedBox(height: 24),
+                    const Text(
+                      "SECURITY ALERT",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2.0
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      "Screen Recording Detected.\nPlayback has been disabled.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: () {
+                        _safeExit(); // خروج آمن من الشاشة
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.red.shade900,
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                      ),
+                      child: const Text("CLOSE PLAYER", style: TextStyle(fontWeight: FontWeight.bold)),
+                    )
+                  ],
                 ),
               ),
           ],
