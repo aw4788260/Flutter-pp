@@ -1,22 +1,24 @@
 import 'dart:async';
-import 'dart:io'; 
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; 
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:safe_device/safe_device.dart'; 
-import 'package:screen_protector/screen_protector.dart'; 
-import 'package:lucide_icons/lucide_icons.dart'; 
-import 'package:audio_session/audio_session.dart'; 
-import 'package:hive_flutter/hive_flutter.dart'; 
+import 'package:safe_device/safe_device.dart';
+import 'package:screen_protector/screen_protector.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+import 'package:audio_session/audio_session.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
-import 'core/services/notification_service.dart'; 
+import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
-import 'core/services/app_state.dart'; 
+import 'core/services/app_state.dart';
+// ✅ استيراد خدمة الحماية الخاصة التي أثبتت نجاحها
+import 'core/services/audio_protection_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -70,15 +72,13 @@ void main() async {
     }
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
-    // تشغيل الحماية
-    SecurityManager.instance.initListeners(); 
-    SecurityManager.instance.checkSecurity();
-    SecurityManager.instance.startPeriodicCheck();
+    // ✅ تشغيل مدير الحماية المحدث
+    SecurityManager.instance.initListeners();
+    SecurityManager.instance.checkInitialSecurity();
 
     // ✅ تهيئة الثيم
     await AppState().initTheme();
 
-    // ✅ التعديل هنا: تغليف التطبيق بـ RestartWidget لتمكين إعادة التشغيل
     runApp(
       const RestartWidget(
         child: EduVantageApp(),
@@ -91,155 +91,59 @@ void main() async {
 }
 
 // =========================================================
-// 🛡️ كلاس إدارة الحماية (Security Manager)
+// 🛡️ كلاس إدارة الحماية (Security Manager) - النسخة المحدثة
 // =========================================================
 class SecurityManager {
   static final SecurityManager instance = SecurityManager._internal();
   SecurityManager._internal();
 
-  bool _isAlertVisible = false;
-   
-  bool get isBlocked => _isAlertVisible;
+  // ✅ المتغير العام الذي سيتحكم في إظهار الشاشة الحمراء لكل التطبيق
+  final ValueNotifier<bool> isSecurityBreached = ValueNotifier(false);
+
+  // ✅ الاعتماد على خدمة الحماية الخاصة التي نجحت في المشغل
+  final AudioProtectionService _audioProtection = AudioProtectionService();
 
   void initListeners() {
+    // 1. تشغيل المراقبة من خدمتك الخاصة (AudioProtectionService)
+    _audioProtection.startMonitoring();
+
+    // 2. الاستماع للـ Stream القادم من خدمتك (هذا هو المنطق الناجح)
+    _audioProtection.recordingStateStream.listen((isRecording) {
+      if (isRecording) {
+        _triggerBreach("تم اكتشاف تسجيل للشاشة أو الصوت!");
+      }
+    });
+
+    // 3. (إضافي) الاستماع لمكتبة ScreenProtector كطبقة حماية ثانية
     ScreenProtector.addListener(() {
-      checkSecurity();
+      // Screenshot detected
     }, (isCapturing) {
-      if (isCapturing) checkSecurity();
+      if (isCapturing) _triggerBreach("تم اكتشاف تصوير للشاشة!");
     });
   }
 
-  Future<bool> checkSecurity() async {
-    if (_isAlertVisible) return false;
-
+  // فحص يدوي عند البدء (للروت والخيارات المطور)
+  Future<void> checkInitialSecurity() async {
     try {
       bool isJailBroken = await SafeDevice.isJailBroken;
       bool isDevMode = await SafeDevice.isDevelopmentModeEnable;
-      bool isRecording = await ScreenProtector.isRecording();
-
-      if (isJailBroken || isDevMode || isRecording) {
-        _isAlertVisible = true;
-        _showBlockDialog(isJailBroken, isDevMode, isRecording);
-        return false; 
+      
+      if (isJailBroken || isDevMode) {
+        _triggerBreach(isJailBroken ? "الجهاز مكسور الحماية (Root)" : "خيارات المطور مفعلة");
       }
     } catch (e) {
       debugPrint("Security Check Error: $e");
     }
-    
-    return true; 
   }
 
-  void startPeriodicCheck() {
-    Timer.periodic(const Duration(seconds: 1), (timer) async {
-      await checkSecurity();
-    });
-  }
-
-  void _showBlockDialog(bool isRoot, bool isDev, bool isRecording) {
-    String arabicReason = "";
-    String englishReason = "";
-
-    if (isRecording) {
-      arabicReason += "• تم اكتشاف تسجيل للشاشة! (مخالفة جسيمة)\n";
-      englishReason += "• Screen Recording Detected!\n";
-    }
-    if (isRoot) {
-      arabicReason += "• تم اكتشاف كسر حماية (Root/Jailbreak)\n";
-      englishReason += "• Root/Jailbreak Detected\n";
-    }
-    if (isDev) {
-      arabicReason += "• خيارات المطور مفعلة (Developer Options)\n";
-      englishReason += "• Developer Options Enabled\n";
-    }
-
-    String warningMessage = isRecording 
-        ? "\n⚠️ تحذير: محاولة تسجيل المحتوى تعرض حسابك للحظر النهائي فوراً."
-        : "\nيرجى تعطيل هذه الخيارات للمتابعة.";
-
-    if (navigatorKey.currentContext != null) {
-      showDialog(
-        context: navigatorKey.currentContext!,
-        barrierDismissible: false,
-        useRootNavigator: true,
-        builder: (context) => PopScope(
-          canPop: false,
-          child: AlertDialog(
-            backgroundColor: const Color(0xFF242F3D),
-            title: const Row(
-              children: [
-                Icon(LucideIcons.shieldAlert, color: Color(0xFFEF4444)),
-                SizedBox(width: 10),
-                Text("Security Alert / تنبيه أمني", style: TextStyle(color: Color(0xFFEF4444), fontSize: 16, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    "تم إيقاف التطبيق لأسباب أمنية:",
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.right,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    arabicReason,
-                    style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 13, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.right,
-                    textDirection: TextDirection.rtl,
-                  ),
-                  const Divider(color: Colors.white24),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Action Required:",
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          englishReason,
-                          style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: Text(
-                      warningMessage,
-                      style: TextStyle(
-                        color: isRecording ? const Color(0xFFEF4444) : Colors.white54,
-                        fontSize: 12, 
-                        fontWeight: FontWeight.bold
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    backgroundColor: const Color(0xFFEF4444).withOpacity(0.1),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  onPressed: () => exit(0),
-                  child: const Text("إغلاق التطبيق / EXIT", style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else {
-      exit(0);
+  // ✅ دالة تفعيل الإنذار العام
+  void _triggerBreach(String reason) {
+    if (!isSecurityBreached.value) {
+      debugPrint("🚨 SECURITY BREACH: $reason");
+      isSecurityBreached.value = true; // هذا سيُظهر الشاشة الحمراء فوراً
+      
+      // ✅ محاولة إيقاف الصوت فوراً عبر إعادة تفعيل الحظر
+      _audioProtection.blockAudioCapture();
     }
   }
 }
@@ -333,7 +237,9 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      SecurityManager.instance.checkSecurity();
+      // إعادة تفعيل الحظر عند العودة للتطبيق
+      AudioProtectionService().blockAudioCapture();
+      SecurityManager.instance.checkInitialSecurity();
     }
   }
 
@@ -343,13 +249,106 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
       valueListenable: AppState().themeNotifier,
       builder: (context, currentMode, child) {
         return MaterialApp(
-          navigatorKey: navigatorKey, 
+          navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           title: 'مــــداد',
           theme: AppTheme.darkTheme.copyWith(
             brightness: currentMode == ThemeMode.dark ? Brightness.dark : Brightness.light,
           ),
-          themeMode: currentMode, 
+          themeMode: currentMode,
+          
+          // ✅ هنا نطبق "الشاشة الحمراء" كطبقة فوق كل التطبيق (Global Overlay)
+          builder: (context, child) {
+            return Stack(
+              textDirection: TextDirection.ltr,
+              children: [
+                if (child != null) child, // التطبيق الطبيعي
+                
+                // ✅ الاستماع للمتغير العام من SecurityManager
+                ValueListenableBuilder<bool>(
+                  valueListenable: SecurityManager.instance.isSecurityBreached,
+                  builder: (context, isBreached, _) {
+                    // إذا لم يكن هناك اختراق، نخفي الطبقة
+                    if (!isBreached) return const SizedBox.shrink();
+
+                    // 🛑 إذا حدث اختراق، نظهر الشاشة الحمراء فوراً
+                    return Material(
+                      type: MaterialType.transparency,
+                      child: Container(
+                        color: Colors.red.shade900, // لون أحمر داكن للتحذير
+                        width: double.infinity,
+                        height: double.infinity,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(LucideIcons.shieldAlert, color: Colors.white, size: 80),
+                            const SizedBox(height: 24),
+                            const Text(
+                              "SECURITY ALERT",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 2.0,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 32.0),
+                              child: Text(
+                                "Screen Recording Detected.\nApp functionality has been disabled.",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white70, fontSize: 16, decoration: TextDecoration.none),
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+                            
+                            // ⚠️ صندوق التهديد بالحظر
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 32),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.yellow, width: 2),
+                              ),
+                              child: const Column(
+                                children: [
+                                  Text(
+                                    "⚠️ تحذير نهائي",
+                                    style: TextStyle(color: Colors.yellow, fontSize: 20, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    "تسجيل المحتوى مخالف لشروط الاستخدام.\nتكرار هذا الأمر سيؤدي إلى حظر حسابك نهائياً وحذف جميع بياناتك دون سابق إنذار.",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.white, fontSize: 14, decoration: TextDecoration.none),
+                                    textDirection: TextDirection.rtl,
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 40),
+                            ElevatedButton(
+                              onPressed: () => exit(0), // إغلاق التطبيق فوراً
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.red.shade900,
+                                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                              ),
+                              child: const Text("إغلاق التطبيق / EXIT", style: TextStyle(fontWeight: FontWeight.bold)),
+                            )
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
           home: const SplashScreen(),
         );
       },
@@ -360,7 +359,6 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
 // =========================================================
 // 🔄 كلاس إعادة تشغيل التطبيق (RestartWidget)
 // =========================================================
-// هذا الكلاس يمسح شجرة الـ Widgets ويبنيها من جديد لحل مشاكل الألوان
 class RestartWidget extends StatefulWidget {
   final Widget child;
   const RestartWidget({super.key, required this.child});
@@ -378,7 +376,7 @@ class _RestartWidgetState extends State<RestartWidget> {
 
   void restartApp() {
     setState(() {
-      key = UniqueKey(); // تغيير المفتاح يجبر التطبيق على إعادة البناء بالكامل
+      key = UniqueKey();
     });
   }
 
