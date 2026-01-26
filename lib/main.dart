@@ -11,7 +11,7 @@ import 'package:safe_device/safe_device.dart';
 import 'package:screen_protector/screen_protector.dart'; 
 import 'package:lucide_icons/lucide_icons.dart'; 
 import 'package:audio_session/audio_session.dart'; 
-import 'package:hive_flutter/hive_flutter.dart'; // ✅ تأكد من وجود هذا الاستيراد
+import 'package:hive_flutter/hive_flutter.dart'; 
 
 import 'core/services/notification_service.dart'; 
 import 'core/theme/app_theme.dart';
@@ -24,10 +24,10 @@ void main() async {
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // ✅✅✅ الحل الجذري: تهيئة Hive أول شيء قبل أي استخدام
+    // ✅ تهيئة Hive
     await Hive.initFlutter();
 
-    // ✅ فتح الصناديق الأساسية لضمان عدم حدوث خطأ عند طلبها لاحقاً
+    // ✅ فتح الصناديق الأساسية
     await Hive.openBox('auth_box');
     await Hive.openBox('settings_box');
     await Hive.openBox('downloads_box');
@@ -75,10 +75,16 @@ void main() async {
     SecurityManager.instance.checkSecurity();
     SecurityManager.instance.startPeriodicCheck();
 
-    // ✅ الآن يمكننا استدعاء AppState بأمان لأن Hive جاهزة
+    // ✅ تهيئة الثيم
     await AppState().initTheme();
 
-    runApp(const EduVantageApp());
+    // ✅ التعديل هنا: تغليف التطبيق بـ RestartWidget لتمكين إعادة التشغيل
+    runApp(
+      const RestartWidget(
+        child: EduVantageApp(),
+      ),
+    );
+    
   }, (error, stack) {
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
   });
@@ -93,57 +99,46 @@ class SecurityManager {
 
   bool _isAlertVisible = false;
    
-  // كاشف للحالة لاستخدامه في Splash Screen لمنع الانتقال
   bool get isBlocked => _isAlertVisible;
 
-  // دالة تهيئة المستمعين (Screen Recording Listener)
   void initListeners() {
     ScreenProtector.addListener(() {
-      // عند بدء التسجيل أو أخذ لقطة شاشة
       checkSecurity();
     }, (isCapturing) {
       if (isCapturing) checkSecurity();
     });
   }
 
-  // دالة الفحص الموحدة
   Future<bool> checkSecurity() async {
-    // إذا كانت النافذة ظاهرة بالفعل، نعتبره غير آمن
     if (_isAlertVisible) return false;
 
     try {
-      // 1. فحص الروت وخيارات المطور
       bool isJailBroken = await SafeDevice.isJailBroken;
       bool isDevMode = await SafeDevice.isDevelopmentModeEnable;
-      
-      // 2. فحص تسجيل الشاشة
       bool isRecording = await ScreenProtector.isRecording();
 
       if (isJailBroken || isDevMode || isRecording) {
         _isAlertVisible = true;
         _showBlockDialog(isJailBroken, isDevMode, isRecording);
-        return false; // غير آمن
+        return false; 
       }
     } catch (e) {
       debugPrint("Security Check Error: $e");
     }
     
-    return true; // آمن
+    return true; 
   }
 
   void startPeriodicCheck() {
-    // تقليل الوقت لثانية واحدة لزيادة سرعة الكشف
     Timer.periodic(const Duration(seconds: 1), (timer) async {
       await checkSecurity();
     });
   }
 
-  // عرض نافذة الحظر مع الأسباب المختلفة
   void _showBlockDialog(bool isRoot, bool isDev, bool isRecording) {
     String arabicReason = "";
     String englishReason = "";
 
-    // تخصيص الرسالة حسب السبب
     if (isRecording) {
       arabicReason += "• تم اكتشاف تسجيل للشاشة! (مخالفة جسيمة)\n";
       englishReason += "• Screen Recording Detected!\n";
@@ -157,7 +152,6 @@ class SecurityManager {
       englishReason += "• Developer Options Enabled\n";
     }
 
-    // رسالة التهديد الخاصة بالتسجيل
     String warningMessage = isRecording 
         ? "\n⚠️ تحذير: محاولة تسجيل المحتوى تعرض حسابك للحظر النهائي فوراً."
         : "\nيرجى تعطيل هذه الخيارات للمتابعة.";
@@ -166,7 +160,7 @@ class SecurityManager {
       showDialog(
         context: navigatorKey.currentContext!,
         barrierDismissible: false,
-        useRootNavigator: true, // جعل النافذة فوق كل شيء (Root Navigator)
+        useRootNavigator: true,
         builder: (context) => PopScope(
           canPop: false,
           child: AlertDialog(
@@ -181,7 +175,7 @@ class SecurityManager {
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end, // محاذاة لليمين للنص العربي
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   const Text(
                     "تم إيقاف التطبيق لأسباب أمنية:",
@@ -193,10 +187,10 @@ class SecurityManager {
                     arabicReason,
                     style: const TextStyle(color: Color(0xFFE1AD01), fontSize: 13, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.right,
-                    textDirection: TextDirection.rtl, // اتجاه النص
+                    textDirection: TextDirection.rtl,
                   ),
                   const Divider(color: Colors.white24),
-                  Align( // محاذاة اليسار للإنجليزي
+                  Align(
                     alignment: Alignment.centerLeft,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,7 +212,7 @@ class SecurityManager {
                     child: Text(
                       warningMessage,
                       style: TextStyle(
-                        color: isRecording ? const Color(0xFFEF4444) : Colors.white54, // لون أحمر للتهديد
+                        color: isRecording ? const Color(0xFFEF4444) : Colors.white54,
                         fontSize: 12, 
                         fontWeight: FontWeight.bold
                       ),
@@ -236,7 +230,7 @@ class SecurityManager {
                     backgroundColor: const Color(0xFFEF4444).withOpacity(0.1),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  onPressed: () => exit(0), // إغلاق التطبيق
+                  onPressed: () => exit(0),
                   child: const Text("إغلاق التطبيق / EXIT", style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
                 ),
               ),
@@ -309,7 +303,6 @@ bool onIosBackground(ServiceInstance service) {
 
 Future<void> _enableSecureMode() async {
   try {
-    // هذا يمنع أخذ لقطات الشاشة (Screenshots) ويظهر شاشة سوداء في التسجيل
     await FlutterWindowManagerPlus.addFlags(FlutterWindowManagerPlus.FLAG_SECURE);
   } catch (e) {
     debugPrint("Security Mode Error: $e");
@@ -346,7 +339,6 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 2. تغليف التطبيق بـ ValueListenableBuilder لمراقبة تغيير الثيم
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: AppState().themeNotifier,
       builder: (context, currentMode, child) {
@@ -354,19 +346,47 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
           navigatorKey: navigatorKey, 
           debugShowCheckedModeBanner: false,
           title: 'مــــداد',
-          
-          // الثيم سيعتمد الآن على AppColors الديناميكي
-          // يتم تحديد brightness لضبط أيقونات شريط الحالة (الساعة والبطارية)
           theme: AppTheme.darkTheme.copyWith(
             brightness: currentMode == ThemeMode.dark ? Brightness.dark : Brightness.light,
           ),
-          
-          // إجبار التطبيق على إعادة البناء عند تغيير الثيم
           themeMode: currentMode, 
-          
           home: const SplashScreen(),
         );
       },
+    );
+  }
+}
+
+// =========================================================
+// 🔄 كلاس إعادة تشغيل التطبيق (RestartWidget)
+// =========================================================
+// هذا الكلاس يمسح شجرة الـ Widgets ويبنيها من جديد لحل مشاكل الألوان
+class RestartWidget extends StatefulWidget {
+  final Widget child;
+  const RestartWidget({super.key, required this.child});
+
+  static void restartApp(BuildContext context) {
+    context.findAncestorStateOfType<_RestartWidgetState>()?.restartApp();
+  }
+
+  @override
+  _RestartWidgetState createState() => _RestartWidgetState();
+}
+
+class _RestartWidgetState extends State<RestartWidget> {
+  Key key = UniqueKey();
+
+  void restartApp() {
+    setState(() {
+      key = UniqueKey(); // تغيير المفتاح يجبر التطبيق على إعادة البناء بالكامل
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return KeyedSubtree(
+      key: key,
+      child: widget.child,
     );
   }
 }
