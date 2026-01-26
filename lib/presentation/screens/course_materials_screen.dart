@@ -6,7 +6,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/storage_service.dart';
 import 'subject_materials_screen.dart';
-import 'teacher/manage_content_screen.dart'; 
+import 'teacher/manage_content_screen.dart';
 
 class CourseMaterialsScreen extends StatefulWidget {
   final String courseId;
@@ -127,56 +127,68 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        GestureDetector(
-                          onTap: () {
-                            // ✅ إرجاع البيانات عند الضغط على زر الرجوع
-                            Navigator.pop(context, _ownedSubjects);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSecondary,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                    // ✅ استخدام Expanded للجزء الأيسر لضمان عدم دفع الزر الأيمن للخارج
+                    Expanded(
+                      child: Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              // ✅ إرجاع البيانات عند الضغط على زر الرجوع
+                              Navigator.pop(context, _ownedSubjects);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.backgroundSecondary,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                              ),
+                              child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                             ),
-                            child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.courseTitle.toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
-                                letterSpacing: -0.5,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          const SizedBox(width: 16),
+                          
+                          // ✅ Expanded للنصوص لتأخذ المساحة المتبقية فقط
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // ✅ جعل العنوان الرئيسي قابلاً للسحب (Scrollable)
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Text(
+                                    widget.courseTitle.toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textPrimary,
+                                      // تمت إزالة overflow: ellipsis للسماح بالسحب
+                                      letterSpacing: -0.5,
+                                    ),
+                                    maxLines: 1,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "CHOOSE SUBJECT",
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.accentYellow,
+                                    letterSpacing: 2.0,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "CHOOSE SUBJECT",
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.accentYellow,
-                                letterSpacing: 2.0,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
 
                     // 🟢 زر إضافة مادة (يظهر للمعلم فقط)
-                    if (_isTeacher)
+                    if (_isTeacher) ...[
+                      const SizedBox(width: 10), // مسافة أمان
                       GestureDetector(
                         onTap: () {
                           Navigator.push(
@@ -205,6 +217,7 @@ class _CourseMaterialsScreenState extends State<CourseMaterialsScreen> {
                           child: Icon(LucideIcons.plus, color: AppColors.accentYellow, size: 22),
                         ),
                       ),
+                    ],
                   ],
                 ),
               ),
