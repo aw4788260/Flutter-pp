@@ -89,7 +89,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
   Future<void> _initializeProtection() async {
     try {
       // 1. منع Screenshot & Screen Recording (طبقة النظام)
-      await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      // ✅ تم التصحيح هنا: استخدام FlutterWindowManagerPlus بدلاً من FlutterWindowManager
+      await FlutterWindowManagerPlus.addFlags(FlutterWindowManagerPlus.FLAG_SECURE);
       
       // 2. حظر التقاط الصوت (Android 10+)
       await _protectionService.blockAudioCapture();
