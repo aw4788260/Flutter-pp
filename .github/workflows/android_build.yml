@@ -61,23 +61,20 @@ jobs:
           echo "$DATA" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
           echo "$KEYSTORE_DATA" | tr -d '[:space:]' | base64 -d > android/app/upload-keystore.jks
 
-      # ✅ 3. البناء السريع (نسختين منفصلتين v7 و v8)
-      - name: Build APKs (Arm v7 & Arm64)
+      # ✅ 3. البناء الموحد (ملف واحد شامل للمعالجين)
+      - name: Build Fat APK (Universal)
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           APP_SECRET: ${{ secrets.APP_SECRET }}
         run: |
-          # التعديل هنا: إضافة android-arm واستخدام split-per-abi لفصل الملفات
-          
-          flutter build apk --release --target-platform android-arm,android-arm64 --split-per-abi --dart-define=APP_SECRET="$APP_SECRET" 
+          # التعديل: إزالة --split-per-abi لإنتاج ملف واحد يحتوي على المعماريات المحددة
+          flutter build apk --release --target-platform android-arm,android-arm64 --dart-define=APP_SECRET="$APP_SECRET" 
 
-      - name: Upload APKs
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apks
-          # المسارات الجديدة للملفين الناتجين
-          path: |
-            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          name: app-release-apk
+          # المسار الافتراضي للملف الموحد
+          path: build/app/outputs/flutter-apk/app-release.apk
