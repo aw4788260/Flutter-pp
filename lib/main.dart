@@ -74,7 +74,8 @@ void main() async {
 
     // ✅ تشغيل مدير الحماية المحدث
     SecurityManager.instance.initListeners();
-    SecurityManager.instance.checkInitialSecurity();
+    // Start periodic check
+    SecurityManager.instance.startPeriodicCheck();
 
     // ✅ تهيئة الثيم
     await AppState().initTheme();
@@ -122,18 +123,31 @@ class SecurityManager {
     });
   }
 
-  // فحص يدوي عند البدء (للروت والخيارات المطور)
-  Future<void> checkInitialSecurity() async {
+  // ✅ This method was missing and caused build errors in splash_screen.dart
+  // We implement it to check for jailbreak/dev mode and return true if safe, false if breached
+  Future<bool> checkSecurity() async {
+    // If already breached, return false immediately
+    if (isSecurityBreached.value) return false;
+
     try {
       bool isJailBroken = await SafeDevice.isJailBroken;
       bool isDevMode = await SafeDevice.isDevelopmentModeEnable;
       
       if (isJailBroken || isDevMode) {
         _triggerBreach(isJailBroken ? "الجهاز مكسور الحماية (Root)" : "خيارات المطور مفعلة");
+        return false;
       }
     } catch (e) {
       debugPrint("Security Check Error: $e");
     }
+    return true;
+  }
+
+  // Start periodic check for jailbreak/dev mode
+  void startPeriodicCheck() {
+    Timer.periodic(const Duration(seconds: 2), (timer) async {
+      await checkSecurity();
+    });
   }
 
   // ✅ دالة تفعيل الإنذار العام
@@ -239,7 +253,7 @@ class _EduVantageAppState extends State<EduVantageApp> with WidgetsBindingObserv
     if (state == AppLifecycleState.resumed) {
       // إعادة تفعيل الحظر عند العودة للتطبيق
       AudioProtectionService().blockAudioCapture();
-      SecurityManager.instance.checkInitialSecurity();
+      SecurityManager.instance.checkSecurity();
     }
   }
 
