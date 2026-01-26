@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/storage_service.dart';
 import 'chapter_contents_screen.dart';
 import 'exam_view_screen.dart';
-import 'exam_result_screen.dart'; 
-import 'teacher/manage_content_screen.dart'; 
-import 'teacher/create_exam_screen.dart'; 
-import 'teacher/exam_stats_screen.dart'; 
+import 'exam_result_screen.dart';
+import 'teacher/manage_content_screen.dart';
+import 'teacher/create_exam_screen.dart';
+import 'teacher/exam_stats_screen.dart';
 
 class SubjectMaterialsScreen extends StatefulWidget {
   final String subjectId;
@@ -132,56 +132,65 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.backgroundSecondary,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.white.withOpacity(0.05)),
-                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                      // ✅ الجزء الأيسر: زر الرجوع + العناوين (مع Expanded)
+                      Expanded(
+                        child: Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.backgroundSecondary,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                                ),
+                                child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                               ),
-                              // 🔥 تم حذف const هنا
-                              child: Icon(LucideIcons.arrowLeft, color: AppColors.accentYellow, size: 20),
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.subjectTitle.toUpperCase(),
-                                // 🔥 تم حذف const هنا
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textPrimary,
-                                  overflow: TextOverflow.ellipsis,
-                                  letterSpacing: -0.5,
-                                ),
-                                maxLines: 1,
+                            const SizedBox(width: 16),
+                            
+                            // ✅ Expanded للنصوص لتأخذ المساحة المتبقية فقط
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // ✅ SingleChildScrollView للعنوان الطويل جداً
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Text(
+                                      widget.subjectTitle.toUpperCase(),
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.textPrimary,
+                                        // تمت إزالة overflow: ellipsis للسماح بالسحب
+                                        letterSpacing: -0.5,
+                                      ),
+                                      maxLines: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    "SUBJECT CONTENTS",
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.accentYellow,
+                                      letterSpacing: 2.0,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                "SUBJECT CONTENTS",
-                                // 🔥 تم حذف const هنا
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.accentYellow,
-                                  letterSpacing: 2.0,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                            ),
+                          ],
+                        ),
                       ),
 
-                      // 🟢 زر إضافة محتوى
-                      if (_isTeacher)
+                      // 🟢 زر إضافة محتوى (يظهر للمعلم فقط)
+                      if (_isTeacher) ...[
+                        const SizedBox(width: 10), // مسافة أمان
                         GestureDetector(
                           onTap: () {
                             if (_activeTab == 'chapters') {
@@ -209,19 +218,17 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              // 🔥 تم حذف const هنا
                               color: AppColors.accentYellow.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(50),
-                              // 🔥 تم حذف const هنا
                               border: Border.all(color: AppColors.accentYellow.withOpacity(0.5)),
                             ),
-                            // 🔥 تم حذف const هنا
                             child: Icon(
                               _activeTab == 'chapters' ? LucideIcons.folderPlus : LucideIcons.filePlus, 
                               color: AppColors.accentYellow, size: 22
                             ),
                           ),
                         ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -333,7 +340,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     children: [
                       Text(
                         (exam['title'] ?? 'Untitled Exam').toString().toUpperCase(),
-                        // 🔥 تم حذف const هنا
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -346,7 +352,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                         children: [
                           Text(
                             "${exam['duration_minutes'] ?? 0} MINS",
-                            // 🔥 تم حذف const هنا
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
@@ -357,7 +362,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                           const SizedBox(width: 8),
                           Text(
                             statusText,
-                            // 🔥 تم حذف const هنا
                             style: TextStyle(
                               fontSize: 8,
                               fontWeight: FontWeight.bold,
@@ -378,7 +382,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      // 🔥 تم حذف const هنا
                       icon: Icon(LucideIcons.edit, color: AppColors.accentOrange, size: 20),
                       tooltip: "تعديل الامتحان",
                       onPressed: () {
@@ -396,7 +399,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                       },
                     ),
                     IconButton(
-                      // 🔥 تم حذف const هنا
                       icon: Icon(LucideIcons.barChart2, color: AppColors.accentYellow, size: 20),
                       tooltip: "Statistics",
                       onPressed: () {
@@ -415,7 +417,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                 )
               else
                 IconButton(
-                  // 🔥 تم حذف const هنا
                   icon: Icon(LucideIcons.chevronRight, size: 20, color: statusColor.withOpacity(0.5)),
                   onPressed: () => _openExam(exam, isCompleted, isExpired),
                 ),
@@ -441,7 +442,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          // 🔥 تم حذف const هنا
           SnackBar(content: Text("Error: Cannot load result."), backgroundColor: AppColors.error)
         );
       }
@@ -471,7 +471,7 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
         return GestureDetector(
           onTap: () {
             final String courseTitle = _content?['course_title'] ?? 'Unknown Course';
-             
+              
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -513,7 +513,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                   child: Center(
                     child: Text(
                       "${index + 1}".padLeft(2, '0'),
-                      // 🔥 تم حذف const هنا
                       style: TextStyle(
                         color: AppColors.accentYellow,
                         fontWeight: FontWeight.bold,
@@ -529,7 +528,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     children: [
                       Text(
                         (chapter['title'] ?? 'Chapter').toString().toUpperCase(),
-                        // 🔥 تم حذف const هنا
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -542,12 +540,10 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          // 🔥 تم حذف const هنا
                           Icon(LucideIcons.hash, size: 10, color: AppColors.accentOrange),
                           const SizedBox(width: 4),
                           Text(
                             "${videosCount + pdfsCount} CONTENTS",
-                            // 🔥 تم حذف const هنا
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
@@ -563,7 +559,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                 // 🟢 زر تعديل الشابتر للمعلم
                 if (_isTeacher)
                   IconButton(
-                    // 🔥 تم حذف const هنا
                     icon: Icon(LucideIcons.edit2, size: 18, color: AppColors.accentYellow),
                     onPressed: () {
                       Navigator.push(
@@ -582,7 +577,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
                     },
                   )
                 else
-                  // 🔥 تم حذف const هنا
                   Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textSecondary),
               ],
             ),
@@ -611,7 +605,6 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
           child: Text(
             title.toUpperCase(),
             textAlign: TextAlign.center,
-            // 🔥 تم حذف const هنا
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
@@ -629,12 +622,10 @@ class _SubjectMaterialsScreenState extends State<SubjectMaterialsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // 🔥 تم حذف const هنا
           Icon(icon, size: 48, color: AppColors.textSecondary.withOpacity(0.3)),
           const SizedBox(height: 16),
           Text(
             message.toUpperCase(),
-            // 🔥 تم حذف const هنا
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
