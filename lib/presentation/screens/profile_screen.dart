@@ -107,10 +107,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // ✅ دالة لتغيير الثيم وإعادة تشغيل التطبيق
+  // ملاحظة: هذا الكود سيعمل الآن لأننا جعلنا toggleTheme تعيد Future في AppState
   void _toggleThemeAndRestart() async {
     await AppState().toggleTheme();
     
-    // تأخير بسيط لضمان حفظ الإعدادات
+    // تأخير بسيط لضمان حفظ الإعدادات في Hive
     await Future.delayed(const Duration(milliseconds: 150));
     
     if (mounted) {
@@ -163,24 +164,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.backgroundSecondary,
                   borderRadius: BorderRadius.circular(24),
-                  // ✅ استخدام لون حدود ديناميكي (يظهر في الفاتح والداكن)
+                  // ✅ استخدام لون حدود ديناميكي
                   border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
                 ),
                 child: Row(
                   children: [
-                    // ✅ Avatar (صورة للمدرس، وحرف للطالب)
+                    // ✅ Avatar
                     Container(
                       width: 64, height: 64,
                       decoration: BoxDecoration(
                         color: AppColors.backgroundPrimary,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.accentYellow.withOpacity(0.5), width: 2),
-                        // ✅ إصلاح عرض الصورة هنا
                         image: (_isTeacher && _profileImage != null && _profileImage!.isNotEmpty)
                             ? DecorationImage(
                                 image: NetworkImage(
-                                  // ✅ إذا كان الرابط يبدأ بـ http نستخدمه، وإلا نقوم ببنائه
                                   _profileImage!.startsWith('http')
                                       ? _profileImage!
                                       : '$_baseUrl/api/public/get-avatar?file=$_profileImage'
@@ -189,7 +188,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               )
                             : null,
                       ),
-                      // ✅ إذا لم يكن هناك صورة أو ليس مدرساً، نعرض الحرف الأول
                       child: (_isTeacher && _profileImage != null && _profileImage!.isNotEmpty)
                           ? null
                           : Center(
@@ -337,7 +335,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
-                      _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => _loadUserData())), // ✅ تحديث عند العودة
+                      _buildMenuItem(context, icon: LucideIcons.user, title: "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => _loadUserData())),
                       Divider(height: 1, color: AppColors.textSecondary.withOpacity(0.1)),
                       _buildMenuItem(context, icon: LucideIcons.lock, title: "Change Password", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
 
@@ -382,19 +380,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       context,
                       icon: AppState.isDark ? LucideIcons.moon : LucideIcons.sun,
                       title: AppState.isDark ? "Dark Mode / الوضع الليلي" : "Light Mode / الوضع النهاري",
-                      onTap: _toggleThemeAndRestart, // 👈 استدعاء الدالة الجديدة
+                      onTap: _toggleThemeAndRestart,
                       trailing: Switch(
                         value: AppState.isDark,
                         // ✅ ألوان الوضع النشط (Dark Mode)
                         activeColor: AppColors.accentYellow,
                         activeTrackColor: AppColors.accentYellow.withOpacity(0.4),
                         
-                        // ✅ ألوان الوضع غير النشط (Light Mode) لتظهر بوضوح
+                        // ✅ ألوان الوضع غير النشط (Light Mode)
                         inactiveThumbColor: Colors.grey.shade600, 
                         inactiveTrackColor: Colors.grey.shade300,
 
                         onChanged: (val) {
-                          _toggleThemeAndRestart(); // 👈 استدعاء الدالة الجديدة
+                          _toggleThemeAndRestart();
                         },
                       ),
                     ),
@@ -445,7 +443,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ دالة بناء العناصر مع دعم العنصر الإضافي (trailing)
+  // ✅ دالة بناء العناصر
   Widget _buildMenuItem(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap, String? badge, Widget? trailing}) {
     return Material(
       color: Colors.transparent,
