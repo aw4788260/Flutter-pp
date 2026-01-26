@@ -123,7 +123,6 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                // 🔥 تم حذف const هنا
                 color: AppColors.backgroundPrimary.withOpacity(0.8),
                 border: const Border(bottom: BorderSide(color: Colors.white10)),
               ),
@@ -135,7 +134,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 🔥 تم حذف const هنا
                           Text(
                             "WELCOME",
                             style: TextStyle(
@@ -146,7 +144,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          // 🔥 تم حذف const هنا
                           Text(
                             (_user?['first_name'] ?? "GUEST").toUpperCase(),
                             style: TextStyle(
@@ -182,7 +179,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             border: Border.all(color: Colors.white.withOpacity(0.05)),
                             boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                           ),
-                          // 🔥 تم حذف const هنا
                           child: Icon(
                             _isTeacher ? LucideIcons.inbox : LucideIcons.clipboardList,
                             color: AppColors.accentYellow, 
@@ -203,17 +199,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: TextField(
                       onChanged: (val) => setState(() => _searchTerm = val),
-                      // 🔥 تم حذف const هنا
                       style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
-                        // 🔥 تم حذف const هنا
                         prefixIcon: Icon(
                           LucideIcons.search, 
                           color: _searchTerm.isNotEmpty ? AppColors.accentYellow : AppColors.textSecondary,
                           size: 18,
                         ),
                         hintText: "Search course name or code...",
-                        // 🔥 تم حذف const هنا
                         hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.5)),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -232,20 +225,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    // Slider
+                    // Slider - تم تعديل الألوان هنا لتكون سوداء فوق الخلفية الرمادية
                     SizedBox(
                       height: 96,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.grey[300],
+                          color: Colors.grey[300], // الإبقاء على لون الخلفية الرمادي
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Stack(
                           children: [
                             Positioned(
                               top: 12, left: 16,
-                              // 🔥 تم حذف const هنا
-                              child: Icon(LucideIcons.quote, color: AppColors.backgroundSecondary.withOpacity(0.2), size: 32),
+                              child: Icon(
+                                LucideIcons.quote, 
+                                color: Colors.black.withOpacity(0.2), // أيقونة الاقتباس بالأسود الشفاف
+                                size: 32
+                              ),
                             ),
                             PageView.builder(
                               controller: _pageController,
@@ -258,9 +254,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     child: Text(
                                       _encouragements[index].toUpperCase(),
                                       textAlign: TextAlign.center,
-                                      // 🔥 تم حذف const هنا
-                                      style: TextStyle(
-                                        color: AppColors.backgroundPrimary,
+                                      style: const TextStyle(
+                                        color: Colors.black, // النص باللون الأسود
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
                                         letterSpacing: -0.2,
@@ -282,10 +277,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                     width: _currentSlide == index ? 20 : 6,
                                     height: 6,
                                     decoration: BoxDecoration(
-                                      // 🔥 تم حذف const هنا
                                       color: _currentSlide == index 
                                           ? AppColors.accentYellow 
-                                          : AppColors.backgroundSecondary.withOpacity(0.5),
+                                          : Colors.black.withOpacity(0.2), // نقاط التمرير بالأسود
                                       borderRadius: BorderRadius.circular(3),
                                     ),
                                   );
@@ -303,9 +297,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // 🔥 تم حذف const هنا
                         Text(
-                          _searchTerm.isEmpty ? "SUGGESTED FOR YOU" : "SEARCH RESULTS", // ✅ تغيير العنوان حسب الحالة
+                          _searchTerm.isEmpty ? "SUGGESTED FOR YOU" : "SEARCH RESULTS", 
                           style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 12,
@@ -313,7 +306,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             letterSpacing: 1.5,
                           ),
                         ),
-                        // 🔥 تم حذف const هنا
                         Text(
                           "ACTIVE",
                           style: TextStyle(
@@ -331,7 +323,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     coursesToDisplay.isEmpty 
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 40),
-                        // 🔥 تم حذف const هنا
                         child: Text("No courses found", style: TextStyle(color: AppColors.textSecondary.withOpacity(0.5))),
                       )
                     : ListView.builder(
@@ -375,13 +366,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                         decoration: BoxDecoration(
-                                          // 🔥 تم حذف const هنا
                                           color: AppColors.accentOrange.withOpacity(0.1),
                                           borderRadius: BorderRadius.circular(4),
                                         ),
                                         child: Text(
                                           "#${course.code}",
-                                          // 🔥 تم حذف const هنا
                                           style: TextStyle(
                                             color: AppColors.accentOrange,
                                             fontSize: 9,
@@ -390,7 +379,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ),
                                         ),
                                       ),
-                                      // 🔥 تم حذف const هنا
                                       Icon(LucideIcons.chevronRight, color: AppColors.accentYellow, size: 20),
                                     ],
                                   ),
@@ -399,7 +387,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   // Title
                                   Text(
                                     course.title.toUpperCase(),
-                                    // 🔥 تم حذف const هنا
                                     style: TextStyle(
                                       color: AppColors.textPrimary,
                                       fontSize: 18,
@@ -424,12 +411,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                     },
                                     child: Row(
                                       children: [
-                                        // 🔥 تم حذف const هنا
                                         Icon(LucideIcons.userCircle, size: 14, color: AppColors.accentOrange),
                                         const SizedBox(width: 8),
                                         Text(
                                           course.instructorName.toUpperCase(),
-                                          // 🔥 تم حذف const هنا
                                           style: TextStyle(
                                             color: AppColors.textSecondary,
                                             fontSize: 10,
