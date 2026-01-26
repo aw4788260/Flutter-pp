@@ -88,7 +88,8 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> with WidgetsB
   Future<void> _initializeProtection() async {
     try {
       // منع Screenshot & Screen Recording
-      await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      // ✅ تم التصحيح هنا: استخدام FlutterWindowManagerPlus بدلاً من FlutterWindowManager
+      await FlutterWindowManagerPlus.addFlags(FlutterWindowManagerPlus.FLAG_SECURE);
       
       // حظر التقاط الصوت
       await _protectionService.blockAudioCapture();
