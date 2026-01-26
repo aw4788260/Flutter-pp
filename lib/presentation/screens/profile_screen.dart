@@ -6,6 +6,9 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/app_state.dart';
 import '../../core/services/storage_service.dart';
 
+// ✅ استيراد main.dart للوصول لخاصية إعادة التشغيل
+import '../../main.dart'; 
+
 // شاشات الإعدادات العامة
 import 'edit_profile_screen.dart';
 import 'change_password_screen.dart';
@@ -100,6 +103,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           (route) => false,
         );
       }
+    }
+  }
+
+  // ✅ دالة لتغيير الثيم وإعادة تشغيل التطبيق
+  void _toggleThemeAndRestart() async {
+    await AppState().toggleTheme();
+    
+    // تأخير بسيط لضمان حفظ الإعدادات
+    await Future.delayed(const Duration(milliseconds: 150));
+    
+    if (mounted) {
+      // 🔄 إعادة تشغيل التطبيق بالكامل لإصلاح الألوان
+      RestartWidget.restartApp(context);
     }
   }
 
@@ -364,20 +380,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     // ✅ زر التبديل بين الوضعين النهاري والليلي
                     _buildMenuItem(
                       context,
-                      // 🔥 FIX: Use AppState.isDark instead of AppState().isDark
                       icon: AppState.isDark ? LucideIcons.moon : LucideIcons.sun,
                       title: AppState.isDark ? "Dark Mode / الوضع الليلي" : "Light Mode / الوضع النهاري",
-                      onTap: () {
-                        AppState().toggleTheme();
-                        setState(() {}); // تحديث فوري للأيقونة
-                      },
+                      onTap: _toggleThemeAndRestart, // 👈 استدعاء الدالة الجديدة
                       trailing: Switch(
-                        // 🔥 FIX: Use AppState.isDark instead of AppState().isDark
                         value: AppState.isDark,
+                        // ✅ ألوان الوضع النشط (Dark Mode)
                         activeColor: AppColors.accentYellow,
+                        activeTrackColor: AppColors.accentYellow.withOpacity(0.4),
+                        
+                        // ✅ ألوان الوضع غير النشط (Light Mode) لتظهر بوضوح
+                        inactiveThumbColor: Colors.grey.shade600, 
+                        inactiveTrackColor: Colors.grey.shade300,
+
                         onChanged: (val) {
-                          AppState().toggleTheme();
-                          setState(() {});
+                          _toggleThemeAndRestart(); // 👈 استدعاء الدالة الجديدة
                         },
                       ),
                     ),
