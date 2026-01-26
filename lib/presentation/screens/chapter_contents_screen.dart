@@ -106,6 +106,35 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 🟢 دوال مساعدة لحساب الحجم وتنسيقه
+  // ---------------------------------------------------------------------------
+
+  // استخراج حجم الملف من الرابط (من المتغير clen)
+  int _getFileSizeFromUrl(String? url) {
+    if (url == null) return 0;
+    try {
+      final uri = Uri.parse(url);
+      final clen = uri.queryParameters['clen'];
+      return int.tryParse(clen ?? '0') ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // تنسيق الحجم للنص (MB, GB)
+  String _formatBytes(int bytes, int decimals) {
+    if (bytes <= 0) return "Unknown Size";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = 0;
+    double size = bytes.toDouble();
+    while (size >= 1024 && i < suffixes.length - 1) {
+      size /= 1024;
+      i++;
+    }
+    return '${size.toStringAsFixed(decimals)} ${suffixes[i]}';
+  }
+
   // ===========================================================================
   // 1. منطق المشاهدة (Watch Logic) واختيار المشغل
   // ===========================================================================
@@ -371,9 +400,15 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
         if (rawQualities.isNotEmpty) {
            
           String? bestAudioUrl;
+          int audioSize = 0; // ✅ متغير لتخزين حجم الصوت
+
           try {
             final audioObj = rawQualities.firstWhere((q) => q['type'] == 'audio_only', orElse: () => null);
-            bestAudioUrl = audioObj?['url'];
+            if (audioObj != null) {
+              bestAudioUrl = audioObj['url'];
+              // ✅ حساب حجم الصوت (يضاف لحجم الفيديو لاحقاً)
+              audioSize = _getFileSizeFromUrl(bestAudioUrl);
+            }
           } catch (_) {}
 
           var videoOptions = rawQualities.where((q) => q['type'] != 'audio_only').toList();
@@ -384,7 +419,8 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                videoTitle, 
                videoOptions, 
                duration, 
-               bestAudioUrl 
+               bestAudioUrl,
+               audioSize // ✅ تمرير حجم الصوت
              );
           } else {
              FirebaseCrashlytics.instance.log("⚠️ No video-only streams found for download.");
@@ -403,10 +439,10 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
     }
   }
 
-  void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration, String? audioUrl) {
+  void _showQualitySelectionDialog(String videoId, String title, List<dynamic> qualities, String duration, String? audioUrl, int audioSize) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white, // ✅ خلفية بيضاء
+      backgroundColor: Colors.white, // ✅ خلفية بيضاء للوضع النهاري
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -436,13 +472,23 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: qualities.map((q) {
+                      // ✅ حساب الحجم الكلي (فيديو + صوت)
+                      int videoSize = _getFileSizeFromUrl(q['url']);
+                      int totalSize = videoSize + audioSize;
+                      String sizeText = _formatBytes(totalSize, 1);
+
                       return ListTile(
                         leading: const Icon(LucideIcons.download, color: Colors.black), // ✅ أيقونة سوداء
                         title: Text(
                           "${q['quality']}p", 
                           style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold), // ✅ نص أسود
                         ),
-                        trailing: const Icon(LucideIcons.chevronRight, color: Colors.black54, size: 16), // ✅ سهم رمادي غامق
+                        // ✅ عرض الحجم أسفل الجودة
+                        subtitle: Text(
+                          sizeText,
+                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                        ),
+                        trailing: const Icon(LucideIcons.chevronRight, color: Colors.black54, size: 16), // ✅ سهم رمادي
                         onTap: () {
                           Navigator.pop(context);
                            
@@ -566,7 +612,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      // ✅ جعل العنوان الرئيسي قابلاً للسحب (Scrollable)
+                                      // ✅ جعل العنوان الرئيسي قابلاً للسحب (Scrollable) لمنع الخطأ
                                       SingleChildScrollView(
                                         scrollDirection: Axis.horizontal,
                                         child: Text(
@@ -804,7 +850,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         if (isDownloaded) {
                            return _buildStatusButton("SAVED ${sizeStr != null ? '($sizeStr)' : ''}", AppColors.success, LucideIcons.checkCircle);
                         }
-                        // ✅ التغيير هنا: عرض Processing بدلاً من Loading
+                        // ✅ عرض "PROCESSING..." أثناء التحميل لمنع التكرار
                         else if (isDownloading) {
                            return _buildStatusButton("PROCESSING...", AppColors.accentYellow, LucideIcons.loader);
                         }
@@ -907,7 +953,7 @@ class _ChapterContentsScreenState extends State<ChapterContentsScreen> {
                         bool isDownloading = DownloadManager().isFileDownloading(pdfId);
 
                         if (isDownloaded) return _buildStatusButton("SAVED", AppColors.success, LucideIcons.checkCircle);
-                        // ✅ التغيير هنا: عرض Processing بدلاً من Loading
+                        // ✅ عرض "PROCESSING..." أثناء تحميل الـ PDF
                         else if (isDownloading) return _buildStatusButton("PROCESSING...", AppColors.accentYellow, LucideIcons.loader);
                         else return _buildActionButton("Download", AppColors.textSecondary, () => _startPdfDownload(pdfId, pdf['title']));
                       },
